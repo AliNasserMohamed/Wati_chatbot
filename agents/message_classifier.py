@@ -55,6 +55,9 @@ class MessageClassifier:
         # If message is in English, translate it first
         if language == 'en':
             text_to_classify = await language_handler.translate_to_arabic(text)
+            # If translation fails, use original text
+            if not text_to_classify:
+                text_to_classify = text
         else:
             text_to_classify = text
 
@@ -62,6 +65,12 @@ class MessageClassifier:
             f"صنف الرسالة التالية:\n{text_to_classify}",
             system_prompt
         )
+
+        # Check if classification is None or empty
+        if not classification:
+            print("Classification failed - using default UNKNOWN type")
+            user_message.message_type = None
+            return None, language
 
         try:
             # Map Arabic classification to English enum values
@@ -73,9 +82,13 @@ class MessageClassifier:
                 'تحية أو رسائل عامة': 'GREETING'
             }
             
-            enum_value = classification_map.get(classification.strip())
+            # Safely strip whitespace
+            classification_clean = classification.strip() if classification else ""
+            enum_value = classification_map.get(classification_clean)
+            
             if not enum_value:
-                print(f"Invalid classification received: {classification}")
+                print(f"Invalid classification received: '{classification}' -> '{classification_clean}'")
+                user_message.message_type = None
                 return None, language
 
             message_type = MessageType(enum_value)
@@ -101,8 +114,9 @@ class MessageClassifier:
             db.commit()
             return message_type, language
 
-        except ValueError:
-            print(f"Invalid classification received: {classification}")
+        except (ValueError, AttributeError) as e:
+            print(f"Error processing classification '{classification}': {str(e)}")
+            user_message.message_type = None
             return None, language
 
     def get_default_response(self, message_type: MessageType, language: str) -> str:

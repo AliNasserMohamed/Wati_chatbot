@@ -5,7 +5,8 @@ import os
 
 class LanguageHandler:
     def __init__(self):
-        self.openai_client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        # Use AsyncOpenAI for async operations
+        self.openai_client = openai.AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         self.supported_languages = ['en', 'ar']
         self.default_language = 'ar'
 
@@ -88,7 +89,16 @@ class LanguageHandler:
                 messages=messages,
                 temperature=0.7
             )
-            return response.choices[0].message.content.strip()
+            
+            # Check if response and content exist before calling strip()
+            if response and response.choices and len(response.choices) > 0:
+                content = response.choices[0].message.content
+                if content:
+                    return content.strip()
+            
+            print("OpenAI response was empty or invalid")
+            return None
+            
         except Exception as e:
             print(f"Error processing with OpenAI: {str(e)}")
             return None
@@ -108,5 +118,28 @@ class LanguageHandler:
             f"ترجم النص التالي إلى اللهجة السعودية:\n{text}",
             system_prompt
         )
+
+    async def translate_response(self, text: str, target_language: str) -> str:
+        """Translate response to target language."""
+        if target_language == 'ar':
+            return await self.translate_to_arabic(text)
+        elif target_language == 'en':
+            # If target is English, assume text is Arabic and translate to English
+            system_prompt = """
+            You are a professional translator specializing in translating Saudi Arabic dialect to English.
+            The translation should be:
+            1. Natural and fluent English
+            2. Suitable for everyday conversations
+            3. Maintain the original meaning
+            4. Use appropriate English expressions
+            """
+            
+            return await self.process_with_openai(
+                f"Translate the following Saudi Arabic text to English:\n{text}",
+                system_prompt
+            )
+        else:
+            # Return original text if language not supported
+            return text
 
 language_handler = LanguageHandler() 
