@@ -8,6 +8,7 @@ import sys
 import uuid
 from datetime import datetime
 import aiohttp
+import urllib.parse
 
 # Load environment variables from .env
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -183,20 +184,58 @@ async def send_whatsapp_message(phone_number: str, message: str):
         print(f"📤 Sending WhatsApp message to {phone_number}")
         print(f"🔗 Using Wati API URL: {wati_api_url}")
         
+        # URL encode the message to handle special characters
+        encoded_message = urllib.parse.quote(message)
+        
+        # Use sendSessionMessage endpoint as shown in working examples
+        send_url = f"{wati_api_url}/sendSessionMessage/{phone_number}?messageText={encoded_message}"
+        
+        print(f"📡 Request URL: {send_url[:80]}...")  # Show partial URL for debugging
+        
+        # Headers based on working examples
+        headers = {
+            "Authorization": f"Bearer {wati_api_key}",
+            "Content-Type": "application/json",
+            "accept": "*/*",
+            "accept-language": "en-GB,en;q=0.9,ar-EG;q=0.8,ar;q=0.7,en-US;q=0.6",
+            "origin": "https://live.wati.io",
+            "referer": "https://live.wati.io/",
+            "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36"
+        }
+        
+        # Empty payload as message is in URL (as per working examples)
         async with aiohttp.ClientSession() as session:
             async with session.post(
-                f"{wati_api_url}/sendMessage",
-                headers={"Authorization": f"Bearer {wati_api_key}"},
-                json={
-                    "phone_number": phone_number,
-                    "message": message
-                }
+                send_url,
+                headers=headers,
+                data={}  # Empty payload
             ) as response:
-                result = await response.json()
                 if response.status == 200:
                     print(f"✅ Message sent successfully to {phone_number}")
+                    # Try to parse JSON response, but handle if it's not JSON
+                    try:
+                        result = await response.json()
+                    except:
+                        result = {"status": "success", "text": await response.text()}
                 else:
-                    print(f"⚠️ Wati API returned status {response.status}: {result}")
+                    print(f"⚠️ Wati API returned status {response.status}")
+                    response_text = await response.text()
+                    print(f"Response: {response_text}")
+                    
+                    # Try alternative endpoints if primary fails
+                    print("🔄 Trying alternative endpoint...")
+                    alt_url = f"{wati_api_url}/sendMessage?whatsappNumber={phone_number}&messageText={encoded_message}"
+                    async with session.post(alt_url, headers=headers, data={}) as alt_response:
+                        if alt_response.status == 200:
+                            print(f"✅ Alternative endpoint successful!")
+                            try:
+                                result = await alt_response.json()
+                            except:
+                                result = {"status": "success", "text": await alt_response.text()}
+                        else:
+                            print(f"❌ Alternative endpoint also failed: {alt_response.status}")
+                            result = {"error": f"HTTP {response.status}", "response": response_text}
+                
                 return result
                 
     except Exception as e:
