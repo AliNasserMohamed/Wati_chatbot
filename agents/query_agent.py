@@ -256,9 +256,17 @@ class QueryAgent:
             }
             messages.append(system_message)
             
-            # Add conversation history if provided
+            # Add conversation history if provided (fix datetime serialization)
             if conversation_history:
-                messages.extend(conversation_history[-5:])  # Last 5 messages for context
+                for msg in conversation_history[-5:]:  # Last 5 messages for context
+                    # Create a clean message without datetime objects
+                    clean_msg = {
+                        "role": msg.get("role", "user"),
+                        "content": msg.get("content", "")
+                    }
+                    # Skip empty messages
+                    if clean_msg["content"]:
+                        messages.append(clean_msg)
             
             # Add current user message
             messages.append({"role": "user", "content": user_message})
@@ -315,7 +323,7 @@ class QueryAgent:
             else:
                 # No function call, return direct response
                 return message.content
-                
+
         except Exception as e:
             logger.error(f"Error processing query: {str(e)}")
             return f"عذراً، حدث خطأ في معالجة استفسارك. الرجاء المحاولة مرة أخرى.\nالخطأ: {str(e)}"
