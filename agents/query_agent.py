@@ -10,6 +10,8 @@ from dotenv import load_dotenv
 from database.db_models import UserSession
 from sqlalchemy.orm import Session
 from utils.language_utils import language_handler
+from services.data_api import data_api
+from database.db_utils import get_db
 
 # Load environment variables
 load_dotenv()
@@ -127,12 +129,20 @@ class QueryAgent:
             }
         ]
     
+    def _get_db_session(self):
+        """Get database session"""
+        from database.db_utils import SessionLocal
+        return SessionLocal()
+    
     def get_all_cities(self) -> Dict[str, Any]:
         """Get complete list of all cities we serve"""
         try:
-            response = requests.get(f"{self.api_base_url}/cities", timeout=10)
-            response.raise_for_status()
-            return response.json()
+            db = self._get_db_session()
+            try:
+                cities = data_api.get_all_cities(db)
+                return {"success": True, "data": cities}
+            finally:
+                db.close()
         except Exception as e:
             logger.error(f"Error fetching cities: {str(e)}")
             return {"error": f"Failed to get cities: {str(e)}"}
@@ -140,13 +150,12 @@ class QueryAgent:
     def get_city_id_by_name(self, city_name: str) -> Dict[str, Any]:
         """Get city ID by name (helper function)"""
         try:
-            # First try to find exact city
-            cities_response = requests.get(f"{self.api_base_url}/cities", timeout=10)
-            cities_response.raise_for_status()
-            cities_data = cities_response.json()
-            
-            if cities_data.get("success") and cities_data.get("data"):
-                for city in cities_data["data"]:
+            db = self._get_db_session()
+            try:
+                # Get all cities and find matching one
+                cities = data_api.get_all_cities(db)
+                
+                for city in cities:
                     # Check if city name matches (case insensitive)
                     if (city_name.lower() in city.get("name", "").lower() or 
                         city_name.lower() in city.get("name_en", "").lower()):
@@ -158,24 +167,22 @@ class QueryAgent:
                         }
                 
                 # If no exact match, try search
-                search_response = requests.get(f"{self.api_base_url}/cities/search", 
-                                            params={"q": city_name}, timeout=10)
-                search_response.raise_for_status()
-                search_data = search_response.json()
-                
-                if search_data.get("success") and search_data.get("data"):
-                    first_result = search_data["data"][0]
+                search_results = data_api.search_cities(db, city_name)
+                if search_results:
+                    first_result = search_results[0]
                     return {
                         "success": True,
                         "city_id": first_result["id"],
                         "city_name": first_result["name"],
                         "city_name_en": first_result["name_en"]
                     }
-            
-            return {
-                "success": False,
-                "error": f"City '{city_name}' not found. Please check the city name."
-            }
+                
+                return {
+                    "success": False,
+                    "error": f"City '{city_name}' not found. Please check the city name."
+                }
+            finally:
+                db.close()
             
         except Exception as e:
             logger.error(f"Error finding city ID for {city_name}: {str(e)}")
@@ -184,9 +191,12 @@ class QueryAgent:
     def get_brands_by_city(self, city_id: int) -> Dict[str, Any]:
         """Get brands available in a specific city"""
         try:
-            response = requests.get(f"{self.api_base_url}/cities/{city_id}/brands", timeout=10)
-            response.raise_for_status()
-            return response.json()
+            db = self._get_db_session()
+            try:
+                brands = data_api.get_brands_by_city(db, city_id)
+                return {"success": True, "data": brands}
+            finally:
+                db.close()
         except Exception as e:
             logger.error(f"Error fetching brands for city {city_id}: {str(e)}")
             return {"error": f"Failed to get brands: {str(e)}"}
@@ -194,9 +204,12 @@ class QueryAgent:
     def get_products_by_brand(self, brand_id: int) -> Dict[str, Any]:
         """Get products offered by a specific brand"""
         try:
-            response = requests.get(f"{self.api_base_url}/brands/{brand_id}/products", timeout=10)
-            response.raise_for_status()
-            return response.json()
+            db = self._get_db_session()
+            try:
+                products = data_api.get_products_by_brand(db, brand_id)
+                return {"success": True, "data": products}
+            finally:
+                db.close()
         except Exception as e:
             logger.error(f"Error fetching products for brand {brand_id}: {str(e)}")
             return {"error": f"Failed to get products: {str(e)}"}
@@ -204,10 +217,12 @@ class QueryAgent:
     def search_cities(self, query: str) -> Dict[str, Any]:
         """Search cities by name"""
         try:
-            response = requests.get(f"{self.api_base_url}/cities/search", 
-                                  params={"q": query}, timeout=10)
-            response.raise_for_status()
-            return response.json()
+            db = self._get_db_session()
+            try:
+                cities = data_api.search_cities(db, query)
+                return {"success": True, "data": cities}
+            finally:
+                db.close()
         except Exception as e:
             logger.error(f"Error searching cities: {str(e)}")
             return {"error": f"Failed to search cities: {str(e)}"}
@@ -215,10 +230,12 @@ class QueryAgent:
     def search_products(self, query: str) -> Dict[str, Any]:
         """Search products by name or keyword"""
         try:
-            response = requests.get(f"{self.api_base_url}/products/search", 
-                                  params={"q": query}, timeout=10)
-            response.raise_for_status()
-            return response.json()
+            db = self._get_db_session()
+            try:
+                products = data_api.search_products(db, query)
+                return {"success": True, "data": products}
+            finally:
+                db.close()
         except Exception as e:
             logger.error(f"Error searching products: {str(e)}")
             return {"error": f"Failed to search products: {str(e)}"}
