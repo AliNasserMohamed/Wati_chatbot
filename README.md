@@ -5,50 +5,123 @@ A webhook-based WhatsApp chatbot for the Abar water delivery app using FastAPI, 
 ## Features
 
 - **WhatsApp Integration**: Receive and reply to customer messages through WhatsApp (using Wati API)
-- **SQLite Database**: Store user information, messages, and replies
+- **Multi-language Support**: Automatic language detection (Arabic/English) and response translation
+- **Message Classification**: AI-powered classification of messages (Service Request, Inquiry, Complaint, etc.)
+- **SQLite Database**: Store user information, messages, and replies with full conversation history
 - **Vector Search**: Use Chroma to find relevant answers to user queries
 - **Knowledge Base**: API endpoints to manage Q&A data
 - **Saudi Arabic Dialect**: AI responses in Saudi dialect
+- **Audio Support**: Convert voice messages to text using Gemini AI
+
+## Recent Updates
+
+- ✅ **Database Migration**: Fixed SQLite schema to include `message_type` and `language` columns
+- ✅ **Message Classification**: Added AI-powered message type detection
+- ✅ **Language Detection**: Automatic language detection and response translation
+- ✅ **Audio Processing**: Voice message transcription support
 
 ## Project Structure
 
 ```
-├── app.py                  # Main application entry point
-├── agents/                 # AI agent modules
+├── app.py                      # Main application entry point
+├── agents/                     # AI agent modules
 │   ├── __init__.py
-│   └── whatsapp_agent.py   # WhatsApp interaction agent
-├── database/               # Database modules
+│   ├── whatsapp_agent.py       # WhatsApp interaction agent
+│   ├── message_classifier.py   # Message classification and language detection
+│   ├── query_agent.py          # Query handling agent
+│   └── service_request.py      # Service request handler
+├── database/                   # Database modules
 │   ├── __init__.py
-│   ├── db_models.py        # SQLAlchemy models
-│   └── db_utils.py         # Database utilities
-├── vectorstore/            # Vector database modules
+│   ├── db_models.py            # SQLAlchemy models
+│   ├── db_utils.py             # Database utilities
+│   ├── migrate_add_columns.py  # Database migration script
+│   └── data/                   # SQLite database files
+├── services/                   # External service integrations
 │   ├── __init__.py
-│   ├── chroma_db.py        # Chroma DB implementation
-│   └── data/               # Persisted vector data
-├── utils/                  # Utility modules
+│   ├── data_api.py            # External API integration
+│   ├── data_scraper.py        # Data scraping utilities
+│   └── scheduler.py           # Background task scheduler
+├── vectorstore/               # Vector database modules
 │   ├── __init__.py
-│   └── knowledge_manager.py # Knowledge base management
-└── requirements.txt        # Dependencies
+│   └── data/                  # Persisted vector data
+├── utils/                     # Utility modules
+│   ├── __init__.py
+│   ├── knowledge_manager.py   # Knowledge base management
+│   └── language_utils.py      # Language processing utilities
+├── knowledge_base/            # Knowledge base data
+└── requirements.txt           # Dependencies
 ```
 
 ## Setup
 
-1. Install dependencies:
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/YOUR_USERNAME/Wati_chatbot.git
+   cd Wati_chatbot
+   ```
+
+2. **Install dependencies:**
    ```bash
    pip install -r requirements.txt
    ```
 
-2. Create a `.env` file with the following variables:
+3. **Run database migration (if needed):**
+   ```bash
+   python database/migrate_add_columns.py
+   ```
+
+4. **Create a `.env` file with the following variables:**
    ```
    OPENAI_API_KEY=your_openai_api_key
+   GEMINI_API_KEY=your_gemini_api_key
    WATI_API_KEY=your_wati_api_key
    WATI_API_URL=https://live-mt-server.wati.io/your_account_id/api/v1
    WATI_WEBHOOK_VERIFY_TOKEN=your_webhook_verification_token
    ```
 
-3. Run the application:
+5. **Run the application:**
    ```bash
    python app.py
+   ```
+
+## Deployment
+
+### Server Deployment with Git Auto-Update
+
+1. **Clone on your server:**
+   ```bash
+   git clone https://github.com/YOUR_USERNAME/Wati_chatbot.git
+   cd Wati_chatbot
+   ```
+
+2. **Set up virtual environment:**
+   ```bash
+   python -m venv venv
+   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   pip install -r requirements.txt
+   ```
+
+3. **Configure environment variables:**
+   ```bash
+   cp .env.example .env
+   # Edit .env with your actual API keys
+   ```
+
+4. **Run migrations:**
+   ```bash
+   python database/migrate_add_columns.py
+   ```
+
+5. **Auto-update script for server:**
+   ```bash
+   #!/bin/bash
+   cd /path/to/Wati_chatbot
+   git pull origin main
+   source venv/bin/activate
+   pip install -r requirements.txt
+   python database/migrate_add_columns.py
+   # Restart your application service
+   sudo systemctl restart wati-chatbot
    ```
 
 ## API Endpoints
@@ -65,8 +138,11 @@ A webhook-based WhatsApp chatbot for the Abar water delivery app using FastAPI, 
 ## Database Schema
 
 - **users**: Store user information (phone number, name, conclusion)
-- **user_messages**: Store messages from users
+- **user_messages**: Store messages from users with classification and language
 - **bot_replies**: Store responses sent to users
+- **complaints**: Store complaint records
+- **suggestions**: Store suggestion records
+- **user_sessions**: Store user session data
 
 ## Knowledge Base
 
@@ -95,4 +171,25 @@ curl -X POST "http://localhost:8000/knowledge/add" \
     "answer": "أكيد، عندنا برنامج مكافآت للعملاء المميزين، وتقدر تشوف العروض المتاحة لك مباشرة في التطبيق!",
     "metadata": {"source": "marketing", "category": "promotions"}
   }'
-``` 
+```
+
+## Troubleshooting
+
+### Database Issues
+If you encounter database column errors, run the migration script:
+```bash
+python database/migrate_add_columns.py
+```
+
+### Common Fixes
+- **SQLite column missing**: Run database migration
+- **WhatsApp webhook not working**: Check WATI_WEBHOOK_VERIFY_TOKEN
+- **API key errors**: Verify all API keys in .env file
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature-name`
+3. Commit your changes: `git commit -m 'Add feature'`
+4. Push to the branch: `git push origin feature-name`
+5. Submit a pull request 
