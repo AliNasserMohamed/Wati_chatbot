@@ -6,7 +6,7 @@ from database.db_utils import DatabaseManager
 from database.db_models import City, Brand, Product
 
 class DataAPIService:
-    """Internal API service to fetch data from the database"""
+    """Internal API service to fetch data from the database with unified ID structure"""
     
     @staticmethod
     def get_all_cities(db: Session) -> List[Dict[str, Any]]:
@@ -14,7 +14,7 @@ class DataAPIService:
         cities = DatabaseManager.get_all_cities(db)
         return [
             {
-                "id": city.id,
+                "id": city.id,              # Now matches external ID
                 "external_id": city.external_id,
                 "name": city.name,          # Arabic name
                 "name_en": city.name_en     # English name
@@ -30,7 +30,7 @@ class DataAPIService:
             return None
         
         return {
-            "id": city.id,
+            "id": city.id,              # Now matches external ID
             "external_id": city.external_id,
             "name": city.name,          # Arabic name
             "name_en": city.name_en     # English name
@@ -46,7 +46,7 @@ class DataAPIService:
         ).first()
         
         if city:
-            return city.id
+            return city.id  # Now this is the same as external_id
         return None
     
     @staticmethod
@@ -60,7 +60,7 @@ class DataAPIService:
         
         return [
             {
-                "id": city.id,
+                "id": city.id,              # Now matches external ID
                 "external_id": city.external_id,
                 "name": city.name,          # Arabic name
                 "name_en": city.name_en     # English name
@@ -70,29 +70,25 @@ class DataAPIService:
     
     @staticmethod
     def get_brands_by_city(db: Session, city_id: int) -> List[Dict[str, Any]]:
-        """Get all brands for a specific city using internal city ID - simplified response"""
-        brands = DatabaseManager.get_brands_by_city_id(db, city_id)
+        """Get all brands for a specific city using city ID - simplified response"""
+        # Since IDs are now unified, we can use the city_id directly
+        city = db.query(City).filter(City.id == city_id).first()
+        if not city:
+            return []
+        
         return [
             {
-                "id": brand.id,
+                "id": brand.id,              # Now matches external ID
                 "external_id": brand.external_id,
-                "title": brand.title        # Brand name
+                "title": brand.title         # Brand name
             }
-            for brand in brands
+            for brand in city.brands
         ]
     
     @staticmethod
     def get_brands_by_city_external_id(db: Session, city_external_id: int) -> List[Dict[str, Any]]:
-        """Get all brands for a specific city using external city ID - simplified response"""
-        brands = DatabaseManager.get_brands_by_city(db, city_external_id)
-        return [
-            {
-                "id": brand.id,
-                "external_id": brand.external_id,
-                "title": brand.title        # Brand name
-            }
-            for brand in brands
-        ]
+        """Get all brands for a specific city using external city ID - now same as get_brands_by_city"""
+        return DataAPIService.get_brands_by_city(db, city_external_id)
     
     @staticmethod
     def get_all_brands(db: Session) -> List[Dict[str, Any]]:
@@ -100,9 +96,9 @@ class DataAPIService:
         brands = db.query(Brand).all()
         return [
             {
-                "id": brand.id,
+                "id": brand.id,              # Now matches external ID
                 "external_id": brand.external_id,
-                "title": brand.title        # Brand name
+                "title": brand.title         # Brand name
             }
             for brand in brands
         ]
@@ -115,9 +111,8 @@ class DataAPIService:
             return None
         
         return {
-            "id": brand.id,
+            "id": brand.id,              # Now matches external ID
             "external_id": brand.external_id,
-            "city_id": brand.city_id,
             "title": brand.title,
             "title_en": brand.title_en,
             "image_url": brand.image_url,
@@ -138,9 +133,8 @@ class DataAPIService:
         
         return [
             {
-                "id": brand.id,
+                "id": brand.id,              # Now matches external ID
                 "external_id": brand.external_id,
-                "city_id": brand.city_id,
                 "title": brand.title,
                 "title_en": brand.title_en,
                 "image_url": brand.image_url,
@@ -159,11 +153,11 @@ class DataAPIService:
         products = DatabaseManager.get_products_by_brand(db, brand_id)
         return [
             {
-                "product_id": product.id,
+                "product_id": product.id,           # Now matches external ID
                 "external_id": product.external_id,
                 "product_title": product.title,
                 "product_packing": product.packing,
-                "product_contract_price": product.market_price  # Using market_price as contract_price
+                "product_contract_price": product.contract_price  # Use correct field
             }
             for product in products
         ]
@@ -174,11 +168,11 @@ class DataAPIService:
         products = db.query(Product).all()
         return [
             {
-                "product_id": product.id,
+                "product_id": product.id,           # Now matches external ID
                 "external_id": product.external_id,
                 "product_title": product.title,
                 "product_packing": product.packing,
-                "product_contract_price": product.market_price  # Using market_price as contract_price
+                "product_contract_price": product.contract_price  # Use correct field
             }
             for product in products
         ]
@@ -191,36 +185,34 @@ class DataAPIService:
             return None
         
         return {
-            "product_id": product.id,
+            "product_id": product.id,           # Now matches external ID
             "external_id": product.external_id,
             "product_title": product.title,
             "product_packing": product.packing,
-            "product_contract_price": product.market_price  # Using market_price as contract_price
+            "product_contract_price": product.contract_price  # Use correct field
         }
     
     @staticmethod
     def search_products(db: Session, query: str) -> List[Dict[str, Any]]:
         """Search products by title - simplified response"""
         products = db.query(Product).filter(
-            Product.title.ilike(f"%{query}%") | 
-            Product.title_en.ilike(f"%{query}%") |
-            Product.barcode.ilike(f"%{query}%")
+            Product.title.ilike(f"%{query}%")
         ).all()
         
         return [
             {
-                "product_id": product.id,
+                "product_id": product.id,           # Now matches external ID
                 "external_id": product.external_id,
                 "product_title": product.title,
                 "product_packing": product.packing,
-                "product_contract_price": product.market_price  # Using market_price as contract_price
+                "product_contract_price": product.contract_price  # Use correct field
             }
             for product in products
         ]
     
     @staticmethod
     def get_brand_with_products(db: Session, brand_id: int) -> Optional[Dict[str, Any]]:
-        """Get a brand with all its products"""
+        """Get brand with all its products"""
         brand = db.query(Brand).filter(Brand.id == brand_id).first()
         if not brand:
             return None
@@ -228,50 +220,34 @@ class DataAPIService:
         products = DataAPIService.get_products_by_brand(db, brand_id)
         
         return {
-            "id": brand.id,
+            "id": brand.id,              # Now matches external ID
             "external_id": brand.external_id,
-            "city_id": brand.city_id,
             "title": brand.title,
             "title_en": brand.title_en,
             "image_url": brand.image_url,
-            "mounting_rate_image": brand.mounting_rate_image,
-            "meta_keywords": brand.meta_keywords,
-            "meta_description": brand.meta_description,
-            "created_at": brand.created_at.isoformat() if brand.created_at else None,
-            "updated_at": brand.updated_at.isoformat() if brand.updated_at else None,
             "products": products
         }
     
     @staticmethod
     def get_city_with_brands_and_products(db: Session, city_id: int) -> Optional[Dict[str, Any]]:
-        """Get a city with all its brands and products"""
+        """Get city with all its brands and their products"""
         city = db.query(City).filter(City.id == city_id).first()
         if not city:
             return None
         
-        brands = DatabaseManager.get_brands_by_city(db, city_id)
         brands_with_products = []
-        
-        for brand in brands:
-            products = DataAPIService.get_products_by_brand(db, brand.id)
-            brands_with_products.append({
-                "id": brand.id,
-                "external_id": brand.external_id,
-                "title": brand.title,
-                "title_en": brand.title_en,
-                "image_url": brand.image_url,
-                "products": products
-            })
+        for brand in city.brands:
+            brand_data = DataAPIService.get_brand_with_products(db, brand.id)
+            if brand_data:
+                brands_with_products.append(brand_data)
         
         return {
-            "id": city.id,
+            "id": city.id,              # Now matches external ID
             "external_id": city.external_id,
             "name": city.name,
             "name_en": city.name_en,
-            "created_at": city.created_at.isoformat() if city.created_at else None,
-            "updated_at": city.updated_at.isoformat() if city.updated_at else None,
             "brands": brands_with_products
         }
 
-# Create singleton instance
+# Singleton instance
 data_api = DataAPIService() 

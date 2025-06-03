@@ -146,6 +146,7 @@ class Product(Base):
     title_en = Column(String(200), nullable=True)
     packing = Column(String(200), nullable=True)
     market_price = Column(Float, nullable=True)
+    contract_price = Column(Float, nullable=True)  # Added contract_price field
     barcode = Column(String(50), nullable=True)
     image_url = Column(Text, nullable=True)
     meta_keywords_ar = Column(Text, nullable=True)
