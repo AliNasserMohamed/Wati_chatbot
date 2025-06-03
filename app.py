@@ -156,11 +156,12 @@ async def webhook(request: Request, db=Depends(get_db)):
             response_text = message_classifier.get_default_response(message_type, detected_language)
         
         elif message_type == MessageType.INQUIRY:
-            # Get response in English first
-            response_text = await query_agent.handle_query(message_text, phone_number, db)
-            # Translate if needed
-            if detected_language == 'ar':
-                response_text = await language_handler.translate_response(response_text, 'ar')
+            # Use enhanced query agent with function calling
+            conversation_history = DatabaseManager.get_user_message_history(db, user.id, limit=6)
+            response_text = await query_agent.process_query(message_text, conversation_history)
+            
+            # The enhanced query agent already handles Arabic responses based on user input
+            # No need for additional translation
         
         elif message_type == MessageType.SERVICE_REQUEST:
             # Get response in English first
@@ -344,7 +345,16 @@ async def get_cities(search: str = None, db=Depends(get_db)):
             cities = data_api.search_cities(db, search)
         else:
             cities = data_api.get_all_cities(db)
-        return {"status": "success", "data": cities}
+        return {"success": True, "data": cities}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/cities/search")
+async def search_cities(q: str, db=Depends(get_db)):
+    """Search cities by name"""
+    try:
+        cities = data_api.search_cities(db, q)
+        return {"success": True, "data": cities}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -354,14 +364,14 @@ async def get_city(city_id: int, db=Depends(get_db)):
     city = data_api.get_city_by_id(db, city_id)
     if not city:
         raise HTTPException(status_code=404, detail="City not found")
-    return {"status": "success", "data": city}
+    return {"success": True, "data": city}
 
 @app.get("/api/cities/{city_id}/brands")
 async def get_city_brands(city_id: int, db=Depends(get_db)):
     """Get all brands for a specific city"""
     try:
         brands = data_api.get_brands_by_city(db, city_id)
-        return {"status": "success", "data": brands}
+        return {"success": True, "data": brands}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -371,7 +381,7 @@ async def get_city_with_brands_products(city_id: int, db=Depends(get_db)):
     city_data = data_api.get_city_with_brands_and_products(db, city_id)
     if not city_data:
         raise HTTPException(status_code=404, detail="City not found")
-    return {"status": "success", "data": city_data}
+    return {"success": True, "data": city_data}
 
 @app.get("/api/brands")
 async def get_brands(search: str = None, db=Depends(get_db)):
@@ -381,7 +391,7 @@ async def get_brands(search: str = None, db=Depends(get_db)):
             brands = data_api.search_brands(db, search)
         else:
             brands = data_api.get_all_brands(db)
-        return {"status": "success", "data": brands}
+        return {"success": True, "data": brands}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -391,14 +401,14 @@ async def get_brand(brand_id: int, db=Depends(get_db)):
     brand = data_api.get_brand_by_id(db, brand_id)
     if not brand:
         raise HTTPException(status_code=404, detail="Brand not found")
-    return {"status": "success", "data": brand}
+    return {"success": True, "data": brand}
 
 @app.get("/api/brands/{brand_id}/products")
 async def get_brand_products(brand_id: int, db=Depends(get_db)):
     """Get all products for a specific brand"""
     try:
         products = data_api.get_products_by_brand(db, brand_id)
-        return {"status": "success", "data": products}
+        return {"success": True, "data": products}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -408,7 +418,7 @@ async def get_brand_with_products(brand_id: int, db=Depends(get_db)):
     brand_data = data_api.get_brand_with_products(db, brand_id)
     if not brand_data:
         raise HTTPException(status_code=404, detail="Brand not found")
-    return {"status": "success", "data": brand_data}
+    return {"success": True, "data": brand_data}
 
 @app.get("/api/products")
 async def get_products(search: str = None, db=Depends(get_db)):
@@ -418,7 +428,16 @@ async def get_products(search: str = None, db=Depends(get_db)):
             products = data_api.search_products(db, search)
         else:
             products = data_api.get_all_products(db)
-        return {"status": "success", "data": products}
+        return {"success": True, "data": products}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/products/search")
+async def search_products(q: str, db=Depends(get_db)):
+    """Search products by name or keyword"""
+    try:
+        products = data_api.search_products(db, q)
+        return {"success": True, "data": products}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -428,7 +447,7 @@ async def get_product(product_id: int, db=Depends(get_db)):
     product = data_api.get_product_by_id(db, product_id)
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
-    return {"status": "success", "data": product}
+    return {"success": True, "data": product}
 
 # Knowledge management endpoints
 @app.post("/knowledge/add")

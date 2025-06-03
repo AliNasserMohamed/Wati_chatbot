@@ -10,26 +10,21 @@ class DataAPIService:
     
     @staticmethod
     def get_all_cities(db: Session) -> List[Dict[str, Any]]:
-        """Get all cities from database"""
+        """Get all cities from database - simplified response"""
         cities = DatabaseManager.get_all_cities(db)
         return [
             {
                 "id": city.id,
                 "external_id": city.external_id,
-                "name": city.name,
-                "name_en": city.name_en,
-                "title": city.title,
-                "lat": city.lat,
-                "lng": city.lng,
-                "created_at": city.created_at.isoformat() if city.created_at else None,
-                "updated_at": city.updated_at.isoformat() if city.updated_at else None
+                "name": city.name,          # Arabic name
+                "name_en": city.name_en     # English name
             }
             for city in cities
         ]
     
     @staticmethod
     def get_city_by_id(db: Session, city_id: int) -> Optional[Dict[str, Any]]:
-        """Get a specific city by ID"""
+        """Get a specific city by ID - simplified response"""
         city = db.query(City).filter(City.id == city_id).first()
         if not city:
             return None
@@ -37,18 +32,26 @@ class DataAPIService:
         return {
             "id": city.id,
             "external_id": city.external_id,
-            "name": city.name,
-            "name_en": city.name_en,
-            "title": city.title,
-            "lat": city.lat,
-            "lng": city.lng,
-            "created_at": city.created_at.isoformat() if city.created_at else None,
-            "updated_at": city.updated_at.isoformat() if city.updated_at else None
+            "name": city.name,          # Arabic name
+            "name_en": city.name_en     # English name
         }
     
     @staticmethod
+    def get_city_id_by_name(db: Session, city_name: str) -> Optional[int]:
+        """Get city ID by name (supports both Arabic and English names)"""
+        city = db.query(City).filter(
+            (City.name.ilike(f"%{city_name}%")) | 
+            (City.name_en.ilike(f"%{city_name}%")) |
+            (City.title.ilike(f"%{city_name}%"))
+        ).first()
+        
+        if city:
+            return city.id
+        return None
+    
+    @staticmethod
     def search_cities(db: Session, query: str) -> List[Dict[str, Any]]:
-        """Search cities by name"""
+        """Search cities by name - simplified response"""
         cities = db.query(City).filter(
             City.name.ilike(f"%{query}%") | 
             City.name_en.ilike(f"%{query}%") |
@@ -59,76 +62,47 @@ class DataAPIService:
             {
                 "id": city.id,
                 "external_id": city.external_id,
-                "name": city.name,
-                "name_en": city.name_en,
-                "title": city.title,
-                "lat": city.lat,
-                "lng": city.lng,
-                "created_at": city.created_at.isoformat() if city.created_at else None,
-                "updated_at": city.updated_at.isoformat() if city.updated_at else None
+                "name": city.name,          # Arabic name
+                "name_en": city.name_en     # English name
             }
             for city in cities
         ]
     
     @staticmethod
     def get_brands_by_city(db: Session, city_id: int) -> List[Dict[str, Any]]:
-        """Get all brands for a specific city using internal city ID"""
+        """Get all brands for a specific city using internal city ID - simplified response"""
         brands = DatabaseManager.get_brands_by_city_id(db, city_id)
         return [
             {
                 "id": brand.id,
                 "external_id": brand.external_id,
-                "title": brand.title,
-                "title_en": brand.title_en,
-                "image_url": brand.image_url,
-                "mounting_rate_image": brand.mounting_rate_image,
-                "meta_keywords": brand.meta_keywords,
-                "meta_description": brand.meta_description,
-                "cities": [{"id": city.id, "external_id": city.external_id, "name": city.name, "name_en": city.name_en} for city in brand.cities],
-                "created_at": brand.created_at.isoformat() if brand.created_at else None,
-                "updated_at": brand.updated_at.isoformat() if brand.updated_at else None
+                "title": brand.title        # Brand name
             }
             for brand in brands
         ]
     
     @staticmethod
     def get_brands_by_city_external_id(db: Session, city_external_id: int) -> List[Dict[str, Any]]:
-        """Get all brands for a specific city using external city ID"""
+        """Get all brands for a specific city using external city ID - simplified response"""
         brands = DatabaseManager.get_brands_by_city(db, city_external_id)
         return [
             {
                 "id": brand.id,
                 "external_id": brand.external_id,
-                "title": brand.title,
-                "title_en": brand.title_en,
-                "image_url": brand.image_url,
-                "mounting_rate_image": brand.mounting_rate_image,
-                "meta_keywords": brand.meta_keywords,
-                "meta_description": brand.meta_description,
-                "cities": [{"id": city.id, "external_id": city.external_id, "name": city.name, "name_en": city.name_en} for city in brand.cities],
-                "created_at": brand.created_at.isoformat() if brand.created_at else None,
-                "updated_at": brand.updated_at.isoformat() if brand.updated_at else None
+                "title": brand.title        # Brand name
             }
             for brand in brands
         ]
     
     @staticmethod
     def get_all_brands(db: Session) -> List[Dict[str, Any]]:
-        """Get all brands from database"""
+        """Get all brands from database - simplified response"""
         brands = db.query(Brand).all()
         return [
             {
                 "id": brand.id,
                 "external_id": brand.external_id,
-                "title": brand.title,
-                "title_en": brand.title_en,
-                "image_url": brand.image_url,
-                "mounting_rate_image": brand.mounting_rate_image,
-                "meta_keywords": brand.meta_keywords,
-                "meta_description": brand.meta_description,
-                "cities": [{"id": city.id, "external_id": city.external_id, "name": city.name, "name_en": city.name_en} for city in brand.cities],
-                "created_at": brand.created_at.isoformat() if brand.created_at else None,
-                "updated_at": brand.updated_at.isoformat() if brand.updated_at else None
+                "title": brand.title        # Brand name
             }
             for brand in brands
         ]
@@ -181,88 +155,52 @@ class DataAPIService:
     
     @staticmethod
     def get_products_by_brand(db: Session, brand_id: int) -> List[Dict[str, Any]]:
-        """Get all products for a specific brand"""
+        """Get all products for a specific brand - simplified response"""
         products = DatabaseManager.get_products_by_brand(db, brand_id)
         return [
             {
-                "id": product.id,
+                "product_id": product.id,
                 "external_id": product.external_id,
-                "brand_id": product.brand_id,
-                "title": product.title,
-                "title_en": product.title_en,
-                "packing": product.packing,
-                "market_price": product.market_price,
-                "barcode": product.barcode,
-                "image_url": product.image_url,
-                "meta_keywords_ar": product.meta_keywords_ar,
-                "meta_keywords_en": product.meta_keywords_en,
-                "meta_description_ar": product.meta_description_ar,
-                "meta_description_en": product.meta_description_en,
-                "description_rich_text_ar": product.description_rich_text_ar,
-                "description_rich_text_en": product.description_rich_text_en,
-                "created_at": product.created_at.isoformat() if product.created_at else None,
-                "updated_at": product.updated_at.isoformat() if product.updated_at else None
+                "product_title": product.title,
+                "product_packing": product.packing,
+                "product_contract_price": product.market_price  # Using market_price as contract_price
             }
             for product in products
         ]
     
     @staticmethod
     def get_all_products(db: Session) -> List[Dict[str, Any]]:
-        """Get all products from database"""
+        """Get all products from database - simplified response"""
         products = db.query(Product).all()
         return [
             {
-                "id": product.id,
+                "product_id": product.id,
                 "external_id": product.external_id,
-                "brand_id": product.brand_id,
-                "title": product.title,
-                "title_en": product.title_en,
-                "packing": product.packing,
-                "market_price": product.market_price,
-                "barcode": product.barcode,
-                "image_url": product.image_url,
-                "meta_keywords_ar": product.meta_keywords_ar,
-                "meta_keywords_en": product.meta_keywords_en,
-                "meta_description_ar": product.meta_description_ar,
-                "meta_description_en": product.meta_description_en,
-                "description_rich_text_ar": product.description_rich_text_ar,
-                "description_rich_text_en": product.description_rich_text_en,
-                "created_at": product.created_at.isoformat() if product.created_at else None,
-                "updated_at": product.updated_at.isoformat() if product.updated_at else None
+                "product_title": product.title,
+                "product_packing": product.packing,
+                "product_contract_price": product.market_price  # Using market_price as contract_price
             }
             for product in products
         ]
     
     @staticmethod
     def get_product_by_id(db: Session, product_id: int) -> Optional[Dict[str, Any]]:
-        """Get a specific product by ID"""
+        """Get a specific product by ID - simplified response"""
         product = db.query(Product).filter(Product.id == product_id).first()
         if not product:
             return None
         
         return {
-            "id": product.id,
+            "product_id": product.id,
             "external_id": product.external_id,
-            "brand_id": product.brand_id,
-            "title": product.title,
-            "title_en": product.title_en,
-            "packing": product.packing,
-            "market_price": product.market_price,
-            "barcode": product.barcode,
-            "image_url": product.image_url,
-            "meta_keywords_ar": product.meta_keywords_ar,
-            "meta_keywords_en": product.meta_keywords_en,
-            "meta_description_ar": product.meta_description_ar,
-            "meta_description_en": product.meta_description_en,
-            "description_rich_text_ar": product.description_rich_text_ar,
-            "description_rich_text_en": product.description_rich_text_en,
-            "created_at": product.created_at.isoformat() if product.created_at else None,
-            "updated_at": product.updated_at.isoformat() if product.updated_at else None
+            "product_title": product.title,
+            "product_packing": product.packing,
+            "product_contract_price": product.market_price  # Using market_price as contract_price
         }
     
     @staticmethod
     def search_products(db: Session, query: str) -> List[Dict[str, Any]]:
-        """Search products by title"""
+        """Search products by title - simplified response"""
         products = db.query(Product).filter(
             Product.title.ilike(f"%{query}%") | 
             Product.title_en.ilike(f"%{query}%") |
@@ -271,23 +209,11 @@ class DataAPIService:
         
         return [
             {
-                "id": product.id,
+                "product_id": product.id,
                 "external_id": product.external_id,
-                "brand_id": product.brand_id,
-                "title": product.title,
-                "title_en": product.title_en,
-                "packing": product.packing,
-                "market_price": product.market_price,
-                "barcode": product.barcode,
-                "image_url": product.image_url,
-                "meta_keywords_ar": product.meta_keywords_ar,
-                "meta_keywords_en": product.meta_keywords_en,
-                "meta_description_ar": product.meta_description_ar,
-                "meta_description_en": product.meta_description_en,
-                "description_rich_text_ar": product.description_rich_text_ar,
-                "description_rich_text_en": product.description_rich_text_en,
-                "created_at": product.created_at.isoformat() if product.created_at else None,
-                "updated_at": product.updated_at.isoformat() if product.updated_at else None
+                "product_title": product.title,
+                "product_packing": product.packing,
+                "product_contract_price": product.market_price  # Using market_price as contract_price
             }
             for product in products
         ]
