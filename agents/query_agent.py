@@ -3,6 +3,7 @@
 import requests
 import json
 import logging
+import asyncio
 from typing import Dict, List, Any, Optional
 from openai import AsyncOpenAI
 import os
@@ -243,8 +244,16 @@ class QueryAgent:
     async def process_query(self, user_message: str, conversation_history: List[Dict] = None) -> str:
         """
         Process user query using OpenAI with function calling capabilities
+        Limited to maximum 3 function calls per query to prevent excessive API usage
         """
+        max_function_calls = 3
+        function_call_count = 0
+        
         try:
+            # Simple fallback for common queries if OpenAI is rate limited
+            if self._should_use_fallback(user_message):
+                return await self._handle_simple_query(user_message)
+            
             # Prepare conversation history
             messages = []
             
@@ -265,6 +274,7 @@ class QueryAgent:
 - إذا سأل عن منتجات علامة تجارية، استخدم get_products_by_brand
 - إذا كانت المعلومات غير واضحة، اطلب توضيح من المستخدم
 - أجب باللغة العربية بشكل أساسي إلا إذا سأل المستخدم بالإنجليزية
+- اجعل إجاباتك مختصرة ومفيدة
 
 أمثلة على الأسئلة:
 - "ما هي المدن المتاحة؟" → استخدم get_all_cities
@@ -275,7 +285,7 @@ class QueryAgent:
             
             # Add conversation history if provided (fix datetime serialization)
             if conversation_history:
-                for msg in conversation_history[-5:]:  # Last 5 messages for context
+                for msg in conversation_history[-3:]:  # Reduced to 3 messages for fewer tokens
                     # Create a clean message without datetime objects
                     clean_msg = {
                         "role": msg.get("role", "user"),
@@ -288,62 +298,164 @@ class QueryAgent:
             # Add current user message
             messages.append({"role": "user", "content": user_message})
             
-            # Make request to OpenAI with function calling
-            response = await self.openai_client.chat.completions.create(
-                model="gpt-4",
-                messages=messages,
-                functions=self.function_definitions,
-                function_call="auto",
-                temperature=0.3,
-                max_tokens=1500
-            )
-            
-            message = response.choices[0].message
-            
-            # Check if model wants to call a function
-            if message.function_call:
-                function_name = message.function_call.name
-                function_args = json.loads(message.function_call.arguments)
-                
-                logger.info(f"Calling function: {function_name} with args: {function_args}")
-                
-                # Call the requested function
-                if function_name in self.available_functions:
-                    function_result = self.available_functions[function_name](**function_args)
-                    
-                    # Add function result to conversation
-                    messages.append({
-                        "role": "assistant",
-                        "content": None,
-                        "function_call": {
-                            "name": function_name,
-                            "arguments": message.function_call.arguments
-                        }
-                    })
-                    messages.append({
-                        "role": "function",
-                        "name": function_name,
-                        "content": json.dumps(function_result, ensure_ascii=False)
-                    })
-                    
-                    # Get final response with function result
-                    final_response = await self.openai_client.chat.completions.create(
-                        model="gpt-4",
+            # Main function calling loop with retry logic
+            while function_call_count < max_function_calls:
+                try:
+                    # Make request to OpenAI with function calling (using GPT-3.5-turbo)
+                    response = await self.openai_client.chat.completions.create(
+                        model="gpt-3.5-turbo",  # Changed from gpt-4 to avoid rate limits
                         messages=messages,
+                        functions=self.function_definitions,
+                        function_call="auto",
                         temperature=0.3,
-                        max_tokens=1500
+                        max_tokens=800  # Reduced tokens to stay within limits
                     )
                     
-                    return final_response.choices[0].message.content
+                    message = response.choices[0].message
+                    
+                    # Check if model wants to call a function
+                    if message.function_call:
+                        function_call_count += 1
+                        function_name = message.function_call.name
+                        
+                        try:
+                            function_args = json.loads(message.function_call.arguments)
+                        except json.JSONDecodeError:
+                            logger.error(f"Invalid function arguments: {message.function_call.arguments}")
+                            return "عذراً، حدث خطأ في معالجة طلبك. الرجاء إعادة صياغة السؤال."
+                        
+                        logger.info(f"Calling function #{function_call_count}: {function_name} with args: {function_args}")
+                        
+                        # Call the requested function
+                        if function_name in self.available_functions:
+                            try:
+                                function_result = self.available_functions[function_name](**function_args)
+                                
+                                # Add function call and result to conversation
+                                messages.append({
+                                    "role": "assistant",
+                                    "content": None,
+                                    "function_call": {
+                                        "name": function_name,
+                                        "arguments": message.function_call.arguments
+                                    }
+                                })
+                                messages.append({
+                                    "role": "function",
+                                    "name": function_name,
+                                    "content": json.dumps(function_result, ensure_ascii=False)
+                                })
+                                
+                                logger.info(f"Function {function_name} completed successfully")
+                                
+                            except Exception as func_error:
+                                logger.error(f"Function {function_name} failed: {str(func_error)}")
+                                # Add error result to conversation
+                                messages.append({
+                                    "role": "function",
+                                    "name": function_name,
+                                    "content": json.dumps({"error": f"Function failed: {str(func_error)}"}, ensure_ascii=False)
+                                })
+                        else:
+                            logger.error(f"Unknown function: {function_name}")
+                            return f"خطأ: الوظيفة '{function_name}' غير متاحة."
+                    else:
+                        # No function call, return the response
+                        final_response = message.content
+                        if final_response:
+                            logger.info(f"Query completed after {function_call_count} function calls")
+                            return final_response
+                        else:
+                            return "عذراً، لم أتمكن من معالجة طلبك. الرجاء المحاولة مرة أخرى."
+                
+                except Exception as api_error:
+                    if "rate_limit" in str(api_error).lower():
+                        logger.warning(f"Rate limit hit, trying fallback method...")
+                        return await self._handle_simple_query(user_message)
+                    else:
+                        logger.error(f"OpenAI API error: {str(api_error)}")
+                        return await self._handle_simple_query(user_message)
+            
+            # If we reached max function calls, get final response
+            try:
+                final_response = await self.openai_client.chat.completions.create(
+                    model="gpt-3.5-turbo",
+                    messages=messages,
+                    temperature=0.3,
+                    max_tokens=400
+                )
+                
+                response_text = final_response.choices[0].message.content
+                if response_text:
+                    logger.info(f"Final response generated after {function_call_count} function calls")
+                    return response_text
                 else:
-                    return f"خطأ: الوظيفة '{function_name}' غير متاحة."
-            else:
-                # No function call, return direct response
-                return message.content
+                    return "تم الوصول للحد الأقصى من العمليات. الرجاء إعادة صياغة السؤال."
+                    
+            except Exception as e:
+                logger.error(f"Final response generation failed: {str(e)}")
+                return await self._handle_simple_query(user_message)
 
         except Exception as e:
             logger.error(f"Error processing query: {str(e)}")
-            return f"عذراً، حدث خطأ في معالجة استفسارك. الرجاء المحاولة مرة أخرى.\nالخطأ: {str(e)}"
+            return await self._handle_simple_query(user_message)
+    
+    def _should_use_fallback(self, message: str) -> bool:
+        """Check if we should use simple fallback instead of OpenAI"""
+        # For now, always try OpenAI first
+        return False
+    
+    async def _handle_simple_query(self, message: str) -> str:
+        """Simple fallback handler for common queries without OpenAI"""
+        try:
+            message_lower = message.lower()
+            
+            # Handle city/brand queries
+            if any(word in message_lower for word in ['مدن', 'مدينة', 'cities', 'city']):
+                if any(word in message for word in ['متاحة', 'متوفرة', 'available']):
+                    # List all cities
+                    cities_result = self.get_all_cities()
+                    if cities_result.get('success') and cities_result.get('data'):
+                        cities = cities_result['data'][:10]  # First 10 cities
+                        city_list = '\n'.join([f"• {city['name']} ({city.get('name_en', '')})" for city in cities])
+                        return f"المدن المتاحة لخدمة توصيل المياه:\n\n{city_list}\n\nوالمزيد من المدن الأخرى متاحة أيضاً."
+            
+            # Handle brand queries for specific cities
+            city_names = ['جازان', 'jazan', 'الرياض', 'riyadh', 'جدة', 'jeddah', 'الدمام', 'dammam']
+            for city_name in city_names:
+                if city_name in message_lower:
+                    if any(word in message_lower for word in ['مارك', 'علامة', 'شرك', 'brand']):
+                        # Get brands for this city
+                        city_result = self.get_city_id_by_name(city_name)
+                        if city_result.get('success'):
+                            city_id = city_result['city_id']
+                            brands_result = self.get_brands_by_city(city_id)
+                            if brands_result.get('success') and brands_result.get('data'):
+                                brands = brands_result['data']
+                                if brands:
+                                    brand_list = '\n'.join([f"• {brand['title']}" for brand in brands])
+                                    return f"العلامات التجارية للمياه المتوفرة في {city_result['city_name']}:\n\n{brand_list}"
+                                else:
+                                    return f"عذراً، لا توجد علامات تجارية مسجلة حالياً في {city_result['city_name']}. الرجاء التواصل معنا لمزيد من المعلومات."
+            
+            # Handle product queries
+            if any(word in message_lower for word in ['منتج', 'product', 'مياه']):
+                if any(word in message_lower for word in ['بحث', 'search', 'أبحث']):
+                    products_result = self.search_products("مياه")
+                    if products_result.get('success') and products_result.get('data'):
+                        products = products_result['data'][:5]  # First 5 products
+                        product_list = '\n'.join([
+                            f"• {product['product_title']} - {product.get('product_contract_price', 'غير محدد')} ريال"
+                            for product in products
+                        ])
+                        return f"منتجات المياه المتاحة:\n\n{product_list}\n\nلمزيد من المنتجات، الرجاء تحديد العلامة التجارية."
+            
+            # Default response
+            return "أهلاً وسهلاً! أنا هنا لمساعدتك في:\n\n• معرفة المدن المتاحة للخدمة\n• العلامات التجارية في كل مدينة\n• منتجات المياه والأسعار\n\nما الذي تود الاستفسار عنه؟"
+            
+        except Exception as e:
+            logger.error(f"Fallback handler error: {str(e)}")
+            return "أهلاً بك في خدمة آبار لتوصيل المياه. الرجاء المحاولة مرة أخرى أو التواصل مع فريق الدعم."
 
 # Singleton instance
 query_agent = QueryAgent() 
