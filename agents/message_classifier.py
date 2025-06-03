@@ -75,23 +75,27 @@ class MessageClassifier:
         try:
             # Map Arabic classification to English enum values
             classification_map = {
-                'طلب خدمة': 'SERVICE_REQUEST',
-                'استفسار': 'INQUIRY',
-                'شكوى': 'COMPLAINT',
-                'اقتراح أو ملاحظة': 'SUGGESTION',
-                'تحية أو رسائل عامة': 'GREETING'
+                'طلب خدمة': MessageType.SERVICE_REQUEST,
+                'استفسار': MessageType.INQUIRY,
+                'شكوى': MessageType.COMPLAINT,
+                'اقتراح أو ملاحظة': MessageType.SUGGESTION,
+                'تحية أو رسائل عامة': MessageType.GREETING
             }
             
             # Safely strip whitespace
             classification_clean = classification.strip() if classification else ""
-            enum_value = classification_map.get(classification_clean)
+            print(f"🔍 Classification received: '{classification}' -> '{classification_clean}'")
             
-            if not enum_value:
-                print(f"Invalid classification received: '{classification}' -> '{classification_clean}'")
+            # Get the MessageType enum directly
+            message_type = classification_map.get(classification_clean)
+            
+            if not message_type:
+                print(f"❌ Invalid classification received: '{classification_clean}'")
+                print(f"📋 Available classifications: {list(classification_map.keys())}")
                 user_message.message_type = None
                 return None, language
 
-            message_type = MessageType(enum_value)
+            print(f"✅ Mapped to MessageType: {message_type}")
             user_message.message_type = message_type
 
             # Handle special cases
@@ -102,6 +106,7 @@ class MessageClassifier:
                     content=text
                 )
                 db.add(complaint)
+                print("📝 Created complaint record")
             
             elif message_type == MessageType.SUGGESTION:
                 suggestion = Suggestion(
@@ -110,12 +115,13 @@ class MessageClassifier:
                     content=text
                 )
                 db.add(suggestion)
+                print("📝 Created suggestion record")
 
             db.commit()
             return message_type, language
 
         except (ValueError, AttributeError) as e:
-            print(f"Error processing classification '{classification}': {str(e)}")
+            print(f"❌ Error processing classification '{classification}': {str(e)}")
             user_message.message_type = None
             return None, language
 

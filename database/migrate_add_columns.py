@@ -1,14 +1,22 @@
 #!/usr/bin/env python3
 """
-Migration script to add missing columns to user_messages table
+Migration script to add missing columns to user_messages and bot_replies tables
 """
 
 import sqlite3
 import os
 from pathlib import Path
+import enum
+
+class MessageType(enum.Enum):
+    SERVICE_REQUEST = "Service Request"
+    INQUIRY = "Inquiry" 
+    COMPLAINT = "Complaint"
+    SUGGESTION = "Suggestion or Note"
+    GREETING = "Greeting or Random Messages"
 
 def migrate_database():
-    """Add missing columns to user_messages table"""
+    """Add missing columns to user_messages and bot_replies tables"""
     
     # Path to the database
     db_path = Path(__file__).parent / "data" / "chatbot.sqlite"
