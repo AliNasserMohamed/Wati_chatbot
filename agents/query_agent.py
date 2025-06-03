@@ -9,38 +9,55 @@ from utils.language_utils import language_handler
 
 class QueryAgent:
     def __init__(self):
-        self.api_base_url = os.getenv("API_BASE_URL")
-        self.api_key = os.getenv("API_KEY")
+        # Use local server API endpoints instead of external ones
+        self.api_base_url = os.getenv("LOCAL_API_BASE_URL", "http://localhost:8000/api")
+        self.external_api_key = os.getenv("EXTERNAL_API_KEY")  # For external APIs if needed
         self.openai_client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
     
     async def get_cities(self) -> List[Dict[str, Any]]:
-        """Get list of all available cities."""
-        async with aiohttp.ClientSession() as session:
-            async with session.get(
-                f"{self.api_base_url}/cities",
-                headers={"Authorization": f"Bearer {self.api_key}"}
-            ) as response:
-                return await response.json()
+        """Get list of all available cities from local database."""
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(f"{self.api_base_url}/cities") as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        return data.get("data", [])
+                    else:
+                        print(f"❌ Error fetching cities: HTTP {response.status}")
+                        return []
+        except Exception as e:
+            print(f"❌ Error fetching cities: {str(e)}")
+            return []
 
     async def get_brands_by_region(self, city_id: str) -> List[Dict[str, Any]]:
-        """Get brands available in a specific region/city."""
-        async with aiohttp.ClientSession() as session:
-            async with session.get(
-                f"{self.api_base_url}/brands",
-                params={"city_id": city_id},
-                headers={"Authorization": f"Bearer {self.api_key}"}
-            ) as response:
-                return await response.json()
+        """Get brands available in a specific region/city from local database."""
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(f"{self.api_base_url}/cities/{city_id}/brands") as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        return data.get("data", [])
+                    else:
+                        print(f"❌ Error fetching brands for city {city_id}: HTTP {response.status}")
+                        return []
+        except Exception as e:
+            print(f"❌ Error fetching brands for city {city_id}: {str(e)}")
+            return []
 
     async def get_products_by_brand(self, brand_id: str) -> List[Dict[str, Any]]:
-        """Get products available for a specific brand."""
-        async with aiohttp.ClientSession() as session:
-            async with session.get(
-                f"{self.api_base_url}/products",
-                params={"brand_id": brand_id},
-                headers={"Authorization": f"Bearer {self.api_key}"}
-            ) as response:
-                return await response.json()
+        """Get products available for a specific brand from local database."""
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(f"{self.api_base_url}/brands/{brand_id}/products") as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        return data.get("data", [])
+                    else:
+                        print(f"❌ Error fetching products for brand {brand_id}: HTTP {response.status}")
+                        return []
+        except Exception as e:
+            print(f"❌ Error fetching products for brand {brand_id}: {str(e)}")
+            return []
 
     async def get_user_orders(self, phone_number: str) -> List[Dict[str, Any]]:
         """Get order history for a user by phone number."""
@@ -48,7 +65,7 @@ class QueryAgent:
             async with session.get(
                 f"{self.api_base_url}/orders",
                 params={"phone_number": phone_number},
-                headers={"Authorization": f"Bearer {self.api_key}"}
+                headers={"Authorization": f"Bearer {self.external_api_key}"}
             ) as response:
                 return await response.json()
 
@@ -94,59 +111,56 @@ class QueryAgent:
             {orders_list}
             """
 
-    async def handle_query(self, text: str, phone_number: str, db: Session) -> str:
-        """Process user queries and return appropriate responses."""
-        # Get or create user session
-        session = db.query(UserSession).filter_by(user_id=phone_number).first()
-        context = json.loads(session.context) if session and session.context else {}
-
-        # Detect language
-        language = language_handler.detect_language(text)
-
-        # If message is in English, translate to Arabic first
-        if language == 'en':
-            text = await language_handler.translate_to_arabic(text)
-
-        # Use OpenAI to understand the query intent
-        system_prompt = """
-        أنت مساعد متخصص في فهم استفسارات العملاء.
-        حدد نوع الاستفسار من الخيارات التالية:
-        - list_cities: إذا كان العميل يسأل عن المدن المتوفرة
-        - list_brands: إذا كان العميل يسأل عن الماركات المتوفرة
-        - list_products: إذا كان العميل يسأل عن المنتجات
-        - check_orders: إذا كان العميل يسأل عن طلباته
-
-        اكتب فقط نوع الاستفسار بدون أي إضافات.
-        """
-
-        intent = await language_handler.process_with_openai(text, system_prompt)
-
+    async def handle_query(self, message: str, phone_number: str, db: Session) -> str:
+        """Handle user queries about cities, brands, and products."""
         try:
-            if intent == "list_cities":
-                cities = await self.get_cities()
-                return await self.format_response_in_arabic("list_cities", cities)
-
-            elif intent == "list_brands":
-                if "city_id" not in context:
-                    return language_handler.get_default_responses('ar')['CITY_FIRST']
-                brands = await self.get_brands_by_region(context["city_id"])
-                return await self.format_response_in_arabic("list_brands", brands)
-
-            elif intent == "list_products":
-                if "brand_id" not in context:
-                    return language_handler.get_default_responses('ar')['BRAND_FIRST']
-                products = await self.get_products_by_brand(context["brand_id"])
-                return await self.format_response_in_arabic("list_products", products)
-
-            elif intent == "check_orders":
-                orders = await self.get_user_orders(phone_number)
-                return await self.format_response_in_arabic("check_orders", orders)
-
-            else:
-                return language_handler.get_default_responses('ar')['UNKNOWN']
-
+            print(f"🔍 Processing query: {message}")
+            
+            # First check if we have data in the database
+            cities = await self.get_cities()
+            if not cities:
+                return "آسف، البيانات غير متوفرة حالياً. فريقنا راح يحدث النظام قريباً."
+            
+            # Use OpenAI to understand the query and provide appropriate response
+            system_prompt = """
+            أنت مساعد ذكي لتطبيق آبار توصيل المياه في المملكة العربية السعودية.
+            يمكنك مساعدة العملاء بالاستفسارات التالية:
+            1. المدن المتوفرة للخدمة
+            2. الماركات المتوفرة في كل مدينة
+            3. المنتجات المتوفرة لكل ماركة
+            4. معلومات عامة عن الخدمة
+            
+            استخدم اللهجة السعودية في الرد وكن مفيداً ومفهوماً.
+            """
+            
+            # Get available cities for context
+            cities_text = ", ".join([city.get("name", "") for city in cities[:10]])  # First 10 cities
+            
+            user_prompt = f"""
+            الاستفسار من العميل: {message}
+            
+            المدن المتوفرة حالياً: {cities_text}
+            
+            أجب على استفسار العميل بشكل مفيد ومفصل.
+            """
+            
+            response = self.openai_client.chat.completions.create(
+                model="gpt-4",
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                temperature=0.7,
+                max_tokens=500
+            )
+            
+            answer = response.choices[0].message.content
+            print(f"✅ Generated response: {answer[:100]}...")
+            
+            return answer
+            
         except Exception as e:
-            print(f"Error handling query: {str(e)}")
-            return language_handler.get_default_responses('ar')['ORDER_ERROR']
+            print(f"❌ Error handling query: {str(e)}")
+            return "معذرة، فيه خطأ صار وأنت تسوي طلبك. جرب تاني مرة."
 
 query_agent = QueryAgent() 

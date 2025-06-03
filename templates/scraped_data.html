@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>بيانات التطبيق المحلية - آبار</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px 0;
+        }
+        
+        .container {
+            max-width: 1200px;
+        }
+        
+        .header-card {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(10px);
+            margin-bottom: 30px;
+        }
+        
+        .data-card {
+            background: rgba(255, 255, 255, 0.9);
+            border-radius: 12px;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            margin-bottom: 20px;
+            transition: all 0.3s ease;
+        }
+        
+        .data-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+        }
+        
+        .section-title {
+            color: #2d3748;
+            font-weight: 600;
+            border-bottom: 3px solid #667eea;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .stats-card {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            color: white;
+            border-radius: 10px;
+            padding: 20px;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        
+        .stats-number {
+            font-size: 2.5rem;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        
+        .stats-label {
+            font-size: 1rem;
+            opacity: 0.9;
+        }
+        
+        .city-item, .brand-item, .product-item {
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 15px;
+            background: #f8fafc;
+            transition: all 0.2s ease;
+        }
+        
+        .city-item:hover, .brand-item:hover, .product-item:hover {
+            background: #e6fffa;
+            border-color: #38b2ac;
+        }
+        
+        .item-title {
+            font-weight: 600;
+            color: #2d3748;
+            margin-bottom: 8px;
+        }
+        
+        .item-subtitle {
+            color: #718096;
+            font-size: 0.9rem;
+        }
+        
+        .badge-custom {
+            background-color: #667eea;
+            color: white;
+            padding: 5px 10px;
+            border-radius: 15px;
+            font-size: 0.8rem;
+            margin: 2px;
+        }
+        
+        .sync-status {
+            display: inline-block;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 500;
+        }
+        
+        .sync-success {
+            background-color: #c6f6d5;
+            color: #22543d;
+        }
+        
+        .sync-failed {
+            background-color: #fed7d7;
+            color: #742a2a;
+        }
+        
+        .refresh-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            border-radius: 8px;
+            color: white;
+            padding: 12px 24px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+        
+        .refresh-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+        
+        .loading {
+            display: none;
+        }
+        
+        .loading.show {
+            display: block;
+        }
+        
+        .search-box {
+            border-radius: 8px;
+            border: 2px solid #e2e8f0;
+            padding: 10px 15px;
+            margin-bottom: 20px;
+            transition: border-color 0.2s ease;
+        }
+        
+        .search-box:focus {
+            border-color: #667eea;
+            outline: none;
+        }
+        
+        .accordion-button {
+            background-color: #f7fafc;
+            border: none;
+            color: #2d3748;
+            font-weight: 500;
+        }
+        
+        .accordion-button:not(.collapsed) {
+            background-color: #667eea;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header-card">
+            <div class="card-body text-center">
+                <h1 class="display-4 mb-3">
+                    <i class="fas fa-database text-primary me-3"></i>
+                    بيانات التطبيق المحلية
+                </h1>
+                <p class="lead text-muted">عرض وإدارة البيانات المحفوظة في قاعدة البيانات المحلية</p>
+                <div class="row">
+                    <div class="col-md-4">
+                        <button class="refresh-btn w-100" onclick="refreshData()">
+                            <i class="fas fa-sync-alt me-2"></i>
+                            تحديث البيانات
+                        </button>
+                    </div>
+                    <div class="col-md-4">
+                        <button class="refresh-btn w-100" onclick="syncData()">
+                            <i class="fas fa-download me-2"></i>
+                            مزامنة مع الخادم
+                        </button>
+                    </div>
+                    <div class="col-md-4">
+                        <button class="refresh-btn w-100" onclick="showSyncStatus()">
+                            <i class="fas fa-info-circle me-2"></i>
+                            حالة المزامنة
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Loading Indicator -->
+        <div class="loading text-center">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">جاري التحميل...</span>
+            </div>
+            <p class="mt-2">جاري تحميل البيانات...</p>
+        </div>
+
+        <!-- Statistics -->
+        <div class="row" id="stats-section">
+            <div class="col-md-4">
+                <div class="stats-card">
+                    <div class="stats-number" id="cities-count">0</div>
+                    <div class="stats-label">المدن</div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="stats-card">
+                    <div class="stats-number" id="brands-count">0</div>
+                    <div class="stats-label">الماركات</div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="stats-card">
+                    <div class="stats-number" id="products-count">0</div>
+                    <div class="stats-label">المنتجات</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Search -->
+        <div class="data-card">
+            <div class="card-body">
+                <input type="text" class="form-control search-box" id="search-input" 
+                       placeholder="البحث في البيانات..." onkeyup="filterData()">
+            </div>
+        </div>
+
+        <!-- Data Sections -->
+        <div class="accordion" id="dataAccordion">
+            <!-- Cities Section -->
+            <div class="accordion-item">
+                <h2 class="accordion-header" id="citiesHeading">
+                    <button class="accordion-button" type="button" data-bs-toggle="collapse" 
+                            data-bs-target="#citiesCollapse" aria-expanded="true" aria-controls="citiesCollapse">
+                        <i class="fas fa-city me-2"></i>
+                        المدن المتوفرة
+                    </button>
+                </h2>
+                <div id="citiesCollapse" class="accordion-collapse collapse show" 
+                     aria-labelledby="citiesHeading" data-bs-parent="#dataAccordion">
+                    <div class="accordion-body">
+                        <div id="cities-section"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Brands Section -->
+            <div class="accordion-item">
+                <h2 class="accordion-header" id="brandsHeading">
+                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" 
+                            data-bs-target="#brandsCollapse" aria-expanded="false" aria-controls="brandsCollapse">
+                        <i class="fas fa-tags me-2"></i>
+                        الماركات المتوفرة
+                    </button>
+                </h2>
+                <div id="brandsCollapse" class="accordion-collapse collapse" 
+                     aria-labelledby="brandsHeading" data-bs-parent="#dataAccordion">
+                    <div class="accordion-body">
+                        <div id="brands-section"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Products Section -->
+            <div class="accordion-item">
+                <h2 class="accordion-header" id="productsHeading">
+                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" 
+                            data-bs-target="#productsCollapse" aria-expanded="false" aria-controls="productsCollapse">
+                        <i class="fas fa-box me-2"></i>
+                        المنتجات المتوفرة
+                    </button>
+                </h2>
+                <div id="productsCollapse" class="accordion-collapse collapse" 
+                     aria-labelledby="productsHeading" data-bs-parent="#dataAccordion">
+                    <div class="accordion-body">
+                        <div id="products-section"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sync Status Modal -->
+        <div class="modal fade" id="syncStatusModal" tabindex="-1">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">حالة المزامنة</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body" id="sync-status-content">
+                        <!-- Sync status will be loaded here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let allData = {
+            cities: [],
+            brands: [],
+            products: []
+        };
+
+        // Load data on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            loadAllData();
+        });
+
+        async function loadAllData() {
+            showLoading(true);
+            try {
+                // Load all data concurrently
+                const [citiesResponse, brandsResponse, productsResponse] = await Promise.all([
+                    fetch('/api/cities'),
+                    fetch('/api/brands'),
+                    fetch('/api/products')
+                ]);
+
+                allData.cities = (await citiesResponse.json()).data || [];
+                allData.brands = (await brandsResponse.json()).data || [];
+                allData.products = (await productsResponse.json()).data || [];
+
+                displayData();
+                updateStats();
+            } catch (error) {
+                console.error('Error loading data:', error);
+                showError('حدث خطأ أثناء تحميل البيانات');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        function displayData() {
+            displayCities(allData.cities);
+            displayBrands(allData.brands);
+            displayProducts(allData.products);
+        }
+
+        function displayCities(cities) {
+            const section = document.getElementById('cities-section');
+            section.innerHTML = '';
+
+            if (cities.length === 0) {
+                section.innerHTML = '<p class="text-muted">لا توجد مدن محفوظة في قاعدة البيانات</p>';
+                return;
+            }
+
+            cities.forEach(city => {
+                const cityDiv = document.createElement('div');
+                cityDiv.className = 'city-item';
+                cityDiv.innerHTML = `
+                    <div class="item-title">
+                        <i class="fas fa-map-marker-alt text-primary me-2"></i>
+                        ${city.name || 'غير محدد'}
+                    </div>
+                    <div class="item-subtitle">
+                        ${city.name_en || 'No English name'}
+                    </div>
+                    <div class="mt-2">
+                        <span class="badge-custom">المعرف: ${city.external_id}</span>
+                        <span class="badge-custom">تاريخ الإضافة: ${formatDate(city.created_at)}</span>
+                    </div>
+                `;
+                section.appendChild(cityDiv);
+            });
+        }
+
+        function displayBrands(brands) {
+            const section = document.getElementById('brands-section');
+            section.innerHTML = '';
+
+            if (brands.length === 0) {
+                section.innerHTML = '<p class="text-muted">لا توجد ماركات محفوظة في قاعدة البيانات</p>';
+                return;
+            }
+
+            brands.forEach(brand => {
+                const brandDiv = document.createElement('div');
+                brandDiv.className = 'brand-item';
+                brandDiv.innerHTML = `
+                    <div class="row">
+                        <div class="col-md-3">
+                            ${brand.image_url ? 
+                                `<img src="${brand.image_url}" class="img-fluid rounded" style="max-height: 80px;" alt="${brand.title}">` : 
+                                '<div class="bg-light rounded d-flex align-items-center justify-content-center" style="height: 80px;"><i class="fas fa-image text-muted"></i></div>'
+                            }
+                        </div>
+                        <div class="col-md-9">
+                            <div class="item-title">
+                                <i class="fas fa-tag text-success me-2"></i>
+                                ${brand.title || 'غير محدد'}
+                            </div>
+                            <div class="item-subtitle">
+                                ${brand.title_en || 'No English title'}
+                            </div>
+                            <div class="mt-2">
+                                <span class="badge-custom">المعرف: ${brand.external_id}</span>
+                                <span class="badge-custom">المدينة: ${brand.city_id || 'غير محدد'}</span>
+                                <span class="badge-custom">تاريخ الإضافة: ${formatDate(brand.created_at)}</span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                section.appendChild(brandDiv);
+            });
+        }
+
+        function displayProducts(products) {
+            const section = document.getElementById('products-section');
+            section.innerHTML = '';
+
+            if (products.length === 0) {
+                section.innerHTML = '<p class="text-muted">لا توجد منتجات محفوظة في قاعدة البيانات</p>';
+                return;
+            }
+
+            products.forEach(product => {
+                const productDiv = document.createElement('div');
+                productDiv.className = 'product-item';
+                productDiv.innerHTML = `
+                    <div class="row">
+                        <div class="col-md-3">
+                            ${product.image_url ? 
+                                `<img src="${product.image_url}" class="img-fluid rounded" style="max-height: 80px;" alt="${product.title}">` : 
+                                '<div class="bg-light rounded d-flex align-items-center justify-content-center" style="height: 80px;"><i class="fas fa-box text-muted"></i></div>'
+                            }
+                        </div>
+                        <div class="col-md-9">
+                            <div class="item-title">
+                                <i class="fas fa-box text-info me-2"></i>
+                                ${product.title || 'غير محدد'}
+                            </div>
+                            <div class="item-subtitle">
+                                ${product.title_en || 'No English title'}
+                            </div>
+                            <div class="mt-2">
+                                <span class="badge-custom">المعرف: ${product.external_id}</span>
+                                <span class="badge-custom">الماركة: ${product.brand_id || 'غير محدد'}</span>
+                                ${product.market_price ? `<span class="badge-custom">السعر: ${product.market_price}</span>` : ''}
+                                ${product.barcode ? `<span class="badge-custom">الباركود: ${product.barcode}</span>` : ''}
+                                <span class="badge-custom">تاريخ الإضافة: ${formatDate(product.created_at)}</span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                section.appendChild(productDiv);
+            });
+        }
+
+        function updateStats() {
+            document.getElementById('cities-count').textContent = allData.cities.length;
+            document.getElementById('brands-count').textContent = allData.brands.length;
+            document.getElementById('products-count').textContent = allData.products.length;
+        }
+
+        function formatDate(dateString) {
+            if (!dateString) return 'غير محدد';
+            const date = new Date(dateString);
+            return date.toLocaleDateString('ar-SA');
+        }
+
+        function showLoading(show) {
+            const loading = document.querySelector('.loading');
+            const statsSection = document.getElementById('stats-section');
+            
+            if (show) {
+                loading.classList.add('show');
+                statsSection.style.display = 'none';
+            } else {
+                loading.classList.remove('show');
+                statsSection.style.display = 'flex';
+            }
+        }
+
+        function showError(message) {
+            alert(message);
+        }
+
+        async function refreshData() {
+            await loadAllData();
+        }
+
+        async function syncData() {
+            showLoading(true);
+            try {
+                const response = await fetch('/data/sync', { method: 'POST' });
+                const result = await response.json();
+                
+                if (result.status === 'success') {
+                    alert('تم تحديث البيانات بنجاح!');
+                    await loadAllData();
+                } else {
+                    alert('حدث خطأ أثناء التحديث: ' + (result.message || 'خطأ غير معروف'));
+                }
+            } catch (error) {
+                console.error('Sync error:', error);
+                alert('حدث خطأ أثناء المزامنة');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        async function showSyncStatus() {
+            try {
+                const response = await fetch('/data/sync/status');
+                const status = await response.json();
+                
+                const modal = new bootstrap.Modal(document.getElementById('syncStatusModal'));
+                const content = document.getElementById('sync-status-content');
+                
+                content.innerHTML = `
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6>حالة المجدول</h6>
+                            <p class="sync-status ${status.is_running ? 'sync-success' : 'sync-failed'}">
+                                ${status.is_running ? 'يعمل' : 'متوقف'}
+                            </p>
+                        </div>
+                        <div class="col-md-6">
+                            <h6>المهام المجدولة</h6>
+                            <p>${status.scheduled_jobs || 0}</p>
+                        </div>
+                        <div class="col-12">
+                            <h6>التحديث التالي</h6>
+                            <p>${status.next_sync || 'غير محدد'}</p>
+                        </div>
+                    </div>
+                `;
+                
+                modal.show();
+            } catch (error) {
+                alert('حدث خطأ أثناء جلب حالة المزامنة');
+            }
+        }
+
+        function filterData() {
+            const searchTerm = document.getElementById('search-input').value.toLowerCase();
+            
+            if (!searchTerm) {
+                displayData();
+                return;
+            }
+
+            const filteredCities = allData.cities.filter(city => 
+                (city.name && city.name.toLowerCase().includes(searchTerm)) ||
+                (city.name_en && city.name_en.toLowerCase().includes(searchTerm))
+            );
+
+            const filteredBrands = allData.brands.filter(brand => 
+                (brand.title && brand.title.toLowerCase().includes(searchTerm)) ||
+                (brand.title_en && brand.title_en.toLowerCase().includes(searchTerm))
+            );
+
+            const filteredProducts = allData.products.filter(product => 
+                (product.title && product.title.toLowerCase().includes(searchTerm)) ||
+                (product.title_en && product.title_en.toLowerCase().includes(searchTerm)) ||
+                (product.barcode && product.barcode.includes(searchTerm))
+            );
+
+            displayCities(filteredCities);
+            displayBrands(filteredBrands);
+            displayProducts(filteredProducts);
+        }
+    </script>
+</body>
+</html> 

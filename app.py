@@ -1,5 +1,7 @@
 import os
 from fastapi import FastAPI, Request, Depends, HTTPException, Header, Query
+from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
 from typing import Optional, List
 from dotenv import load_dotenv
 import uvicorn
@@ -31,11 +33,28 @@ from services.data_api import data_api
 from services.data_scraper import data_scraper
 from services.scheduler import scheduler
 
+# Try to import knowledge_manager, create empty one if not available
+try:
+    from services.knowledge_manager import knowledge_manager
+except ImportError:
+    print("Warning: knowledge_manager not found, creating placeholder")
+    class PlaceholderKnowledgeManager:
+        def add_qa_pair(self, *args, **kwargs):
+            return "placeholder_id"
+        def search_knowledge(self, *args, **kwargs):
+            return []
+        def populate_abar_knowledge(self):
+            return []
+    knowledge_manager = PlaceholderKnowledgeManager()
+
 app = FastAPI(
     title="Abar Chatbot API",
     description="API for handling WhatsApp messages for Abar water delivery app",
     version="1.0.0"
 )
+
+# Set up templates directory
+templates = Jinja2Templates(directory="templates")
 
 # Wati webhook verification token (set this in your .env file)
 WATI_WEBHOOK_VERIFY_TOKEN = os.getenv("WATI_WEBHOOK_VERIFY_TOKEN", "your_verification_token")
@@ -463,6 +482,30 @@ async def update_user_conclusion(request: Request, db=Depends(get_db)):
 async def health_check():
     """Check if the API is running"""
     return {"status": "healthy", "version": "1.0.0"}
+
+# Scraped Data Interface
+@app.get("/server/scrapped_data", response_class=HTMLResponse)
+async def scraped_data_interface(request: Request):
+    """Serve the HTML interface for viewing scraped data"""
+    try:
+        with open("templates/scraped_data.html", "r", encoding="utf-8") as f:
+            html_content = f.read()
+        return HTMLResponse(content=html_content, status_code=200)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Scraped data interface not found")
+
+# Trigger initial data sync
+@app.post("/server/trigger_sync")
+async def trigger_initial_sync(db=Depends(get_db)):
+    """Trigger initial data synchronization"""
+    try:
+        print("🔄 Starting initial data sync...")
+        results = data_scraper.full_sync(db)
+        print(f"✅ Initial sync completed: {results}")
+        return {"status": "success", "message": "Data sync completed", "results": results}
+    except Exception as e:
+        print(f"❌ Initial sync failed: {str(e)}")
+        return {"status": "error", "message": str(e)}
 
 @app.on_event("startup")
 async def startup_event():
