@@ -1,10 +1,19 @@
-from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, create_engine, Enum, Float
+from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, create_engine, Enum, Float, Table
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, sessionmaker
 import datetime
 import enum
 
 Base = declarative_base()
+
+# Many-to-many association table between cities and brands
+city_brand_association = Table(
+    'city_brands',
+    Base.metadata,
+    Column('city_id', Integer, ForeignKey('cities.id'), primary_key=True),
+    Column('brand_id', Integer, ForeignKey('brands.id'), primary_key=True),
+    Column('created_at', DateTime, default=datetime.datetime.utcnow)
+)
 
 class MessageType(enum.Enum):
     SERVICE_REQUEST = "Service Request"
@@ -98,22 +107,24 @@ class City(Base):
     
     id = Column(Integer, primary_key=True, autoincrement=True)
     external_id = Column(Integer, unique=True, nullable=False)  # ID from external API
-    name = Column(String(200), nullable=False)
-    name_en = Column(String(200), nullable=True)
+    name = Column(String(200), nullable=False)  # Arabic name
+    name_en = Column(String(200), nullable=True)  # English name
+    title = Column(String(200), nullable=True)  # Alternative name field from API
+    lat = Column(Float, nullable=True)  # Latitude
+    lng = Column(Float, nullable=True)  # Longitude
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
     
-    # Relationship with brands
-    brands = relationship("Brand", back_populates="city")
+    # Many-to-many relationship with brands
+    brands = relationship("Brand", secondary=city_brand_association, back_populates="cities")
 
 class Brand(Base):
     __tablename__ = "brands"
     
     id = Column(Integer, primary_key=True, autoincrement=True)
     external_id = Column(Integer, unique=True, nullable=False)  # contract_id from external API
-    city_id = Column(Integer, ForeignKey("cities.id"), nullable=True)
-    title = Column(String(200), nullable=False)
-    title_en = Column(String(200), nullable=True)
+    title = Column(String(200), nullable=False)  # Arabic title
+    title_en = Column(String(200), nullable=True)  # English title
     image_url = Column(Text, nullable=True)
     mounting_rate_image = Column(Text, nullable=True)
     meta_keywords = Column(Text, nullable=True)
@@ -121,8 +132,8 @@ class Brand(Base):
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
     
-    # Relationships
-    city = relationship("City", back_populates="brands")
+    # Many-to-many relationship with cities
+    cities = relationship("City", secondary=city_brand_association, back_populates="brands")
     products = relationship("Product", back_populates="brand")
 
 class Product(Base):

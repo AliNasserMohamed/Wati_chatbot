@@ -18,36 +18,51 @@ class DataScraperService:
     
     def __init__(self):
         self.base_url = "http://dev.gulfwells.sa/api/admin/ai"
-        self.headers = {
+        self.headers_ar = {
             'ApiToken': '4e7f1b2c-3d5a-4b6c-9f7d-8e0f1b2c3d5a',
             'AccessKey': '1234',
             'Lang': 'ar'
+        }
+        self.headers_en = {
+            'ApiToken': '4e7f1b2c-3d5a-4b6c-9f7d-8e0f1b2c3d5a',
+            'AccessKey': '1234',
+            'Lang': 'en'
         }
         self.headers_no_token = {
             'AccessKey': '1234'
         }
     
-    async def fetch_cities(self) -> Dict[str, Any]:
-        """Fetch all cities from external API"""
+    def fetch_cities_arabic(self) -> Dict[str, Any]:
+        """Fetch all cities from external API in Arabic"""
         url = f"{self.base_url}/get-cities"
         
-        async with aiohttp.ClientSession() as session:
-            try:
-                async with session.get(url, headers=self.headers) as response:
-                    response.raise_for_status()
-                    data = await response.json()
-                    return data
-            except Exception as e:
-                logger.error(f"Error fetching cities: {str(e)}")
-                raise
+        try:
+            response = requests.get(url, headers=self.headers_ar)
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            logger.error(f"Error fetching cities (Arabic): {str(e)}")
+            raise
     
+    def fetch_cities_english(self) -> Dict[str, Any]:
+        """Fetch all cities from external API in English"""
+        url = f"{self.base_url}/get-cities"
+        
+        try:
+            response = requests.get(url, headers=self.headers_en)
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            logger.error(f"Error fetching cities (English): {str(e)}")
+            raise
+
     async def fetch_brands_by_city(self, city_id: int) -> Dict[str, Any]:
         """Fetch brands for a specific city"""
         url = f"{self.base_url}/get-location-brands/{city_id}"
         
         async with aiohttp.ClientSession() as session:
             try:
-                async with session.get(url, headers=self.headers) as response:
+                async with session.get(url, headers=self.headers_ar) as response:
                     response.raise_for_status()
                     data = await response.json()
                     return data
@@ -61,7 +76,7 @@ class DataScraperService:
         
         async with aiohttp.ClientSession() as session:
             try:
-                async with session.get(url, headers=self.headers) as response:
+                async with session.get(url, headers=self.headers_ar) as response:
                     response.raise_for_status()
                     data = await response.json()
                     return data
@@ -84,38 +99,50 @@ class DataScraperService:
                 raise
     
     def sync_cities(self, db: Session) -> int:
-        """Sync cities data to database"""
+        """Sync cities data to database with both Arabic and English names"""
         try:
             logger.info("Starting cities sync...")
             sync_log = DatabaseManager.create_sync_log(db, 'cities', 'started')
             
-            # This is a synchronous version - in reality you might need to make it async
-            # For now, using requests instead of aiohttp for simplicity
-            url = f"{self.base_url}/get-cities"
-            response = requests.get(url, headers=self.headers)
-            response.raise_for_status()
+            # Fetch Arabic cities
+            logger.info("Fetching cities in Arabic...")
+            arabic_data = self.fetch_cities_arabic()
             
-            data = response.json()
+            if arabic_data.get('key') != 'success':
+                raise Exception(f"API error (Arabic): {arabic_data.get('msg', 'Unknown error')}")
             
-            if data.get('key') != 'success':
-                raise Exception(f"API error: {data.get('msg', 'Unknown error')}")
+            # Fetch English cities
+            logger.info("Fetching cities in English...")
+            english_data = self.fetch_cities_english()
             
-            cities_data = data.get('data', [])
+            if english_data.get('key') != 'success':
+                raise Exception(f"API error (English): {english_data.get('msg', 'Unknown error')}")
+            
+            # Create lookup for English names
+            english_cities = {city['id']: city['title'] for city in english_data.get('data', [])}
+            
+            cities_data = arabic_data.get('data', [])
             processed_count = 0
             
             for city_data in cities_data:
                 city_id = city_data.get('id')
-                city_name = city_data.get('name', city_data.get('city_name', ''))
-                city_name_en = city_data.get('name_en', city_data.get('city_name_en', ''))
+                city_title_ar = city_data.get('title', '')
+                city_title_en = english_cities.get(city_id, '')
+                city_lat = city_data.get('lat')
+                city_lng = city_data.get('lng')
                 
-                if city_id and city_name:
+                if city_id and city_title_ar:
                     DatabaseManager.upsert_city(
                         db, 
                         external_id=city_id,
-                        name=city_name,
-                        name_en=city_name_en
+                        name=city_title_ar,  # Arabic name
+                        name_en=city_title_en,  # English name
+                        title=city_title_ar,  # Alternative title field
+                        lat=city_lat,
+                        lng=city_lng
                     )
                     processed_count += 1
+                    logger.info(f"Processed city: {city_title_ar} ({city_title_en})")
             
             # Update sync log
             sync_log.status = 'success'
@@ -135,12 +162,12 @@ class DataScraperService:
             raise
     
     def sync_brands_for_city(self, db: Session, city_external_id: int) -> int:
-        """Sync brands for a specific city"""
+        """Sync brands for a specific city and create many-to-many relationships"""
         try:
             logger.info(f"Starting brands sync for city {city_external_id}...")
             
             url = f"{self.base_url}/get-location-brands/{city_external_id}"
-            response = requests.get(url, headers=self.headers)
+            response = requests.get(url, headers=self.headers_ar)
             response.raise_for_status()
             
             data = response.json()
@@ -151,24 +178,24 @@ class DataScraperService:
             brands_data = data.get('data', [])
             processed_count = 0
             
-            # Get the city from database
-            city = db.query(City).filter(City.external_id == city_external_id).first()
-            city_id = city.id if city else None
-            
             for brand_data in brands_data:
                 contract_id = brand_data.get('contract_id')
                 brand_title = brand_data.get('brand_title', '')
                 brand_image = brand_data.get('brand_image', '')
                 
                 if contract_id and brand_title:
-                    DatabaseManager.upsert_brand(
+                    # Create or update the brand
+                    brand = DatabaseManager.upsert_brand(
                         db,
                         external_id=contract_id,
                         title=brand_title,
-                        image_url=brand_image,
-                        city_id=city_id
+                        image_url=brand_image
                     )
+                    
+                    # Link brand to city (many-to-many)
+                    DatabaseManager.link_brand_to_city(db, contract_id, city_external_id)
                     processed_count += 1
+                    logger.info(f"Processed brand: {brand_title} for city {city_external_id}")
             
             logger.info(f"Brands sync completed for city {city_external_id}. Processed {processed_count} brands.")
             return processed_count

@@ -103,14 +103,25 @@ class DatabaseManager:
     
     # New methods for managing Cities, Brands, and Products
     @staticmethod
-    def upsert_city(db: Session, external_id: int, name: str, name_en: str = None) -> City:
+    def upsert_city(db: Session, external_id: int, name: str, name_en: str = None, 
+                   title: str = None, lat: float = None, lng: float = None) -> City:
         """Create or update a city"""
         city = db.query(City).filter(City.external_id == external_id).first()
         if city:
             city.name = name
             city.name_en = name_en
+            city.title = title
+            city.lat = lat
+            city.lng = lng
         else:
-            city = City(external_id=external_id, name=name, name_en=name_en)
+            city = City(
+                external_id=external_id, 
+                name=name, 
+                name_en=name_en, 
+                title=title,
+                lat=lat,
+                lng=lng
+            )
             db.add(city)
         
         db.commit()
@@ -118,14 +129,14 @@ class DatabaseManager:
         return city
     
     @staticmethod
-    def upsert_brand(db: Session, external_id: int, title: str, image_url: str = None, 
-                     city_id: int = None, **kwargs) -> Brand:
+    def upsert_brand(db: Session, external_id: int, title: str, image_url: str = None,
+                     title_en: str = None, **kwargs) -> Brand:
         """Create or update a brand"""
         brand = db.query(Brand).filter(Brand.external_id == external_id).first()
         if brand:
             brand.title = title
+            brand.title_en = title_en
             brand.image_url = image_url
-            brand.city_id = city_id
             for key, value in kwargs.items():
                 if hasattr(brand, key):
                     setattr(brand, key, value)
@@ -133,8 +144,8 @@ class DatabaseManager:
             brand = Brand(
                 external_id=external_id,
                 title=title,
+                title_en=title_en,
                 image_url=image_url,
-                city_id=city_id,
                 **kwargs
             )
             db.add(brand)
@@ -142,6 +153,24 @@ class DatabaseManager:
         db.commit()
         db.refresh(brand)
         return brand
+    
+    @staticmethod
+    def link_brand_to_city(db: Session, brand_external_id: int, city_external_id: int) -> bool:
+        """Link a brand to a city (many-to-many relationship)"""
+        try:
+            brand = db.query(Brand).filter(Brand.external_id == brand_external_id).first()
+            city = db.query(City).filter(City.external_id == city_external_id).first()
+            
+            if brand and city:
+                # Check if relationship already exists
+                if city not in brand.cities:
+                    brand.cities.append(city)
+                    db.commit()
+                return True
+            return False
+        except Exception as e:
+            print(f"Error linking brand {brand_external_id} to city {city_external_id}: {str(e)}")
+            return False
     
     @staticmethod
     def upsert_product(db: Session, external_id: int, brand_id: int, title: str, **kwargs) -> Product:
@@ -187,9 +216,20 @@ class DatabaseManager:
         return db.query(City).all()
     
     @staticmethod
-    def get_brands_by_city(db: Session, city_id: int) -> List[Brand]:
-        """Get all brands for a specific city"""
-        return db.query(Brand).filter(Brand.city_id == city_id).all()
+    def get_brands_by_city(db: Session, city_external_id: int) -> List[Brand]:
+        """Get all brands for a specific city using external ID"""
+        city = db.query(City).filter(City.external_id == city_external_id).first()
+        if city:
+            return city.brands
+        return []
+    
+    @staticmethod
+    def get_brands_by_city_id(db: Session, city_id: int) -> List[Brand]:
+        """Get all brands for a specific city using internal ID"""
+        city = db.query(City).filter(City.id == city_id).first()
+        if city:
+            return city.brands
+        return []
     
     @staticmethod
     def get_products_by_brand(db: Session, brand_id: int) -> List[Product]:

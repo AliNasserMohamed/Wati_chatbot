@@ -18,6 +18,9 @@ class DataAPIService:
                 "external_id": city.external_id,
                 "name": city.name,
                 "name_en": city.name_en,
+                "title": city.title,
+                "lat": city.lat,
+                "lng": city.lng,
                 "created_at": city.created_at.isoformat() if city.created_at else None,
                 "updated_at": city.updated_at.isoformat() if city.updated_at else None
             }
@@ -36,6 +39,9 @@ class DataAPIService:
             "external_id": city.external_id,
             "name": city.name,
             "name_en": city.name_en,
+            "title": city.title,
+            "lat": city.lat,
+            "lng": city.lng,
             "created_at": city.created_at.isoformat() if city.created_at else None,
             "updated_at": city.updated_at.isoformat() if city.updated_at else None
         }
@@ -45,7 +51,8 @@ class DataAPIService:
         """Search cities by name"""
         cities = db.query(City).filter(
             City.name.ilike(f"%{query}%") | 
-            City.name_en.ilike(f"%{query}%")
+            City.name_en.ilike(f"%{query}%") |
+            City.title.ilike(f"%{query}%")
         ).all()
         
         return [
@@ -54,6 +61,9 @@ class DataAPIService:
                 "external_id": city.external_id,
                 "name": city.name,
                 "name_en": city.name_en,
+                "title": city.title,
+                "lat": city.lat,
+                "lng": city.lng,
                 "created_at": city.created_at.isoformat() if city.created_at else None,
                 "updated_at": city.updated_at.isoformat() if city.updated_at else None
             }
@@ -62,19 +72,40 @@ class DataAPIService:
     
     @staticmethod
     def get_brands_by_city(db: Session, city_id: int) -> List[Dict[str, Any]]:
-        """Get all brands for a specific city"""
-        brands = DatabaseManager.get_brands_by_city(db, city_id)
+        """Get all brands for a specific city using internal city ID"""
+        brands = DatabaseManager.get_brands_by_city_id(db, city_id)
         return [
             {
                 "id": brand.id,
                 "external_id": brand.external_id,
-                "city_id": brand.city_id,
                 "title": brand.title,
                 "title_en": brand.title_en,
                 "image_url": brand.image_url,
                 "mounting_rate_image": brand.mounting_rate_image,
                 "meta_keywords": brand.meta_keywords,
                 "meta_description": brand.meta_description,
+                "cities": [{"id": city.id, "external_id": city.external_id, "name": city.name, "name_en": city.name_en} for city in brand.cities],
+                "created_at": brand.created_at.isoformat() if brand.created_at else None,
+                "updated_at": brand.updated_at.isoformat() if brand.updated_at else None
+            }
+            for brand in brands
+        ]
+    
+    @staticmethod
+    def get_brands_by_city_external_id(db: Session, city_external_id: int) -> List[Dict[str, Any]]:
+        """Get all brands for a specific city using external city ID"""
+        brands = DatabaseManager.get_brands_by_city(db, city_external_id)
+        return [
+            {
+                "id": brand.id,
+                "external_id": brand.external_id,
+                "title": brand.title,
+                "title_en": brand.title_en,
+                "image_url": brand.image_url,
+                "mounting_rate_image": brand.mounting_rate_image,
+                "meta_keywords": brand.meta_keywords,
+                "meta_description": brand.meta_description,
+                "cities": [{"id": city.id, "external_id": city.external_id, "name": city.name, "name_en": city.name_en} for city in brand.cities],
                 "created_at": brand.created_at.isoformat() if brand.created_at else None,
                 "updated_at": brand.updated_at.isoformat() if brand.updated_at else None
             }
@@ -89,13 +120,13 @@ class DataAPIService:
             {
                 "id": brand.id,
                 "external_id": brand.external_id,
-                "city_id": brand.city_id,
                 "title": brand.title,
                 "title_en": brand.title_en,
                 "image_url": brand.image_url,
                 "mounting_rate_image": brand.mounting_rate_image,
                 "meta_keywords": brand.meta_keywords,
                 "meta_description": brand.meta_description,
+                "cities": [{"id": city.id, "external_id": city.external_id, "name": city.name, "name_en": city.name_en} for city in brand.cities],
                 "created_at": brand.created_at.isoformat() if brand.created_at else None,
                 "updated_at": brand.updated_at.isoformat() if brand.updated_at else None
             }
