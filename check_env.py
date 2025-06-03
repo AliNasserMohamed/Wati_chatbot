@@ -1,70 +1,113 @@
 #!/usr/bin/env python3
 """
-Environment variable checker script.
-Run this script to verify your environment variables are loaded correctly.
+Script to check if all required environment variables are properly configured
 """
 
 import os
-import sys
-from dotenv import load_dotenv
+from pathlib import Path
 
-# Try to load from absolute path
-script_dir = os.path.dirname(os.path.abspath(__file__))
-env_path = os.path.join(script_dir, '.env')
-
-print(f"Script directory: {script_dir}")
-print(f"Looking for .env at: {env_path}")
-print(f".env file exists: {os.path.exists(env_path)}")
-
-# Try loading the .env file
-load_dotenv(dotenv_path=env_path)
-
-# Check for critical environment variables
-required_vars = [
-    "OPENAI_API_KEY",
-    "WATI_API_KEY",
-    "WATI_API_URL"
-]
-
-print("\nEnvironment Variable Check:")
-print("=" * 30)
-
-all_vars_present = True
-for var in required_vars:
-    value = os.getenv(var)
-    is_set = value is not None and value != ""
-    print(f"{var}: {'✅ Set' if is_set else '❌ NOT SET'}")
-    if not is_set:
-        all_vars_present = False
-
-print("\n" + "=" * 30)
-if all_vars_present:
-    print("✅ All required environment variables are set!")
-else:
-    print("❌ Some environment variables are missing!")
-    print("\nMake sure your .env file exists and has the correct format:")
-    print("OPENAI_API_KEY=sk-your-key-here")
-    print("WATI_API_KEY=your-wati-key")
-    print("WATI_API_URL=https://your-wati-url")
-
-# If .env file not found, help create one
-if not os.path.exists(env_path):
-    print("\nWould you like to create a .env file now? (y/n)")
-    response = input().strip().lower()
-    if response == 'y':
-        print("\nEnter your OpenAI API Key (starts with 'sk-'):")
-        openai_key = input().strip()
+def check_environment():
+    """Check if all required environment variables are set"""
+    
+    # Check if .env file exists
+    env_file = Path(".env")
+    if not env_file.exists():
+        print("❌ .env file not found!")
+        print("💡 Please copy env.example to .env and fill in your values:")
+        print("   cp env.example .env")
+        return False
+    
+    print("✅ .env file found")
+    
+    # Required environment variables
+    required_vars = {
+        "OPENAI_API_KEY": "OpenAI API for AI responses",
+        "GEMINI_API_KEY": "Google Gemini API for audio processing", 
+        "WATI_API_KEY": "Wati API for WhatsApp messaging",
+        "WATI_WEBHOOK_VERIFY_TOKEN": "Wati webhook verification token"
+    }
+    
+    # Special handling for Wati URL (can be either variable name)
+    wati_url_vars = ["WATI_API_URL", "WATI_INSTANCE_ID"]
+    
+    print(f"\n🔍 Checking {len(required_vars)} required environment variables...")
+    
+    missing_vars = []
+    configured_vars = []
+    
+    for var_name, description in required_vars.items():
+        value = os.getenv(var_name)
+        if not value:
+            missing_vars.append((var_name, description))
+            print(f"❌ {var_name}: Not set")
+        else:
+            configured_vars.append(var_name)
+            # Show partial value for security
+            if len(value) > 10:
+                display_value = f"{value[:8]}...{value[-4:]}"
+            else:
+                display_value = f"{value[:4]}..."
+            print(f"✅ {var_name}: {display_value}")
+    
+    # Check for Wati URL (either variable name)
+    wati_url = None
+    wati_url_var = None
+    for var_name in wati_url_vars:
+        value = os.getenv(var_name)
+        if value:
+            wati_url = value
+            wati_url_var = var_name
+            break
+    
+    if wati_url:
+        configured_vars.append("WATI_URL")
+        if len(wati_url) > 30:
+            display_value = f"{wati_url[:20]}...{wati_url[-10:]}"
+        else:
+            display_value = wati_url
+        print(f"✅ {wati_url_var}: {display_value}")
+    else:
+        missing_vars.append(("WATI_API_URL or WATI_INSTANCE_ID", "Wati API base URL (e.g., https://live-mt-server.wati.io/YOUR_ACCOUNT_ID/api/v1)"))
+        print(f"❌ WATI_API_URL/WATI_INSTANCE_ID: Not set")
+    
+    # Optional variables
+    optional_vars = {
+        "HOST": "Server host (defaults to 0.0.0.0)",
+        "PORT": "Server port (defaults to 8000)",
+        "LOG_LEVEL": "Logging level (defaults to INFO)"
+    }
+    
+    print(f"\n🔍 Checking {len(optional_vars)} optional environment variables...")
+    
+    for var_name, description in optional_vars.items():
+        value = os.getenv(var_name)
+        if value:
+            print(f"✅ {var_name}: {value}")
+        else:
+            print(f"⚪ {var_name}: Not set (will use default)")
+    
+    # Summary
+    total_required = len(required_vars) + 1  # +1 for the Wati URL
+    configured_count = len(configured_vars)
+    
+    print(f"\n📊 Configuration Summary:")
+    print(f"✅ Configured: {configured_count}/{total_required} required variables")
+    
+    if missing_vars:
+        print(f"❌ Missing: {len(missing_vars)} required variables")
+        print(f"\n🔧 Missing Variables:")
+        for var_name, description in missing_vars:
+            print(f"   • {var_name}: {description}")
         
-        print("Enter your Wati API Key:")
-        wati_key = input().strip()
+        print(f"\n💡 To fix this:")
+        print(f"   1. Edit your .env file")
+        print(f"   2. Add the missing variables with your actual values")
+        print(f"   3. Restart your application")
         
-        print("Enter your Wati API URL (press Enter for default):")
-        wati_url = input().strip() or "https://live-mt-server.wati.io/301269/api/v1"
-        
-        with open(env_path, 'w') as f:
-            f.write(f"OPENAI_API_KEY={openai_key}\n")
-            f.write(f"WATI_API_KEY={wati_key}\n") 
-            f.write(f"WATI_API_URL={wati_url}\n")
-            f.write("WATI_WEBHOOK_VERIFY_TOKEN=your_verification_token\n")
-        
-        print(f"\n✅ .env file created at {env_path}") 
+        return False
+    else:
+        print(f"🎉 All required environment variables are configured!")
+        return True
+
+if __name__ == "__main__":
+    check_environment() 

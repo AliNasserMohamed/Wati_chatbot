@@ -144,7 +144,7 @@ async def webhook(request: Request, db=Depends(get_db)):
         )
 
         # Send response via WhatsApp
-        await send_whatsapp_message(phone_number, response_text)
+        result = await send_whatsapp_message(phone_number, response_text)
         print(f"Response sent to {phone_number}: {response_text}")
 
         db.commit()
@@ -157,18 +157,52 @@ async def webhook(request: Request, db=Depends(get_db)):
 async def send_whatsapp_message(phone_number: str, message: str):
     """Send message through Wati API"""
     wati_api_key = os.getenv("WATI_API_KEY")
-    wati_api_url = os.getenv("WATI_API_URL")
     
-    async with aiohttp.ClientSession() as session:
-        async with session.post(
-            f"{wati_api_url}/api/v1/sendMessage",
-            headers={"Authorization": f"Bearer {wati_api_key}"},
-            json={
-                "phone_number": phone_number,
-                "message": message
-            }
-        ) as response:
-            return await response.json()
+    # Check for both possible environment variable names
+    wati_api_url = os.getenv("WATI_API_URL") or os.getenv("WATI_INSTANCE_ID")
+    
+    # If neither is set, use the user's default URL
+    if not wati_api_url:
+        wati_api_url = "https://live-mt-server.wati.io/301269/api/v1"
+        print(f"💡 Using default Wati URL: {wati_api_url}")
+    
+    # Check if Wati configuration is complete
+    if not wati_api_key:
+        error_msg = "WATI_API_KEY environment variable is not set"
+        print(f"❌ [Wati Config Error] {error_msg}")
+        return {"error": error_msg}
+    
+    # Clean up the URL if it doesn't end with /api/v1
+    if not wati_api_url.endswith('/api/v1'):
+        if wati_api_url.endswith('/'):
+            wati_api_url = wati_api_url + 'api/v1'
+        else:
+            wati_api_url = wati_api_url + '/api/v1'
+    
+    try:
+        print(f"📤 Sending WhatsApp message to {phone_number}")
+        print(f"🔗 Using Wati API URL: {wati_api_url}")
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"{wati_api_url}/sendMessage",
+                headers={"Authorization": f"Bearer {wati_api_key}"},
+                json={
+                    "phone_number": phone_number,
+                    "message": message
+                }
+            ) as response:
+                result = await response.json()
+                if response.status == 200:
+                    print(f"✅ Message sent successfully to {phone_number}")
+                else:
+                    print(f"⚠️ Wati API returned status {response.status}: {result}")
+                return result
+                
+    except Exception as e:
+        error_msg = f"Failed to send WhatsApp message: {str(e)}"
+        print(f"❌ [Wati API Error] {error_msg}")
+        return {"error": error_msg}
 
 # Direct client message endpoint
 @app.post("/send-message")
