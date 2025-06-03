@@ -90,6 +90,23 @@ async def webhook(request: Request, db=Depends(get_db)):
         phone_number = data.get("waId")
         message_type = data.get("type", "text")  # Can be text, audio, etc.
         
+        # TESTING FILTER: Only respond to specific phone numbers
+        allowed_numbers = [
+            "201142765209",
+            "966138686475",  # 966 13 868 6475 (spaces removed)
+            "966505281144"
+        ]
+        
+        # Normalize phone number by removing spaces and special characters
+        normalized_phone = "".join(char for char in str(phone_number) if char.isdigit())
+        
+        if normalized_phone not in allowed_numbers:
+            print(f"🚫 Ignoring message from non-test number: {phone_number} (normalized: {normalized_phone})")
+            print(f"✅ Allowed test numbers: {', '.join(allowed_numbers)}")
+            return {"status": "ignored", "message": "Message from non-test number ignored"}
+        
+        print(f"✅ Processing message from authorized test number: {phone_number}")
+        
         # Get or create user session
         user = DatabaseManager.get_user_by_phone(db, phone_number)
         if not user:
