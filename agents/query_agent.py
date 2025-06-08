@@ -241,11 +241,13 @@ class QueryAgent:
             logger.error(f"Error searching products: {str(e)}")
             return {"error": f"Failed to search products: {str(e)}"}
     
-    async def process_query(self, user_message: str, conversation_history: List[Dict] = None) -> str:
+    async def process_query(self, user_message: str, conversation_history: List[Dict] = None, user_language: str = 'ar') -> str:
         """
         Process user query using OpenAI with function calling capabilities
         Limited to maximum 3 function calls per query to prevent excessive API usage
+        Enhanced with language detection and proper conversation history handling
         """
+        print(f"Processing query: {user_message} (Language: {user_language})")
         max_function_calls = 3
         function_call_count = 0
         
@@ -257,10 +259,35 @@ class QueryAgent:
             # Prepare conversation history
             messages = []
             
-            # System message with instructions
-            system_message = {
-                "role": "system",
-                "content": """أنت مساعد ذكي لخدمة توصيل المياه في المملكة العربية السعودية. 
+            # System message with instructions based on user language
+            if user_language == 'en':
+                system_message = {
+                    "role": "system",
+                    "content": """You are a smart assistant for water delivery service in Saudi Arabia.
+
+Your tasks:
+1. Help customers find available cities for service
+2. Show water brands available in each city
+3. Display water products and their prices from each brand
+4. Answer inquiries in a friendly and helpful manner
+
+Important rules:
+- Use available functions to get updated and accurate information
+- If user asks about a specific city, use get_city_id_by_name first then get_brands_by_city
+- If asked about brand products, use get_products_by_brand
+- If information is unclear, ask for clarification from the user
+- Respond in English since the user is communicating in English
+- Keep your answers concise and helpful
+
+Examples:
+- "What cities are available?" → use get_all_cities
+- "What brands are in Riyadh?" → use get_city_id_by_name then get_brands_by_city
+- "What products does a specific company have?" → use get_products_by_brand"""
+                }
+            else:
+                system_message = {
+                    "role": "system",
+                    "content": """أنت مساعد ذكي لخدمة توصيل المياه في المملكة العربية السعودية. 
 
 مهامك:
 1. مساعدة العملاء في العثور على المدن المتاحة للخدمة
@@ -273,27 +300,31 @@ class QueryAgent:
 - إذا سأل المستخدم عن مدينة معينة، استخدم get_city_id_by_name أولاً ثم get_brands_by_city
 - إذا سأل عن منتجات علامة تجارية، استخدم get_products_by_brand
 - إذا كانت المعلومات غير واضحة، اطلب توضيح من المستخدم
-- أجب باللغة العربية بشكل أساسي إلا إذا سأل المستخدم بالإنجليزية
+- أجب باللغة العربية لأن المستخدم يتواصل بالعربية
 - اجعل إجاباتك مختصرة ومفيدة
 
 أمثلة على الأسئلة:
 - "ما هي المدن المتاحة؟" → استخدم get_all_cities
 - "ما هي العلامات التجارية في الرياض؟" → استخدم get_city_id_by_name ثم get_brands_by_city  
 - "ما هي منتجات شركة معينة؟" → استخدم get_products_by_brand"""
-            }
+                }
             messages.append(system_message)
             
-            # Add conversation history if provided (fix datetime serialization)
+            # Add conversation history if provided (use last 5 messages to keep context manageable)
             if conversation_history:
-                for msg in conversation_history[-3:]:  # Reduced to 3 messages for fewer tokens
-                    # Create a clean message without datetime objects
+                # Filter and add recent conversation history
+                recent_history = conversation_history[-5:]  # Last 5 messages for better context
+                for msg in recent_history:
+                    # Create a clean message without problematic fields
                     clean_msg = {
                         "role": msg.get("role", "user"),
                         "content": msg.get("content", "")
                     }
                     # Skip empty messages
-                    if clean_msg["content"]:
+                    if clean_msg["content"].strip():
                         messages.append(clean_msg)
+                
+                print(f"📚 Added {len([m for m in recent_history if m.get('content', '').strip()])} messages from conversation history")
             
             # Add current user message
             messages.append({"role": "user", "content": user_message})
@@ -322,7 +353,8 @@ class QueryAgent:
                             function_args = json.loads(message.function_call.arguments)
                         except json.JSONDecodeError:
                             logger.error(f"Invalid function arguments: {message.function_call.arguments}")
-                            return "عذراً، حدث خطأ في معالجة طلبك. الرجاء إعادة صياغة السؤال."
+                            error_msg = "عذراً، حدث خطأ في معالجة طلبك. الرجاء إعادة صياغة السؤال." if user_language == 'ar' else "Sorry, there was an error processing your request. Please rephrase your question."
+                            return error_msg
                         
                         logger.info(f"Calling function #{function_call_count}: {function_name} with args: {function_args}")
                         
@@ -358,7 +390,8 @@ class QueryAgent:
                                 })
                         else:
                             logger.error(f"Unknown function: {function_name}")
-                            return f"خطأ: الوظيفة '{function_name}' غير متاحة."
+                            error_msg = f"خطأ: الوظيفة '{function_name}' غير متاحة." if user_language == 'ar' else f"Error: Function '{function_name}' is not available."
+                            return error_msg
                     else:
                         # No function call, return the response
                         final_response = message.content
@@ -366,7 +399,8 @@ class QueryAgent:
                             logger.info(f"Query completed after {function_call_count} function calls")
                             return final_response
                         else:
-                            return "عذراً، لم أتمكن من معالجة طلبك. الرجاء المحاولة مرة أخرى."
+                            fallback_msg = "عذراً، لم أتمكن من معالجة طلبك. الرجاء المحاولة مرة أخرى." if user_language == 'ar' else "Sorry, I couldn't process your request. Please try again."
+                            return fallback_msg
                 
                 except Exception as api_error:
                     if "rate_limit" in str(api_error).lower():
@@ -390,7 +424,8 @@ class QueryAgent:
                     logger.info(f"Final response generated after {function_call_count} function calls")
                     return response_text
                 else:
-                    return "تم الوصول للحد الأقصى من العمليات. الرجاء إعادة صياغة السؤال."
+                    max_calls_msg = "تم الوصول للحد الأقصى من العمليات. الرجاء إعادة صياغة السؤال." if user_language == 'ar' else "Maximum operations reached. Please rephrase your question."
+                    return max_calls_msg
                     
             except Exception as e:
                 logger.error(f"Final response generation failed: {str(e)}")
@@ -416,12 +451,12 @@ class QueryAgent:
                     # List all cities
                     cities_result = self.get_all_cities()
                     if cities_result.get('success') and cities_result.get('data'):
-                        cities = cities_result['data'][:10]  # First 10 cities
+                        cities = cities_result['data']  # First 10 cities
                         city_list = '\n'.join([f"• {city['name']} ({city.get('name_en', '')})" for city in cities])
                         return f"المدن المتاحة لخدمة توصيل المياه:\n\n{city_list}\n\nوالمزيد من المدن الأخرى متاحة أيضاً."
             
             # Handle brand queries for specific cities
-            city_names = ['جازان', 'jazan', 'الرياض', 'riyadh', 'جدة', 'jeddah', 'الدمام', 'dammam']
+            city_names = [city.get("name") for city in self.get_all_cities()['data']]
             for city_name in city_names:
                 if city_name in message_lower:
                     if any(word in message_lower for word in ['مارك', 'علامة', 'شرك', 'brand']):
@@ -438,6 +473,7 @@ class QueryAgent:
                                 else:
                                     return f"عذراً، لا توجد علامات تجارية مسجلة حالياً في {city_result['city_name']}. الرجاء التواصل معنا لمزيد من المعلومات."
             
+
             # Handle product queries
             if any(word in message_lower for word in ['منتج', 'product', 'مياه']):
                 if any(word in message_lower for word in ['بحث', 'search', 'أبحث']):

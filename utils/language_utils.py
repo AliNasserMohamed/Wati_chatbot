@@ -43,6 +43,9 @@ class LanguageHandler:
                 'CITY_FIRST': 'الرجاء اختيار المدينة اول.',
                 'BRAND_FIRST': 'الرجاء اختيار الماركة اول.',
                 'NO_ORDERS': 'ما عندك اي طلبات حالياً.',
+                'TEAM_WILL_REPLY': 'شكراً لتواصلك معنا. فريقنا راح يرد عليك بأقرب وقت ممكن إن شاء الله.',
+                'INQUIRY_TEAM_REPLY': 'شكراً على استفسارك. فريق الدعم الفني راح يرد عليك بأقرب وقت ممكن.',
+                'SERVICE_REQUEST_TEAM_REPLY': 'تم استلام طلبك. فريق خدمة العملاء راح يتواصل معك قريباً لتنسيق الخدمة.',
                 'ORDER_SUCCESS': """
                 ممتاز! تم انشاء طلبك بنجاح.
                 رقم الطلب: {order_id}
@@ -62,6 +65,9 @@ class LanguageHandler:
                 'CITY_FIRST': "Please select a city first.",
                 'BRAND_FIRST': "Please select a brand first.",
                 'NO_ORDERS': "You don't have any orders yet.",
+                'TEAM_WILL_REPLY': 'Thank you for contacting us. Our team will get back to you as soon as possible.',
+                'INQUIRY_TEAM_REPLY': 'Thank you for your inquiry. Our support team will respond to you as soon as possible.',
+                'SERVICE_REQUEST_TEAM_REPLY': 'Your request has been received. Our customer service team will contact you shortly to coordinate the service.',
                 'ORDER_SUCCESS': """
                 Great! Your order has been created successfully.
                 Order ID: {order_id}

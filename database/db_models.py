@@ -44,6 +44,7 @@ class UserMessage(Base):
     timestamp = Column(DateTime, default=datetime.datetime.utcnow)
     message_type = Column(Enum(MessageType), nullable=True)
     language = Column(String(2), default='ar')  # 'ar' for Arabic, 'en' for English
+    wati_message_id = Column(String(255), nullable=True)  # Track Wati message ID to prevent duplicates
     
     # Relationships
     user = relationship("User", back_populates="messages")

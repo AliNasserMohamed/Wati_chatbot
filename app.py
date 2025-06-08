@@ -89,6 +89,12 @@ async def webhook(request: Request, db=Depends(get_db)):
         # Extract message data
         phone_number = data.get("waId")
         message_type = data.get("type", "text")  # Can be text, audio, etc.
+        wati_message_id = data.get("id")  # Extract Wati message ID
+        
+        # ISSUE 1: Check for duplicate message processing
+        if wati_message_id and DatabaseManager.check_message_already_processed(db, wati_message_id):
+            print(f"🔄 Duplicate message detected with ID: {wati_message_id}. Skipping processing.")
+            return {"status": "ignored", "message": "Duplicate message ignored"}
         
         # TESTING FILTER: Only respond to specific phone numbers
         allowed_numbers = [
@@ -136,11 +142,12 @@ async def webhook(request: Request, db=Depends(get_db)):
         else:
             message_text = data.get("text", "")
 
-        # Create user message record
+        # Create user message record with Wati message ID
         user_message = DatabaseManager.create_message(
             db,
             user_id=user.id,
-            content=message_text
+            content=message_text,
+            wati_message_id=wati_message_id
         )
 
         # Classify message and detect language
@@ -151,27 +158,40 @@ async def webhook(request: Request, db=Depends(get_db)):
         context['language'] = detected_language
         session.context = json.dumps(context)
         
+        # ISSUE 2: Get enhanced conversation history (last 10 messages)
+        conversation_history = DatabaseManager.get_user_message_history(db, user.id, limit=10)
+        print(f"📚 Retrieved conversation history: {len(conversation_history)} messages")
+        
         # Handle message based on classification
-        if message_type in [MessageType.COMPLAINT, MessageType.SUGGESTION, MessageType.GREETING]:
+        if message_type == MessageType.GREETING:
+            # Handle greetings normally
             response_text = message_classifier.get_default_response(message_type, detected_language)
         
+        elif message_type == MessageType.SUGGESTION:
+            # Handle suggestions normally
+            response_text = message_classifier.get_default_response(message_type, detected_language)
+        
+        elif message_type == MessageType.COMPLAINT:
+            # Team will handle complaints
+            responses = language_handler.get_default_responses(detected_language)
+            response_text = responses['COMPLAINT']  # Already says team will review and reply
+        
         elif message_type == MessageType.INQUIRY:
-            # Use enhanced query agent with function calling
-            conversation_history = DatabaseManager.get_user_message_history(db, user.id, limit=6)
-            response_text = await query_agent.process_query(message_text, conversation_history)
-            
-            # The enhanced query agent already handles Arabic responses based on user input
-            # No need for additional translation
+            # Team will handle inquiries
+            responses = language_handler.get_default_responses(detected_language)
+            response_text = responses['INQUIRY_TEAM_REPLY']
         
         elif message_type == MessageType.SERVICE_REQUEST:
-            # Get response in English first
-            response_text = await service_request_agent.handle_service_request(message_text, phone_number, db)
-            # Translate if needed
-            if detected_language == 'ar':
-                response_text = await language_handler.translate_response(response_text, 'ar')
+            # Team will handle service requests
+            responses = language_handler.get_default_responses(detected_language)
+            response_text = responses['SERVICE_REQUEST_TEAM_REPLY']
         
         else:
-            response_text = language_handler.get_default_responses(detected_language)['UNKNOWN']
+            # For any other or unclassified messages, team will reply
+            responses = language_handler.get_default_responses(detected_language)
+            response_text = responses['TEAM_WILL_REPLY']
+        
+        print(f"📤 Sending response for {message_type or 'UNKNOWN'} in {detected_language}: {response_text[:50]}...")
 
         # Create bot reply record with language
         DatabaseManager.create_bot_reply(

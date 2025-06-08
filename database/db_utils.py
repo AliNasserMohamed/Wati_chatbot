@@ -57,13 +57,23 @@ class DatabaseManager:
         return user
     
     @staticmethod
-    def create_message(db: Session, user_id: int, content: str) -> UserMessage:
+    def create_message(db: Session, user_id: int, content: str, wati_message_id: str = None) -> UserMessage:
         """Save a message from a user"""
-        message = UserMessage(user_id=user_id, content=content)
+        message = UserMessage(user_id=user_id, content=content, wati_message_id=wati_message_id)
         db.add(message)
         db.commit()
         db.refresh(message)
         return message
+    
+    @staticmethod
+    def check_message_already_processed(db: Session, wati_message_id: str) -> bool:
+        """Check if a message with this Wati message ID has already been processed"""
+        if not wati_message_id:
+            return False
+        existing_message = db.query(UserMessage).filter(
+            UserMessage.wati_message_id == wati_message_id
+        ).first()
+        return existing_message is not None
     
     @staticmethod
     def create_bot_reply(db: Session, message_id: int, content: str, language: str = 'ar') -> BotReply:
@@ -76,7 +86,7 @@ class DatabaseManager:
     
     @staticmethod
     def get_user_message_history(db: Session, user_id: int, limit: int = 10) -> List[Dict[str, Any]]:
-        """Get user conversation history"""
+        """Get user conversation history with enhanced context"""
         messages = db.query(UserMessage).filter(
             UserMessage.user_id == user_id
         ).order_by(
@@ -88,7 +98,8 @@ class DatabaseManager:
             history.append({
                 "role": "user",
                 "content": msg.content,
-                "timestamp": msg.timestamp
+                "timestamp": msg.timestamp.strftime("%Y-%m-%d %H:%M:%S") if msg.timestamp else None,
+                "language": msg.language
             })
             
             # Add bot replies for this message
@@ -96,7 +107,8 @@ class DatabaseManager:
                 history.append({
                     "role": "assistant",
                     "content": reply.content,
-                    "timestamp": reply.timestamp
+                    "timestamp": reply.timestamp.strftime("%Y-%m-%d %H:%M:%S") if reply.timestamp else None,
+                    "language": reply.language
                 })
         
         return history
