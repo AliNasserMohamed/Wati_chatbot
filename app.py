@@ -24,7 +24,7 @@ print(f"OPENAI_API_KEY set: {'Yes' if os.getenv('OPENAI_API_KEY') else 'No'}")
 print(f"WATI_API_KEY set: {'Yes' if os.getenv('WATI_API_KEY') else 'No'}")
 
 from database.db_utils import get_db, DatabaseManager
-from database.db_models import MessageType, UserSession
+from database.db_models import MessageType, UserSession, BotReply
 from agents.message_classifier import message_classifier
 from agents.query_agent import query_agent
 from agents.service_request import service_request_agent
@@ -91,12 +91,31 @@ async def webhook(request: Request, db=Depends(get_db)):
         message_type = data.get("type", "text")  # Can be text, audio, etc.
         wati_message_id = data.get("id")  # Extract Wati message ID
         
+        # IMMEDIATE RESPONSE: Send quick response to Wati to prevent duplicate notifications
+        immediate_response = {"status": "success", "message": "Processing"}
+        
+        # Process the message asynchronously but return immediately
+        try:
+            await process_message_async(data, db, phone_number, message_type, wati_message_id)
+        except Exception as e:
+            print(f"[Async Processing ERROR] {str(e)}")
+            # Even if processing fails, we already responded to Wati
+        
+        return immediate_response
+
+    except Exception as e:
+        print(f"[Webhook ERROR] {str(e)}")
+        return {"status": "error", "message": str(e)}
+
+async def process_message_async(data, db, phone_number, message_type, wati_message_id):
+    """Process the message asynchronously after responding to Wati"""
+    try:
         # ISSUE 1: Check for duplicate message processing
         if wati_message_id and DatabaseManager.check_message_already_processed(db, wati_message_id):
             print(f"🔄 Duplicate message detected with ID: {wati_message_id}. Skipping processing.")
-            return {"status": "ignored", "message": "Duplicate message ignored"}
+            return
         
-        # TESTING FILTER: Only respond to specific phone numbers
+        # TESTING LOGIC: Determine user type
         allowed_numbers = [
             "201142765209",
             "966138686475",  # 966 13 868 6475 (spaces removed)
@@ -105,13 +124,14 @@ async def webhook(request: Request, db=Depends(get_db)):
         
         # Normalize phone number by removing spaces and special characters
         normalized_phone = "".join(char for char in str(phone_number) if char.isdigit())
+        is_test_user = normalized_phone in allowed_numbers
         
-        if normalized_phone not in allowed_numbers:
-            print(f"🚫 Ignoring message from non-test number: {phone_number} (normalized: {normalized_phone})")
-            print(f"✅ Allowed test numbers: {', '.join(allowed_numbers)}")
-            return {"status": "ignored", "message": "Message from non-test number ignored"}
+        if is_test_user:
+            print(f"🧪 Test user detected: {phone_number} - Full functionality enabled")
+        else:
+            print(f"👤 Regular user detected: {phone_number} - Limited to greetings and suggestions only")
         
-        print(f"✅ Processing message from authorized test number: {phone_number}")
+        print(f"✅ Processing message from: {phone_number}")
         
         # Get or create user session
         user = DatabaseManager.get_user_by_phone(db, phone_number)
@@ -136,9 +156,11 @@ async def webhook(request: Request, db=Depends(get_db)):
             if audio_data:
                 message_text = await message_classifier.process_audio(audio_data)
                 if not message_text:
-                    return {"status": "error", "message": "Failed to process audio"}
+                    print("Failed to process audio message")
+                    return
             else:
-                return {"status": "error", "message": "No audio data received"}
+                print("No audio data received")
+                return
         else:
             message_text = data.get("text", "")
 
@@ -150,8 +172,14 @@ async def webhook(request: Request, db=Depends(get_db)):
             wati_message_id=wati_message_id
         )
 
+        # Check if we already replied to this message (prevent double replies)
+        existing_reply = db.query(BotReply).filter_by(message_id=user_message.id).first()
+        if existing_reply:
+            print(f"🔄 Already replied to message {user_message.id}. Skipping to prevent double reply.")
+            return
+
         # Classify message and detect language
-        message_type, detected_language = await message_classifier.classify_message(message_text, db, user_message)
+        classified_message_type, detected_language = await message_classifier.classify_message(message_text, db, user_message)
         
         # Store the detected language in session context
         context = json.loads(session.context) if session.context else {}
@@ -162,38 +190,48 @@ async def webhook(request: Request, db=Depends(get_db)):
         conversation_history = DatabaseManager.get_user_message_history(db, user.id, limit=10)
         print(f"📚 Retrieved conversation history: {len(conversation_history)} messages")
         
-        # Handle message based on classification
-        if message_type == MessageType.GREETING:
-            # Handle greetings normally
-            response_text = message_classifier.get_default_response(message_type, detected_language)
+        # Determine response based on user type and message classification
+        response_text = None
         
-        elif message_type == MessageType.SUGGESTION:
-            # Handle suggestions normally
-            response_text = message_classifier.get_default_response(message_type, detected_language)
+        if classified_message_type == MessageType.GREETING:
+            # Handle greetings normally for all users
+            response_text = message_classifier.get_default_response(classified_message_type, detected_language)
         
-        elif message_type == MessageType.COMPLAINT:
-            # Team will handle complaints
-            responses = language_handler.get_default_responses(detected_language)
-            response_text = responses['COMPLAINT']  # Already says team will review and reply
+        elif classified_message_type == MessageType.SUGGESTION:
+            # Handle suggestions normally for all users
+            response_text = message_classifier.get_default_response(classified_message_type, detected_language)
         
-        elif message_type == MessageType.INQUIRY:
-            # Team will handle inquiries
-            responses = language_handler.get_default_responses(detected_language)
-            response_text = responses['INQUIRY_TEAM_REPLY']
-        
-        elif message_type == MessageType.SERVICE_REQUEST:
-            # Team will handle service requests
-            responses = language_handler.get_default_responses(detected_language)
-            response_text = responses['SERVICE_REQUEST_TEAM_REPLY']
+        elif is_test_user:
+            # Test users get full functionality
+            if classified_message_type == MessageType.COMPLAINT:
+                responses = language_handler.get_default_responses(detected_language)
+                response_text = responses['COMPLAINT']
+            elif classified_message_type == MessageType.INQUIRY:
+                responses = language_handler.get_default_responses(detected_language)
+                response_text = responses['INQUIRY_TEAM_REPLY']
+            elif classified_message_type == MessageType.SERVICE_REQUEST:
+                responses = language_handler.get_default_responses(detected_language)
+                response_text = responses['SERVICE_REQUEST_TEAM_REPLY']
+            else:
+                responses = language_handler.get_default_responses(detected_language)
+                response_text = responses['TEAM_WILL_REPLY']
         
         else:
-            # For any other or unclassified messages, team will reply
+            # Regular users get team response for non-greeting/suggestion messages
             responses = language_handler.get_default_responses(detected_language)
-            response_text = responses['TEAM_WILL_REPLY']
+            if classified_message_type == MessageType.COMPLAINT:
+                response_text = responses['COMPLAINT']
+            elif classified_message_type == MessageType.INQUIRY:
+                response_text = responses['INQUIRY_TEAM_REPLY']
+            elif classified_message_type == MessageType.SERVICE_REQUEST:
+                response_text = responses['SERVICE_REQUEST_TEAM_REPLY']
+            else:
+                response_text = responses['TEAM_WILL_REPLY']
         
-        print(f"📤 Sending response for {message_type or 'UNKNOWN'} in {detected_language}: {response_text[:50]}...")
+        user_type = "TEST" if is_test_user else "REGULAR"
+        print(f"📤 Sending response for {classified_message_type or 'UNKNOWN'} ({user_type} user) in {detected_language}: {response_text[:50]}...")
 
-        # Create bot reply record with language
+        # Create bot reply record with language (prevent double replies)
         DatabaseManager.create_bot_reply(
             db,
             message_id=user_message.id,
@@ -206,11 +244,10 @@ async def webhook(request: Request, db=Depends(get_db)):
         print(f"Response sent to {phone_number}: {response_text}")
 
         db.commit()
-        return {"status": "success"}
 
     except Exception as e:
-        print(f"[Webhook ERROR] {str(e)}")
-        return {"status": "error", "message": str(e)}
+        print(f"[Async Message Processing ERROR] {str(e)}")
+        db.rollback()
 
 async def send_whatsapp_message(phone_number: str, message: str):
     """Send message through Wati API"""

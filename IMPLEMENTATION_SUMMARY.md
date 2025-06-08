@@ -61,13 +61,34 @@ This document summarizes all the improvements implemented to fix the three main 
 
 ## Message Handling Logic (Updated)
 
+### User Types:
+- **Test Users** (numbers in `allowed_numbers`): Get full bot functionality for ALL message types
+- **Regular Users** (all other numbers): Only get responses for GREETING and SUGGESTION messages
+
 ### Current Behavior:
+
+#### For Test Users (Full Functionality):
 1. **GREETING** → Normal bot response (welcoming message)
 2. **SUGGESTION** → Normal bot response (thanks for suggestion)
 3. **COMPLAINT** → Team response (team will review and reply)
 4. **INQUIRY** → Team response (support team will respond)
 5. **SERVICE_REQUEST** → Team response (customer service will contact)
 6. **UNKNOWN/OTHER** → Team response (team will get back to you)
+
+#### For Regular Users (Limited Functionality):
+1. **GREETING** → Normal bot response (welcoming message)
+2. **SUGGESTION** → Normal bot response (thanks for suggestion)
+3. **COMPLAINT** → Team response (team will review and reply)
+4. **INQUIRY** → Team response (support team will respond)
+5. **SERVICE_REQUEST** → Team response (customer service will contact)
+6. **UNKNOWN/OTHER** → Team response (team will get back to you)
+
+### Test Numbers (Full Functionality):
+```
+"201142765209"
+"966138686475"
+"966505281144"
+```
 
 ### Sample Responses:
 
@@ -126,3 +147,9 @@ python test_updated_bot.py
 3. Restart the application
 4. Test with authorized phone numbers
 5. Monitor logs for proper duplicate prevention 
+
+### Recent Updates:
+- ✅ **Immediate Wati Response**: Bot responds to Wati webhook immediately to prevent duplicate notifications
+- ✅ **Team Responses for Regular Users**: Instead of ignoring non-greeting/suggestion messages, regular users now get appropriate team responses
+- ✅ **Double Reply Prevention**: Added check to prevent sending multiple replies to the same message
+- ✅ **Async Message Processing**: Messages are processed asynchronously after responding to Wati 
