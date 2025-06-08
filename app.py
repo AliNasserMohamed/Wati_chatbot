@@ -175,6 +175,15 @@ async def process_message_async(data, phone_number, message_type, wati_message_i
 
         print(f"📝 Processing message text: '{message_text[:100]}...'")
 
+        # ISSUE 2: Get enhanced conversation history FIRST (last 10 messages) 
+        conversation_history = DatabaseManager.get_user_message_history(db, user.id, limit=10)
+        print(f"📚 Retrieved conversation history: {len(conversation_history)} messages")
+        
+        # Also get formatted conversation string for LLM context
+        formatted_conversation = DatabaseManager.get_formatted_conversation_for_llm(db, user.id, limit=5)
+        if formatted_conversation != "No previous conversation history.":
+            print(f"💬 Conversation context: {formatted_conversation[:100]}...")
+
         # Create user message record with Wati message ID
         user_message = DatabaseManager.create_message(
             db,
@@ -189,8 +198,10 @@ async def process_message_async(data, phone_number, message_type, wati_message_i
             print(f"🔄 Already replied to message {user_message.id}. Skipping to prevent double reply.")
             return
 
-        # Classify message and detect language
-        classified_message_type, detected_language = await message_classifier.classify_message(message_text, db, user_message)
+        # Classify message and detect language WITH conversation history
+        classified_message_type, detected_language = await message_classifier.classify_message(
+            message_text, db, user_message, conversation_history
+        )
         
         print(f"🧠 Message classified as: {classified_message_type} in language: {detected_language}")
         
@@ -198,15 +209,6 @@ async def process_message_async(data, phone_number, message_type, wati_message_i
         context = json.loads(session.context) if session.context else {}
         context['language'] = detected_language
         session.context = json.dumps(context)
-        
-        # ISSUE 2: Get enhanced conversation history (last 10 messages)
-        conversation_history = DatabaseManager.get_user_message_history(db, user.id, limit=10)
-        print(f"📚 Retrieved conversation history: {len(conversation_history)} messages")
-        
-        # Also get formatted conversation string for LLM context
-        formatted_conversation = DatabaseManager.get_formatted_conversation_for_llm(db, user.id, limit=5)
-        if formatted_conversation != "No previous conversation history.":
-            print(f"💬 Conversation context: {formatted_conversation[:100]}...")
         
         # Determine response based on user type and message classification
         response_text = None
@@ -249,6 +251,12 @@ async def process_message_async(data, phone_number, message_type, wati_message_i
                     response_text = responses['SERVICE_REQUEST_TEAM_REPLY']
                 else:
                     response_text = responses['TEAM_WILL_REPLY']
+        
+        # Clean up response text - remove "bot:" prefix if present
+        if response_text and response_text.startswith("bot: "):
+            response_text = response_text[5:]  # Remove "bot: " prefix
+        elif response_text and response_text.startswith("bot:"):
+            response_text = response_text[4:]  # Remove "bot:" prefix
         
         user_type = "TEST" if is_test_user else "REGULAR"
         print(f"📤 Sending response for {classified_message_type or 'UNKNOWN'} ({user_type} user) in {detected_language}: {response_text[:50]}...")

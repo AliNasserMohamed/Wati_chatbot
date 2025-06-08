@@ -33,13 +33,13 @@ class MessageClassifier:
             print(f"Error transcribing audio: {str(e)}")
             return None
 
-    async def classify_message(self, text: str, db: Session, user_message: UserMessage) -> Tuple[MessageType, str]:
+    async def classify_message(self, text: str, db: Session, user_message: UserMessage, conversation_history: list = None) -> Tuple[MessageType, str]:
         """Classify the message into one of the predefined types and detect language."""
         # Detect language using static method
         language = language_handler.detect_language(text)
         user_message.language = language
 
-        # Create classification prompt in Arabic
+        # Build context-aware classification prompt
         system_prompt = """
         أنت مساعد متخصص في تصنيف الرسائل.
         صنف الرسالة إلى واحدة من الفئات التالية:
@@ -49,20 +49,50 @@ class MessageClassifier:
         - اقتراح أو ملاحظة
         - تحية أو رسائل عامة
 
+        مهم: استخدم سياق المحادثة السابقة لفهم الرسالة بشكل أفضل.
+        إذا كانت الرسالة رداً على سؤال سابق، صنفها حسب السياق الكامل.
+        
         اكتب فقط اسم الفئة بدون أي إضافات.
         """
 
-        # If message is in English, translate it first
-        if language == 'en':
-            text_to_classify = await language_handler.translate_to_arabic(text)
-            # If translation fails, use original text
-            if not text_to_classify:
-                text_to_classify = text
+        # Build the complete message with context
+        if conversation_history and len(conversation_history) > 0:
+            # Get last 3 messages for context (to avoid too much context)
+            recent_history = conversation_history[-3:] if len(conversation_history) > 3 else conversation_history
+            context_lines = []
+            
+            for msg in recent_history:
+                if msg.get("raw_content"):  # Use raw content for classification
+                    context_lines.append(msg["content"])  # This includes "user:" or "bot:" prefix
+            
+            # Add current message
+            current_message_formatted = f"user: {text}"
+            context_lines.append(current_message_formatted)
+            
+            # Build full context
+            full_context = "\n".join(context_lines)
+            classification_prompt = f"""سياق المحادثة:
+{full_context}
+
+صنف الرسالة الأخيرة من المستخدم مع مراعاة سياق المحادثة السابقة."""
+            
+            print(f"🔄 Using conversation context for classification:")
+            print(f"📝 Context: {full_context[:150]}...")
         else:
-            text_to_classify = text
+            # If message is in English, translate it first
+            if language == 'en':
+                text_to_classify = await language_handler.translate_to_arabic(text)
+                # If translation fails, use original text
+                if not text_to_classify:
+                    text_to_classify = text
+            else:
+                text_to_classify = text
+            
+            classification_prompt = f"صنف الرسالة التالية:\n{text_to_classify}"
+            print(f"📝 Classifying without context: {text[:50]}...")
 
         classification = await language_handler.process_with_openai(
-            f"صنف الرسالة التالية:\n{text_to_classify}",
+            classification_prompt,
             system_prompt
         )
 
