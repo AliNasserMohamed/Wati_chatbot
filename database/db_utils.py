@@ -86,7 +86,7 @@ class DatabaseManager:
     
     @staticmethod
     def get_user_message_history(db: Session, user_id: int, limit: int = 10) -> List[Dict[str, Any]]:
-        """Get user conversation history with enhanced context"""
+        """Get user conversation history formatted for LLM understanding"""
         messages = db.query(UserMessage).filter(
             UserMessage.user_id == user_id
         ).order_by(
@@ -94,24 +94,44 @@ class DatabaseManager:
         ).limit(limit).all()
         
         history = []
-        for msg in reversed(messages):  # Oldest first
-            history.append({
+        for msg in reversed(messages):  # Oldest first for chronological order
+            # Add user message
+            user_entry = {
                 "role": "user",
-                "content": msg.content,
+                "content": f"user: {msg.content}",
                 "timestamp": msg.timestamp.strftime("%Y-%m-%d %H:%M:%S") if msg.timestamp else None,
-                "language": msg.language
-            })
+                "language": msg.language,
+                "raw_content": msg.content  # Keep original for reference
+            }
+            history.append(user_entry)
             
             # Add bot replies for this message
             for reply in msg.replies:
-                history.append({
-                    "role": "assistant",
-                    "content": reply.content,
+                bot_entry = {
+                    "role": "assistant", 
+                    "content": f"bot: {reply.content}",
                     "timestamp": reply.timestamp.strftime("%Y-%m-%d %H:%M:%S") if reply.timestamp else None,
-                    "language": reply.language
-                })
+                    "language": reply.language,
+                    "raw_content": reply.content  # Keep original for reference
+                }
+                history.append(bot_entry)
         
         return history
+    
+    @staticmethod
+    def get_formatted_conversation_for_llm(db: Session, user_id: int, limit: int = 5) -> str:
+        """Get conversation history formatted as a single string for LLM context"""
+        history = DatabaseManager.get_user_message_history(db, user_id, limit)
+        
+        if not history:
+            return "No previous conversation history."
+        
+        # Format as a clean conversation string
+        conversation_lines = []
+        for entry in history:
+            conversation_lines.append(entry["content"])
+        
+        return "\n".join(conversation_lines)
     
     # New methods for managing Cities, Brands, and Products
     @staticmethod

@@ -203,6 +203,11 @@ async def process_message_async(data, phone_number, message_type, wati_message_i
         conversation_history = DatabaseManager.get_user_message_history(db, user.id, limit=10)
         print(f"📚 Retrieved conversation history: {len(conversation_history)} messages")
         
+        # Also get formatted conversation string for LLM context
+        formatted_conversation = DatabaseManager.get_formatted_conversation_for_llm(db, user.id, limit=5)
+        if formatted_conversation != "No previous conversation history.":
+            print(f"💬 Conversation context: {formatted_conversation[:100]}...")
+        
         # Determine response based on user type and message classification
         response_text = None
         
