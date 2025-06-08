@@ -206,40 +206,44 @@ async def process_message_async(data, phone_number, message_type, wati_message_i
         # Determine response based on user type and message classification
         response_text = None
         
-        if classified_message_type == MessageType.GREETING:
-            # Handle greetings normally for all users
-            response_text = message_classifier.get_default_response(classified_message_type, detected_language)
-        
-        elif classified_message_type == MessageType.SUGGESTION:
-            # Handle suggestions normally for all users
-            response_text = message_classifier.get_default_response(classified_message_type, detected_language)
-        
-        elif is_test_user:
-            # Test users get full functionality
-            if classified_message_type == MessageType.COMPLAINT:
-                responses = language_handler.get_default_responses(detected_language)
-                response_text = responses['COMPLAINT']
-            elif classified_message_type == MessageType.INQUIRY:
-                responses = language_handler.get_default_responses(detected_language)
-                response_text = responses['INQUIRY_TEAM_REPLY']
-            elif classified_message_type == MessageType.SERVICE_REQUEST:
-                responses = language_handler.get_default_responses(detected_language)
-                response_text = responses['SERVICE_REQUEST_TEAM_REPLY']
+        if is_test_user:
+            # TEST USERS GET FULL BOT FUNCTIONALITY
+            print(f"🧪 Test user - Processing with full bot functionality")
+            
+            if classified_message_type == MessageType.GREETING:
+                response_text = message_classifier.get_default_response(classified_message_type, detected_language)
+            elif classified_message_type == MessageType.SUGGESTION:
+                response_text = message_classifier.get_default_response(classified_message_type, detected_language)
             else:
-                responses = language_handler.get_default_responses(detected_language)
-                response_text = responses['TEAM_WILL_REPLY']
-        
+                # For all other message types (INQUIRY, COMPLAINT, SERVICE_REQUEST, UNKNOWN), 
+                # use the query agent to provide real responses
+                print(f"🤖 Using query agent for {classified_message_type}")
+                response_text = await query_agent.process_query(
+                    user_message=message_text,
+                    conversation_history=conversation_history,
+                    user_language=detected_language
+                )
         else:
-            # Regular users get team response for non-greeting/suggestion messages
-            responses = language_handler.get_default_responses(detected_language)
-            if classified_message_type == MessageType.COMPLAINT:
-                response_text = responses['COMPLAINT']
-            elif classified_message_type == MessageType.INQUIRY:
-                response_text = responses['INQUIRY_TEAM_REPLY']
-            elif classified_message_type == MessageType.SERVICE_REQUEST:
-                response_text = responses['SERVICE_REQUEST_TEAM_REPLY']
+            # REGULAR USERS GET LIMITED RESPONSES
+            print(f"👤 Regular user - Limited functionality")
+            
+            if classified_message_type == MessageType.GREETING:
+                # Handle greetings normally for all users
+                response_text = message_classifier.get_default_response(classified_message_type, detected_language)
+            elif classified_message_type == MessageType.SUGGESTION:
+                # Handle suggestions normally for all users
+                response_text = message_classifier.get_default_response(classified_message_type, detected_language)
             else:
-                response_text = responses['TEAM_WILL_REPLY']
+                # Regular users get team response for non-greeting/suggestion messages
+                responses = language_handler.get_default_responses(detected_language)
+                if classified_message_type == MessageType.COMPLAINT:
+                    response_text = responses['COMPLAINT']
+                elif classified_message_type == MessageType.INQUIRY:
+                    response_text = responses['INQUIRY_TEAM_REPLY']
+                elif classified_message_type == MessageType.SERVICE_REQUEST:
+                    response_text = responses['SERVICE_REQUEST_TEAM_REPLY']
+                else:
+                    response_text = responses['TEAM_WILL_REPLY']
         
         user_type = "TEST" if is_test_user else "REGULAR"
         print(f"📤 Sending response for {classified_message_type or 'UNKNOWN'} ({user_type} user) in {detected_language}: {response_text[:50]}...")
