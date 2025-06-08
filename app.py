@@ -175,14 +175,33 @@ async def process_message_async(data, phone_number, message_type, wati_message_i
 
         print(f"📝 Processing message text: '{message_text[:100]}...'")
 
-        # ISSUE 2: Get enhanced conversation history FIRST (last 10 messages) 
-        conversation_history = DatabaseManager.get_user_message_history(db, user.id, limit=10)
+        # ISSUE 2: Get enhanced conversation history FIRST (last 5 messages and their replies) 
+        conversation_history = DatabaseManager.get_user_message_history(db, user.id, limit=5)
         print(f"📚 Retrieved conversation history: {len(conversation_history)} messages")
+        
+        # Print the complete conversation history content
+        if conversation_history:
+            print(f"💬 Complete Conversation History:")
+            print(f"   {'='*60}")
+            for i, msg in enumerate(conversation_history, 1):
+                role = msg.get('role', 'unknown')
+                content = msg.get('content', '')
+                timestamp = msg.get('timestamp', 'N/A')
+                language = msg.get('language', 'N/A')
+                print(f"   {i}. [{role.upper()}] ({timestamp}) [{language}]")
+                print(f"      Content: {content}")
+                print(f"      {'-'*50}")
+        else:
+            print(f"💬 No previous conversation history found")
         
         # Also get formatted conversation string for LLM context
         formatted_conversation = DatabaseManager.get_formatted_conversation_for_llm(db, user.id, limit=5)
         if formatted_conversation != "No previous conversation history.":
-            print(f"💬 Conversation context: {formatted_conversation[:100]}...")
+            print(f"🔤 Formatted conversation for LLM:")
+            print(f"   {formatted_conversation}")
+            print(f"   {'='*60}")
+        else:
+            print(f"🔤 No formatted conversation history")
 
         # Create user message record with Wati message ID
         user_message = DatabaseManager.create_message(
@@ -214,32 +233,24 @@ async def process_message_async(data, phone_number, message_type, wati_message_i
         response_text = None
         
         if is_test_user:
-            # TEST USERS GET FULL BOT FUNCTIONALITY
-            print(f"🧪 Test user - Processing with full bot functionality")
+            # TEST USERS GET FULL BOT FUNCTIONALITY - ALL MESSAGES GO THROUGH LLM
+            print(f"🧪 Test user - Processing ALL messages with query agent")
+            response_text = await query_agent.process_query(
+                user_message=message_text,
+                conversation_history=conversation_history,
+                user_language=detected_language
+            )
+        else:
+            # REGULAR USERS - STILL USE LLM FOR GREETINGS/SUGGESTIONS, TEAM RESPONSES FOR OTHERS
+            print(f"👤 Regular user - Limited functionality")
             
-            if classified_message_type == MessageType.GREETING:
-                response_text = message_classifier.get_default_response(classified_message_type, detected_language)
-            elif classified_message_type == MessageType.SUGGESTION:
-                response_text = message_classifier.get_default_response(classified_message_type, detected_language)
-            else:
-                # For all other message types (INQUIRY, COMPLAINT, SERVICE_REQUEST, UNKNOWN), 
-                # use the query agent to provide real responses
-                print(f"🤖 Using query agent for {classified_message_type}")
+            if classified_message_type == MessageType.GREETING or classified_message_type == MessageType.SUGGESTION:
+                # Even greetings and suggestions now go through LLM for natural responses
                 response_text = await query_agent.process_query(
                     user_message=message_text,
                     conversation_history=conversation_history,
                     user_language=detected_language
                 )
-        else:
-            # REGULAR USERS GET LIMITED RESPONSES
-            print(f"👤 Regular user - Limited functionality")
-            
-            if classified_message_type == MessageType.GREETING:
-                # Handle greetings normally for all users
-                response_text = message_classifier.get_default_response(classified_message_type, detected_language)
-            elif classified_message_type == MessageType.SUGGESTION:
-                # Handle suggestions normally for all users
-                response_text = message_classifier.get_default_response(classified_message_type, detected_language)
             else:
                 # Regular users get team response for non-greeting/suggestion messages
                 responses = language_handler.get_default_responses(detected_language)
