@@ -91,15 +91,20 @@ async def webhook(request: Request, db=Depends(get_db)):
         message_type = data.get("type", "text")  # Can be text, audio, etc.
         wati_message_id = data.get("id")  # Extract Wati message ID
         
+        # Early duplicate check with existing session
+        if wati_message_id and DatabaseManager.check_message_already_processed(db, wati_message_id):
+            print(f"🔄 Duplicate message detected with ID: {wati_message_id}. Returning success immediately.")
+            return {"status": "success", "message": "Already processed"}
+        
+        # Log the incoming message for debugging
+        print(f"📱 New message from {phone_number}: {data.get('text', 'N/A')[:50]}...")
+        
         # IMMEDIATE RESPONSE: Send quick response to Wati to prevent duplicate notifications
         immediate_response = {"status": "success", "message": "Processing"}
         
-        # Process the message asynchronously but return immediately
-        try:
-            await process_message_async(data, db, phone_number, message_type, wati_message_id)
-        except Exception as e:
-            print(f"[Async Processing ERROR] {str(e)}")
-            # Even if processing fails, we already responded to Wati
+        # Process the message asynchronously with a new database session
+        import asyncio
+        asyncio.create_task(process_message_async(data, phone_number, message_type, wati_message_id))
         
         return immediate_response
 
@@ -107,12 +112,18 @@ async def webhook(request: Request, db=Depends(get_db)):
         print(f"[Webhook ERROR] {str(e)}")
         return {"status": "error", "message": str(e)}
 
-async def process_message_async(data, db, phone_number, message_type, wati_message_id):
+async def process_message_async(data, phone_number, message_type, wati_message_id):
     """Process the message asynchronously after responding to Wati"""
+    # Create a new database session for async processing
+    from database.db_utils import SessionLocal
+    db = SessionLocal()
+    
     try:
-        # ISSUE 1: Check for duplicate message processing
+        print(f"🔄 Starting async processing for message {wati_message_id} from {phone_number}")
+        
+        # Double-check for duplicate message processing with fresh session
         if wati_message_id and DatabaseManager.check_message_already_processed(db, wati_message_id):
-            print(f"🔄 Duplicate message detected with ID: {wati_message_id}. Skipping processing.")
+            print(f"🔄 Duplicate message detected during async processing with ID: {wati_message_id}. Skipping.")
             return
         
         # TESTING LOGIC: Determine user type
@@ -130,8 +141,6 @@ async def process_message_async(data, db, phone_number, message_type, wati_messa
             print(f"🧪 Test user detected: {phone_number} - Full functionality enabled")
         else:
             print(f"👤 Regular user detected: {phone_number} - Limited to greetings and suggestions only")
-        
-        print(f"✅ Processing message from: {phone_number}")
         
         # Get or create user session
         user = DatabaseManager.get_user_by_phone(db, phone_number)
@@ -164,6 +173,8 @@ async def process_message_async(data, db, phone_number, message_type, wati_messa
         else:
             message_text = data.get("text", "")
 
+        print(f"📝 Processing message text: '{message_text[:100]}...'")
+
         # Create user message record with Wati message ID
         user_message = DatabaseManager.create_message(
             db,
@@ -180,6 +191,8 @@ async def process_message_async(data, db, phone_number, message_type, wati_messa
 
         # Classify message and detect language
         classified_message_type, detected_language = await message_classifier.classify_message(message_text, db, user_message)
+        
+        print(f"🧠 Message classified as: {classified_message_type} in language: {detected_language}")
         
         # Store the detected language in session context
         context = json.loads(session.context) if session.context else {}
@@ -239,15 +252,23 @@ async def process_message_async(data, db, phone_number, message_type, wati_messa
             language=detected_language
         )
 
+        # Commit before sending message to ensure duplicate prevention works
+        db.commit()
+        print(f"💾 Message and reply saved to database")
+
         # Send response via WhatsApp
         result = await send_whatsapp_message(phone_number, response_text)
-        print(f"Response sent to {phone_number}: {response_text}")
-
-        db.commit()
+        print(f"✅ Response sent to {phone_number}: {response_text[:100]}...")
 
     except Exception as e:
         print(f"[Async Message Processing ERROR] {str(e)}")
+        import traceback
+        traceback.print_exc()
         db.rollback()
+    finally:
+        # Always close the database session
+        db.close()
+        print(f"🔄 Async processing completed for message {wati_message_id}")
 
 async def send_whatsapp_message(phone_number: str, message: str):
     """Send message through Wati API"""
