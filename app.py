@@ -250,70 +250,78 @@ async def process_message_async(data, phone_number, message_type, wati_message_i
         
         print(f"🧠 Message classified as: {classified_message_type} in language: {detected_language}")
         
-        # Check if message is unclear/ambiguous
-        is_unclear = await message_classifier.is_message_unclear(message_text, conversation_history)
-        if is_unclear:
-            print(f"🤔 Message detected as unclear/ambiguous")
-        
         # Store the detected language in session context
         context = json.loads(session.context) if session.context else {}
         context['language'] = detected_language
         session.context = json.dumps(context)
         
-        # Determine response based on user type and message classification
+        # Route message to appropriate handler based on classification
         response_text = None
         
-        if is_test_user:
-            # TEST USERS GET FULL BOT FUNCTIONALITY - ALL MESSAGES GO THROUGH LLM
-            print(f"🧪 Test user - Processing ALL messages with query agent")
+        if classified_message_type == MessageType.GREETING:
+            # Handle greetings with default response
+            print(f"👋 Handling GREETING with default response")
+            response_text = message_classifier.get_default_response(classified_message_type, detected_language)
             
-            if is_unclear:
-                # For test users, ask for clarification when message is unclear
-                if detected_language == 'ar':
-                    response_text = "عذراً، لم أفهم طلبك بوضوح. ممكن توضح أكثر؟ مثلاً: هل تريد معرفة المدن المتاحة، أسعار التوصيل، أو تريد طلب مياه؟"
-                else:
-                    response_text = "Sorry, I didn't understand your request clearly. Could you please clarify? For example: Do you want to know available cities, delivery prices, or place a water order?"
-            else:
-                response_text = await query_agent.process_query(
-                    user_message=message_text,
-                    conversation_history=conversation_history,
-                    user_language=detected_language
-                )
+        elif classified_message_type == MessageType.COMPLAINT:
+            # Handle complaints with default response
+            print(f"📝 Handling COMPLAINT with default response")
+            response_text = message_classifier.get_default_response(classified_message_type, detected_language)
+            
+        elif classified_message_type == MessageType.THANKING:
+            # Handle thanking with simple response
+            print(f"🙏 Handling THANKING with simple response")
+            response_text = message_classifier.get_default_response(classified_message_type, detected_language)
+            
+        elif classified_message_type == MessageType.SUGGESTION:
+            # Handle suggestions with default response
+            print(f"💡 Handling SUGGESTION with default response")
+            response_text = message_classifier.get_default_response(classified_message_type, detected_language)
+            
+        elif classified_message_type == MessageType.INQUIRY:
+            # Send inquiries to query agent
+            print(f"🔍 Sending INQUIRY to query agent")
+            response_text = await query_agent.process_query(
+                user_message=message_text,
+                conversation_history=conversation_history,
+                user_language=detected_language
+            )
+            
+        elif classified_message_type == MessageType.SERVICE_REQUEST:
+            # Send service requests to service agent
+            print(f"🛠️ Sending SERVICE_REQUEST to service agent")
+            response_text = await service_request_agent.process_service_request(
+                user_message=message_text,
+                conversation_history=conversation_history,
+                user_language=detected_language
+            )
+            
+        elif classified_message_type == MessageType.TEMPLATE_REPLY:
+            # Send template replies to query agent for context-aware processing
+            print(f"🔘 Sending TEMPLATE_REPLY to query agent")
+            response_text = await query_agent.process_query(
+                user_message=message_text,
+                conversation_history=conversation_history,
+                user_language=detected_language
+            )
+            
         else:
-            # REGULAR USERS - LIMITED FUNCTIONALITY
-            print(f"👤 Regular user - Limited functionality")
-            
-            if is_unclear:
-                # For regular users, don't reply to unclear messages
-                print(f"🔇 Regular user with unclear message - Not replying as requested")
-                return  # Exit without sending any response
-            
-            if classified_message_type == MessageType.GREETING or classified_message_type == MessageType.SUGGESTION:
-                # Greetings and suggestions go through LLM for natural responses
-                response_text = await query_agent.process_query(
-                    user_message=message_text,
-                    conversation_history=conversation_history,
-                    user_language=detected_language
-                )
-            else:
-                # COMMENTED OUT: Regular users get team response for non-greeting/suggestion messages
-                # responses = language_handler.get_default_responses(detected_language)
-                # if classified_message_type == MessageType.COMPLAINT:
-                #     response_text = responses['COMPLAINT']
-                # elif classified_message_type == MessageType.INQUIRY:
-                #     response_text = responses['INQUIRY_TEAM_REPLY']
-                # elif classified_message_type == MessageType.SERVICE_REQUEST:
-                #     response_text = responses['SERVICE_REQUEST_TEAM_REPLY']
-                # else:
-                #     response_text = responses['TEAM_WILL_REPLY']
-                
-                # Don't reply to non-greeting/suggestion messages for regular users
-                print(f"🔇 Regular user with {classified_message_type} - Not replying as requested")
-                return  # Exit without sending any response
+            # Fallback for unclassified or OTHER messages - send to query agent
+            print(f"❓ Sending unclassified/OTHER message to query agent")
+            response_text = await query_agent.process_query(
+                user_message=message_text,
+                conversation_history=conversation_history,
+                user_language=detected_language
+            )
         
         # Check if we have a response to send
         if not response_text:
             print(f"🔇 No response generated - skipping message sending")
+            return
+        
+        # Check for duplicate bot messages
+        if DatabaseManager.check_duplicate_bot_message(db, user.id, response_text):
+            print(f"🔄 Preventing duplicate bot message - not sending response")
             return
         
         # Clean up response text - remove "bot:" prefix if present

@@ -36,18 +36,19 @@ class LanguageHandler:
         """Get default responses in the specified language."""
         responses = {
             'ar': {
-                'COMPLAINT': 'آسف لسماع شكواك. فريقنا راح يراجع الشكوى ويرد عليك بأقرب وقت ممكن.',
-                'SUGGESTION': 'شكراً على اقتراحك! نقدر ملاحظاتك وراح ناخذها بعين الاعتبار.',
-                'GREETING': 'هلا! كيف اقدر اساعدك اليوم؟',
-                'UNKNOWN': 'عذراً، ما فهمت طلبك. ممكن توضح اكثر؟',
+                'COMPLAINT': 'شكراً لتواصلك معنا بخصوص هذه الشكوى. نحن نقدر ملاحظاتك ونأخذها على محمل الجد. سيتم توجيه شكواك إلى الفريق المختص للمراجعة والمتابعة معك في أقرب وقت.',
+                'SUGGESTION': 'شكراً لك على هذا الاقتراح القيم! نحن نقدر آراء عملائنا ونسعى دائماً للتحسين. سيتم مراجعة اقتراحك من قبل الفريق المختص.',
+                'GREETING': 'وعليكم السلام ورحمة الله وبركاته، أهلاً وسهلاً بك! 🌟\n\nأنا مساعدك الذكي في شركة أبار لتوصيل المياه في السعودية. يمكنني مساعدتك في:\n\n💧 طلب توصيل المياه\n🏙️ معرفة المدن المتاحة\n🏷️ الاستفسار عن العلامات التجارية والأسعار\n📞 تقديم الشكاوى والاقتراحات\n\nكيف يمكنني مساعدتك اليوم؟',
+                'THANKING': 'عفواً! 😊',
+                'UNKNOWN': 'عذراً، لم أتمكن من فهم طلبك. يمكنك إعادة صياغة السؤال أو التواصل مع فريق الدعم.',
                 'TEMPLATE_REPLY': 'تم استلام ردك على الرسالة. شكراً لك.',
                 'OTHERS': 'مرحباً! شكراً لتواصلك معنا. كيف ممكن نساعدك اليوم؟',
                 'CITY_FIRST': 'الرجاء اختيار المدينة اول.',
                 'BRAND_FIRST': 'الرجاء اختيار الماركة اول.',
                 'NO_ORDERS': 'ما عندك اي طلبات حالياً.',
-                'TEAM_WILL_REPLY': 'شكراً لتواصلك معنا. فريقنا راح يرد عليك بأقرب وقت ممكن إن شاء الله.',
-                'INQUIRY_TEAM_REPLY': 'شكراً على استفسارك. فريق الدعم الفني راح يرد عليك بأقرب وقت ممكن.',
-                'SERVICE_REQUEST_TEAM_REPLY': 'تم استلام طلبك. فريق خدمة العملاء راح يتواصل معك قريباً لتنسيق الخدمة.',
+                'TEAM_WILL_REPLY': 'شكراً لتواصلك معنا! تم استلام رسالتك وسيتواصل معك أحد أعضاء فريقنا قريباً.',
+                'INQUIRY_TEAM_REPLY': 'شكراً لاستفسارك! سيتواصل معك فريق المبيعات للإجابة على أسئلتك وتقديم المساعدة.',
+                'SERVICE_REQUEST_TEAM_REPLY': 'تم استلام طلبك! سيتواصل معك فريق خدمة العملاء لمعالجة طلبك في أقرب وقت.',
                 'ORDER_SUCCESS': """
                 ممتاز! تم انشاء طلبك بنجاح.
                 رقم الطلب: {order_id}
@@ -60,18 +61,19 @@ class LanguageHandler:
                 'MISSING_INFO': 'نحتاج المعلومات التالية لإكمال طلبك: {fields}'
             },
             'en': {
-                'COMPLAINT': "We're sorry to hear about your complaint. Our team will review it and get back to you as soon as possible.",
-                'SUGGESTION': "Thank you for your suggestion! We appreciate your feedback and will take it into consideration.",
-                'GREETING': "Hello! How can I assist you today?",
-                'UNKNOWN': "I'm not sure what you mean. Could you please clarify?",
+                'COMPLAINT': 'Thank you for contacting us regarding this complaint. We appreciate your feedback and take it seriously. Your complaint will be forwarded to the relevant team for review and follow-up.',
+                'SUGGESTION': 'Thank you for this valuable suggestion! We appreciate our customers\' feedback and always strive for improvement. Your suggestion will be reviewed by the relevant team.',
+                'GREETING': 'Hello and welcome! 🌟\n\nI am your smart assistant at Abar Water Delivery Company in Saudi Arabia. I can help you with:\n\n💧 Water delivery orders\n🏙️ Available cities information\n🏷️ Brands and pricing inquiries\n📞 Complaints and suggestions\n\nHow can I help you today?',
+                'THANKING': 'You\'re welcome! 😊',
+                'UNKNOWN': 'Sorry, I could not understand your request. Please rephrase your question or contact our support team.',
                 'TEMPLATE_REPLY': 'Your reply to the message has been received. Thank you.',
                 'OTHERS': 'Hello! Thank you for contacting us. How can we help you today?',
                 'CITY_FIRST': "Please select a city first.",
                 'BRAND_FIRST': "Please select a brand first.",
                 'NO_ORDERS': "You don't have any orders yet.",
-                'TEAM_WILL_REPLY': 'Thank you for contacting us. Our team will get back to you as soon as possible.',
-                'INQUIRY_TEAM_REPLY': 'Thank you for your inquiry. Our support team will respond to you as soon as possible.',
-                'SERVICE_REQUEST_TEAM_REPLY': 'Your request has been received. Our customer service team will contact you shortly to coordinate the service.',
+                'TEAM_WILL_REPLY': 'Thank you for contacting us! We have received your message and one of our team members will contact you soon.',
+                'INQUIRY_TEAM_REPLY': 'Thank you for your inquiry! Our sales team will contact you to answer your questions and provide assistance.',
+                'SERVICE_REQUEST_TEAM_REPLY': 'Your request has been received! Our customer service team will contact you to process your request as soon as possible.',
                 'ORDER_SUCCESS': """
                 Great! Your order has been created successfully.
                 Order ID: {order_id}

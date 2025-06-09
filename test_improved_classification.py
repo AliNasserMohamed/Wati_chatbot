@@ -86,13 +86,28 @@ async def test_enhanced_classification():
         },
         {
             "message": "شكراً لكم",
-            "expected": MessageType.TEMPLATE_REPLY,
-            "description": "Thank you message (template reply)"
+            "expected": MessageType.THANKING,
+            "description": "Thank you message"
         },
         {
-            "message": "ممتاز",
-            "expected": MessageType.TEMPLATE_REPLY,
-            "description": "Excellent response (template reply)"
+            "message": "مشكور",
+            "expected": MessageType.THANKING,
+            "description": "Thank you (dialect)"
+        },
+        {
+            "message": "يعطيك العافية",
+            "expected": MessageType.THANKING,
+            "description": "Thank you expression"
+        },
+        {
+            "message": "هلا",
+            "expected": MessageType.GREETING,
+            "description": "Greeting (dialect)"
+        },
+        {
+            "message": "هلا والله",
+            "expected": MessageType.GREETING,
+            "description": "Greeting expression"
         },
         {
             "message": "ايش",
@@ -261,56 +276,6 @@ async def test_template_reply_detection():
         print(f"❌ Template test failed: {str(e)}")
     finally:
         db.close()
-
-async def test_unclear_message_detection():
-    """Test unclear message detection functionality"""
-    
-    print(f"\n🧪 Testing Unclear Message Detection")
-    print("=" * 60)
-    
-    test_cases = [
-        {"message": "ايش", "should_be_unclear": True, "description": "Single question word"},
-        {"message": "وش", "should_be_unclear": True, "description": "Single question word (dialect)"},
-        {"message": "بدي", "should_be_unclear": True, "description": "I want (without object)"},
-        {"message": "نعم", "should_be_unclear": True, "description": "Yes (without context)"},
-        {"message": "1", "should_be_unclear": True, "description": "Number only (without context)"},
-        {"message": "أريد طلب مياه", "should_be_unclear": False, "description": "Clear request"},
-        {"message": "هل تغطون الرياض؟", "should_be_unclear": False, "description": "Clear question"},
-        {"message": "السلام عليكم", "should_be_unclear": False, "description": "Clear greeting"},
-        {"message": "شكراً لكم على الخدمة", "should_be_unclear": False, "description": "Clear thank you"},
-        {"message": "ايش أسعار التوصيل؟", "should_be_unclear": False, "description": "Question with context"},
-    ]
-    
-    correct_detections = 0
-    
-    for i, case in enumerate(test_cases, 1):
-        print(f"\n{i}. Testing: '{case['message']}'")
-        print(f"   Should be unclear: {case['should_be_unclear']}")
-        print(f"   Context: {case['description']}")
-        
-        try:
-            is_unclear = await message_classifier.is_message_unclear(
-                case['message'], 
-                conversation_history=[]
-            )
-            
-            print(f"   🤖 Detected as unclear: {is_unclear}")
-            
-            if is_unclear == case['should_be_unclear']:
-                print(f"   ✅ CORRECT detection!")
-                correct_detections += 1
-            else:
-                expected = "unclear" if case['should_be_unclear'] else "clear"
-                actual = "unclear" if is_unclear else "clear"
-                print(f"   ❌ INCORRECT! Expected: {expected}, Got: {actual}")
-                
-        except Exception as e:
-            print(f"   ❌ Error: {str(e)}")
-    
-    accuracy = (correct_detections / len(test_cases)) * 100
-    print(f"\n📊 UNCLEAR MESSAGE DETECTION:")
-    print(f"   ✅ Correct: {correct_detections}/{len(test_cases)}")
-    print(f"   📈 Accuracy: {accuracy:.1f}%")
 
 async def test_wati_template_detection():
     """Test WATI template reply detection and skipping"""
@@ -482,6 +447,5 @@ async def test_allowed_user_filtering():
 if __name__ == "__main__":
     asyncio.run(test_enhanced_classification())
     asyncio.run(test_template_reply_detection())
-    asyncio.run(test_unclear_message_detection())
     asyncio.run(test_wati_template_detection())
     asyncio.run(test_allowed_user_filtering()) 

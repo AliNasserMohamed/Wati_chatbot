@@ -277,4 +277,52 @@ class DatabaseManager:
     @staticmethod
     def get_brand_by_external_id(db: Session, external_id: int) -> Optional[Brand]:
         """Get brand by external ID"""
-        return db.query(Brand).filter(Brand.external_id == external_id).first() 
+        return db.query(Brand).filter(Brand.external_id == external_id).first()
+    
+    @staticmethod
+    def check_duplicate_bot_message(db: Session, user_id: int, proposed_message: str, limit: int = 3) -> bool:
+        """Check if the bot is about to send a message similar to recent ones"""
+        try:
+            # Get recent bot replies
+            recent_bot_replies = db.query(BotReply)\
+                .join(UserMessage)\
+                .filter(UserMessage.user_id == user_id)\
+                .order_by(BotReply.created_at.desc())\
+                .limit(limit)\
+                .all()
+            
+            if not recent_bot_replies:
+                return False
+            
+            # Clean the proposed message for comparison
+            proposed_clean = proposed_message.strip().lower()
+            
+            # Check if any recent bot reply is very similar
+            for reply in recent_bot_replies:
+                if reply.content:
+                    reply_clean = reply.content.strip().lower()
+                    
+                    # Check for exact match
+                    if proposed_clean == reply_clean:
+                        print(f"🔄 Duplicate message detected: '{proposed_message[:50]}...'")
+                        return True
+                    
+                    # Check for very similar messages (>80% similarity)
+                    if len(proposed_clean) > 10 and len(reply_clean) > 10:
+                        # Simple similarity check - if messages share >80% of words
+                        proposed_words = set(proposed_clean.split())
+                        reply_words = set(reply_clean.split())
+                        
+                        if len(proposed_words) > 0 and len(reply_words) > 0:
+                            common_words = proposed_words.intersection(reply_words)
+                            similarity = len(common_words) / max(len(proposed_words), len(reply_words))
+                            
+                            if similarity > 0.8:
+                                print(f"🔄 Similar message detected (similarity: {similarity:.2f}): '{proposed_message[:50]}...'")
+                                return True
+            
+            return False
+            
+        except Exception as e:
+            print(f"Error checking duplicate bot message: {str(e)}")
+            return False 

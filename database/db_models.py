@@ -22,6 +22,7 @@ class MessageType(enum.Enum):
     SUGGESTION = "Suggestion or Note"
     GREETING = "Greeting or Random Messages"
     TEMPLATE_REPLY = "Template Reply"
+    THANKING = "Thanking"
     OTHERS = "Others"
 
 class User(Base):

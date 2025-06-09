@@ -63,6 +63,7 @@ class MessageClassifier:
         - شكوى: مشاكل في الخدمة، تأخير التوصيل، جودة المياه
         - اقتراح أو ملاحظة: اقتراحات للتحسين، ملاحظات إيجابية، آراء
         - تحية: السلام عليكم، مرحبا، هلا، صباح الخير، مساء الخير فقط
+        - شكر: شكراً، مشكور، يعطيك العافية، الله يعطيك العافية، تسلم
         - رد على قالب: ردود على رسائل تفاعلية، أزرار اختيار، قوائم، رسائل نظام الواتس اب
         - أخرى: رسائل عامة، استفسارات غير محددة، رسائل خارج نطاق العمل
 
@@ -149,6 +150,7 @@ class MessageClassifier:
                 'شكوى': MessageType.COMPLAINT,
                 'اقتراح أو ملاحظة': MessageType.SUGGESTION,
                 'تحية': MessageType.GREETING,
+                'شكر': MessageType.THANKING,
                 'رد على قالب': MessageType.TEMPLATE_REPLY,
                 'أخرى': MessageType.OTHERS
             }
@@ -196,42 +198,6 @@ class MessageClassifier:
             user_message.message_type = None
             return None, language
 
-    async def is_message_unclear(self, text: str, conversation_history: list = None) -> bool:
-        """Check if a message is unclear or ambiguous and needs clarification"""
-        
-        # Define patterns for unclear messages
-        unclear_patterns = [
-            # Very short unclear messages
-            r'^[a-zA-Z\u0600-\u06FF]{1,3}$',  # 1-3 characters only
-            # Common unclear phrases
-            r'ايش|وش|ايه|ماذا|كيف|متى|وين',  # Question words without context
-            # Vague requests
-            r'بدي|عايز|أريد$',  # "I want" without specifying what
-        ]
-        
-        # Check for unclear patterns
-        for pattern in unclear_patterns:
-            if re.search(pattern, text, re.IGNORECASE):
-                # If it's very short or vague, consider it unclear
-                if len(text.strip()) < 10:  # Very short messages
-                    return True
-        
-        # Check context - if there's no clear conversation context and message is vague
-        if not conversation_history or len(conversation_history) == 0:
-            # Standalone vague messages
-            vague_standalone = [
-                r'^(ايش|وش|ايه|ماذا|كيف|متى|وين)\s*\?*$',
-                r'^(بدي|عايز|أريد)\s*$',
-                r'^(نعم|لا|موافق|طيب)\s*$',  # Yes/No without context
-                r'^[0-9]+\s*$'  # Just numbers without context
-            ]
-            
-            for pattern in vague_standalone:
-                if re.search(pattern, text, re.IGNORECASE):
-                    return True
-        
-        return False
-
     def get_default_response(self, message_type: MessageType, language: str) -> str:
         """Get default response based on message type and language."""
         responses = language_handler.get_default_responses(language)
@@ -242,6 +208,8 @@ class MessageClassifier:
             return responses['SUGGESTION']
         elif message_type == MessageType.GREETING:
             return responses['GREETING']
+        elif message_type == MessageType.THANKING:
+            return responses['THANKING']
         else:
             return responses['UNKNOWN']
 
