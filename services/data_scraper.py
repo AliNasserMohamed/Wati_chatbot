@@ -5,6 +5,7 @@ from typing import Dict, List, Optional, Any
 from datetime import datetime
 import logging
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 
 from database.db_utils import DatabaseManager, get_db
 from database.db_models import City, Brand, Product, DataSyncLog
@@ -182,7 +183,7 @@ class DataScraperService:
             # STEP 1: DELETE ALL EXISTING BRANDS DATA
             logger.info("🧹 Deleting all existing brands...")
             # First delete city-brand relationships
-            db.execute("DELETE FROM city_brands")
+            db.execute(text("DELETE FROM city_brands"))
             db.commit()
             # Then delete brands
             db.query(Brand).delete()
@@ -252,7 +253,6 @@ class DataScraperService:
                 logger.info(f"🔗 Creating {len(city_brand_relationships)} city-brand relationships...")
                 
                 # Use raw SQL with INSERT OR IGNORE to handle duplicates
-                from sqlalchemy import text
                 insert_sql = text("""
                     INSERT OR IGNORE INTO city_brands (city_id, brand_id, created_at) 
                     VALUES (:city_id, :brand_id, :created_at)

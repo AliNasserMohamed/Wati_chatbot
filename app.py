@@ -244,8 +244,8 @@ async def process_message_async(data, phone_number, message_type, wati_message_i
             # REGULAR USERS - STILL USE LLM FOR GREETINGS/SUGGESTIONS, TEAM RESPONSES FOR OTHERS
             print(f"👤 Regular user - Limited functionality")
             
-            if classified_message_type == MessageType.GREETING or classified_message_type == MessageType.SUGGESTION:
-                # Even greetings and suggestions now go through LLM for natural responses
+            if classified_message_type == MessageType.GREETING or classified_message_type == MessageType.SUGGESTION or classified_message_type == MessageType.OTHERS:
+                # Greetings, suggestions, and general messages (OTHERS) go through LLM for natural responses
                 response_text = await query_agent.process_query(
                     user_message=message_text,
                     conversation_history=conversation_history,
