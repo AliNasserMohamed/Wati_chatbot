@@ -259,9 +259,13 @@ async def process_message_async(data, phone_number, message_type, wati_message_i
         response_text = None
         
         if classified_message_type == MessageType.GREETING:
-            # Handle greetings with default response
-            print(f"👋 Handling GREETING with default response")
-            response_text = message_classifier.get_default_response(classified_message_type, detected_language)
+            # Send greetings to LLM for natural response
+            print(f"👋 Sending GREETING to query agent")
+            response_text = await query_agent.process_query(
+                user_message=message_text,
+                conversation_history=conversation_history,
+                user_language=detected_language
+            )
             
         elif classified_message_type == MessageType.COMPLAINT:
             # Handle complaints with default response
@@ -269,9 +273,13 @@ async def process_message_async(data, phone_number, message_type, wati_message_i
             response_text = message_classifier.get_default_response(classified_message_type, detected_language)
             
         elif classified_message_type == MessageType.THANKING:
-            # Handle thanking with simple response
-            print(f"🙏 Handling THANKING with simple response")
-            response_text = message_classifier.get_default_response(classified_message_type, detected_language)
+            # Send thanking to LLM for natural response
+            print(f"🙏 Sending THANKING to query agent")
+            response_text = await query_agent.process_query(
+                user_message=message_text,
+                conversation_history=conversation_history,
+                user_language=detected_language
+            )
             
         elif classified_message_type == MessageType.SUGGESTION:
             # Handle suggestions with default response

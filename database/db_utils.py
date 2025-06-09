@@ -287,7 +287,7 @@ class DatabaseManager:
             recent_bot_replies = db.query(BotReply)\
                 .join(UserMessage)\
                 .filter(UserMessage.user_id == user_id)\
-                .order_by(BotReply.created_at.desc())\
+                .order_by(BotReply.timestamp.desc())\
                 .limit(limit)\
                 .all()
             
