@@ -91,6 +91,23 @@ async def webhook(request: Request, db=Depends(get_db)):
         message_type = data.get("type", "text")  # Can be text, audio, etc.
         wati_message_id = data.get("id")  # Extract Wati message ID
         
+        # Check if this is a template reply from WATI (button reply, list reply, etc.)
+        button_reply = data.get("buttonReply")
+        list_reply = data.get("listReply") 
+        interactive_button_reply = data.get("interactiveButtonReply")
+        
+        if button_reply or list_reply or interactive_button_reply or message_type == "button":
+            print(f"🔘 Template reply detected from WATI - Skipping processing")
+            print(f"   Type: {message_type}")
+            if button_reply:
+                print(f"   Button Reply: {button_reply.get('text', 'N/A')}")
+            if list_reply:
+                print(f"   List Reply: {list_reply}")
+            if interactive_button_reply:
+                print(f"   Interactive Button Reply: {interactive_button_reply}")
+            
+            return {"status": "success", "message": "Template reply - not processed"}
+        
         # Early duplicate check with existing session
         if wati_message_id and DatabaseManager.check_message_already_processed(db, wati_message_id):
             print(f"🔄 Duplicate message detected with ID: {wati_message_id}. Returning success immediately.")

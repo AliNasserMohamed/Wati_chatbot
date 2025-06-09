@@ -312,7 +312,101 @@ async def test_unclear_message_detection():
     print(f"   ✅ Correct: {correct_detections}/{len(test_cases)}")
     print(f"   📈 Accuracy: {accuracy:.1f}%")
 
+async def test_wati_template_detection():
+    """Test WATI template reply detection and skipping"""
+    
+    print(f"\n🧪 Testing WATI Template Reply Detection")
+    print("=" * 60)
+    
+    # Mock webhook data examples
+    test_cases = [
+        {
+            "name": "Button Reply",
+            "webhook_data": {
+                "id": "684704bdf80d7781b4b38929",
+                "type": "button",
+                "text": "راضي تماماً",
+                "waId": "966537631543",
+                "buttonReply": {
+                    "payload": "{\"ButtonIndex\":0,\"CarouselCardIndex\":null}",
+                    "text": "راضي تماماً"
+                }
+            },
+            "should_skip": True
+        },
+        {
+            "name": "List Reply",
+            "webhook_data": {
+                "id": "684704bdf80d7781b4b38930",
+                "type": "list",
+                "text": "الرياض",
+                "waId": "966537631543",
+                "listReply": {
+                    "id": "city_riyadh",
+                    "title": "الرياض"
+                }
+            },
+            "should_skip": True
+        },
+        {
+            "name": "Interactive Button Reply",
+            "webhook_data": {
+                "id": "684704bdf80d7781b4b38931",
+                "type": "interactive",
+                "text": "نعم",
+                "waId": "966537631543",
+                "interactiveButtonReply": {
+                    "id": "confirm_yes",
+                    "title": "نعم"
+                }
+            },
+            "should_skip": True
+        },
+        {
+            "name": "Regular Text Message",
+            "webhook_data": {
+                "id": "684704bdf80d7781b4b38932",
+                "type": "text",
+                "text": "السلام عليكم",
+                "waId": "966537631543"
+            },
+            "should_skip": False
+        }
+    ]
+    
+    print("Testing WATI template detection logic:")
+    
+    for i, case in enumerate(test_cases, 1):
+        print(f"\n{i}. Testing: {case['name']}")
+        print(f"   Should skip: {case['should_skip']}")
+        
+        data = case['webhook_data']
+        
+        # Extract the same fields as in app.py
+        message_type = data.get("type", "text")
+        button_reply = data.get("buttonReply")
+        list_reply = data.get("listReply") 
+        interactive_button_reply = data.get("interactiveButtonReply")
+        
+        # Apply the same logic as in app.py
+        should_skip = (button_reply or list_reply or interactive_button_reply or message_type == "button")
+        
+        print(f"   🔍 Detected:")
+        print(f"      Type: {message_type}")
+        print(f"      Button Reply: {'Yes' if button_reply else 'No'}")
+        print(f"      List Reply: {'Yes' if list_reply else 'No'}")
+        print(f"      Interactive Button Reply: {'Yes' if interactive_button_reply else 'No'}")
+        print(f"   🤖 Will skip processing: {should_skip}")
+        
+        if should_skip == case['should_skip']:
+            print(f"   ✅ CORRECT detection!")
+        else:
+            print(f"   ❌ INCORRECT! Expected skip: {case['should_skip']}, Got: {should_skip}")
+    
+    print(f"\n📊 WATI template detection test completed!")
+
 if __name__ == "__main__":
     asyncio.run(test_enhanced_classification())
     asyncio.run(test_template_reply_detection())
-    asyncio.run(test_unclear_message_detection()) 
+    asyncio.run(test_unclear_message_detection())
+    asyncio.run(test_wati_template_detection()) 
