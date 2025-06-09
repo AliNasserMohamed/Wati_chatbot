@@ -252,16 +252,25 @@ async def process_message_async(data, phone_number, message_type, wati_message_i
                     user_language=detected_language
                 )
             else:
-                # Regular users get team response for non-greeting/suggestion messages
-                responses = language_handler.get_default_responses(detected_language)
-                if classified_message_type == MessageType.COMPLAINT:
-                    response_text = responses['COMPLAINT']
-                elif classified_message_type == MessageType.INQUIRY:
-                    response_text = responses['INQUIRY_TEAM_REPLY']
-                elif classified_message_type == MessageType.SERVICE_REQUEST:
-                    response_text = responses['SERVICE_REQUEST_TEAM_REPLY']
-                else:
-                    response_text = responses['TEAM_WILL_REPLY']
+                # COMMENTED OUT: Regular users get team response for non-greeting/suggestion messages
+                # responses = language_handler.get_default_responses(detected_language)
+                # if classified_message_type == MessageType.COMPLAINT:
+                #     response_text = responses['COMPLAINT']
+                # elif classified_message_type == MessageType.INQUIRY:
+                #     response_text = responses['INQUIRY_TEAM_REPLY']
+                # elif classified_message_type == MessageType.SERVICE_REQUEST:
+                #     response_text = responses['SERVICE_REQUEST_TEAM_REPLY']
+                # else:
+                #     response_text = responses['TEAM_WILL_REPLY']
+                
+                # Don't reply to non-greeting/suggestion messages for regular users
+                print(f"🔇 Regular user with {classified_message_type} - Not replying as requested")
+                return  # Exit without sending any response
+        
+        # Check if we have a response to send
+        if not response_text:
+            print(f"🔇 No response generated - skipping message sending")
+            return
         
         # Clean up response text - remove "bot:" prefix if present
         if response_text and response_text.startswith("bot: "):

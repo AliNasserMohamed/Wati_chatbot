@@ -48,6 +48,8 @@ class MessageClassifier:
         - شكوى
         - اقتراح أو ملاحظة
         - تحية أو رسائل عامة
+        - رد على قالب (إذا كانت الرسالة رداً على رسالة قالب من الواتس اب)
+        - أخرى (للرسائل التي لا تنتمي لأي فئة من الفئات المذكورة)
 
         مهم: استخدم سياق المحادثة السابقة لفهم الرسالة بشكل أفضل.
         إذا كانت الرسالة رداً على سؤال سابق، صنفها حسب السياق الكامل.
@@ -109,7 +111,9 @@ class MessageClassifier:
                 'استفسار': MessageType.INQUIRY,
                 'شكوى': MessageType.COMPLAINT,
                 'اقتراح أو ملاحظة': MessageType.SUGGESTION,
-                'تحية أو رسائل عامة': MessageType.GREETING
+                'تحية أو رسائل عامة': MessageType.GREETING,
+                'رد على قالب': MessageType.TEMPLATE_REPLY,
+                'أخرى': MessageType.OTHERS
             }
             
             # Safely strip whitespace

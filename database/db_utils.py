@@ -3,6 +3,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.orm.session import Session
 from typing import Optional, List, Dict, Any, Union
 import os
+import datetime
 
 from database.db_models import Base, User, UserMessage, BotReply, City, Brand, Product, DataSyncLog
 
@@ -87,6 +88,7 @@ class DatabaseManager:
     @staticmethod
     def get_user_message_history(db: Session, user_id: int, limit: int = 10) -> List[Dict[str, Any]]:
         """Get user conversation history formatted for LLM understanding"""
+        # Get the last 'limit' messages from the user
         messages = db.query(UserMessage).filter(
             UserMessage.user_id == user_id
         ).order_by(
@@ -94,27 +96,31 @@ class DatabaseManager:
         ).limit(limit).all()
         
         history = []
-        for msg in reversed(messages):  # Oldest first for chronological order
+        # Process messages in chronological order (oldest first)
+        for msg in reversed(messages):
             # Add user message
             user_entry = {
                 "role": "user",
                 "content": f"user: {msg.content}",
                 "timestamp": msg.timestamp.strftime("%Y-%m-%d %H:%M:%S") if msg.timestamp else None,
-                "language": msg.language,
+                "language": msg.language or 'ar',
                 "raw_content": msg.content  # Keep original for reference
             }
             history.append(user_entry)
             
-            # Add bot replies for this message
-            for reply in msg.replies:
-                bot_entry = {
-                    "role": "assistant", 
-                    "content": f"bot: {reply.content}",
-                    "timestamp": reply.timestamp.strftime("%Y-%m-%d %H:%M:%S") if reply.timestamp else None,
-                    "language": reply.language,
-                    "raw_content": reply.content  # Keep original for reference
-                }
-                history.append(bot_entry)
+            # Add bot replies for this message (there should normally be only one reply per message)
+            if msg.replies:
+                # Sort replies by timestamp to ensure correct order
+                sorted_replies = sorted(msg.replies, key=lambda x: x.timestamp or datetime.datetime.min)
+                for reply in sorted_replies:
+                    bot_entry = {
+                        "role": "assistant", 
+                        "content": f"bot: {reply.content}",
+                        "timestamp": reply.timestamp.strftime("%Y-%m-%d %H:%M:%S") if reply.timestamp else None,
+                        "language": reply.language or 'ar',
+                        "raw_content": reply.content  # Keep original for reference
+                    }
+                    history.append(bot_entry)
         
         return history
     

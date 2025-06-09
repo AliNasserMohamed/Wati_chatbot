@@ -181,16 +181,21 @@ class DataScraperService:
             
             # STEP 1: DELETE ALL EXISTING BRANDS DATA
             logger.info("🧹 Deleting all existing brands...")
+            # First delete city-brand relationships
+            db.execute("DELETE FROM city_brands")
+            db.commit()
+            # Then delete brands
             db.query(Brand).delete()
             db.commit()
-            logger.info("✅ All existing brands deleted")
+            logger.info("✅ All existing brands and relationships deleted")
             
             # STEP 2: GET ALL CITIES TO SYNC BRANDS FOR
             cities = db.query(City).all()
             logger.info(f"📋 Found {len(cities)} cities to sync brands for")
             
             processed_count = 0
-            all_brands = {}  # Track unique brands
+            all_brands = {}
+            city_brand_relationships = []
             
             # STEP 3: SYNC BRANDS FOR EACH CITY
             for city in cities:
@@ -227,20 +232,46 @@ class DataScraperService:
                                 db.add(brand)
                                 all_brands[contract_id] = brand
                                 logger.info(f"✅ Created brand: ID={contract_id}, {brand_title}")
-                            else:
-                                brand = all_brands[contract_id]
                             
-                            # Link brand to city (many-to-many)
-                            if city not in brand.cities:
-                                brand.cities.append(city)
-                                
+                            # Store city-brand relationship for bulk insert
+                            relationship = (city.id, contract_id)
+                            if relationship not in city_brand_relationships:
+                                city_brand_relationships.append(relationship)
+                            
                             processed_count += 1
                 
                 except Exception as e:
                     logger.error(f"❌ Error syncing brands for city {city.id}: {str(e)}")
                     continue
             
+            # Commit brands first
             db.commit()
+            
+            # STEP 4: Bulk insert city-brand relationships using raw SQL with IGNORE
+            if city_brand_relationships:
+                logger.info(f"🔗 Creating {len(city_brand_relationships)} city-brand relationships...")
+                
+                # Use raw SQL with INSERT OR IGNORE to handle duplicates
+                from sqlalchemy import text
+                insert_sql = text("""
+                    INSERT OR IGNORE INTO city_brands (city_id, brand_id, created_at) 
+                    VALUES (:city_id, :brand_id, :created_at)
+                """)
+                
+                # Prepare data for bulk insert
+                relationship_data = [
+                    {
+                        'city_id': city_id, 
+                        'brand_id': brand_id, 
+                        'created_at': datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S.%f')
+                    }
+                    for city_id, brand_id in city_brand_relationships
+                ]
+                
+                # Execute bulk insert
+                db.execute(insert_sql, relationship_data)
+                db.commit()
+                logger.info(f"✅ Created city-brand relationships successfully")
             
             # Update sync log
             sync_log.status = 'success'
@@ -248,7 +279,7 @@ class DataScraperService:
             sync_log.completed_at = datetime.utcnow()
             db.commit()
             
-            logger.info(f"🎉 Clean slate brands sync completed. Created {len(all_brands)} unique brands with {processed_count} city-brand links.")
+            logger.info(f"🎉 Clean slate brands sync completed. Created {len(all_brands)} unique brands with {len(city_brand_relationships)} city-brand links.")
             return len(all_brands)
             
         except Exception as e:

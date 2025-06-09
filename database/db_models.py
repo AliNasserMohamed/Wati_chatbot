@@ -21,6 +21,8 @@ class MessageType(enum.Enum):
     COMPLAINT = "Complaint"
     SUGGESTION = "Suggestion or Note"
     GREETING = "Greeting or Random Messages"
+    TEMPLATE_REPLY = "Template Reply"
+    OTHERS = "Others"
 
 class User(Base):
     __tablename__ = "users"
