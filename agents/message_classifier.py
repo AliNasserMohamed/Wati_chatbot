@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 import base64
 from utils.language_utils import language_handler
 from typing import Tuple
+import re
 
 # Configure APIs
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))  # Only for audio
@@ -70,6 +71,8 @@ class MessageClassifier:
         - ردود على رسائل النظام الآلية
         - اختيارات من قائمة أو أزرار
         - أرقام أو نصوص مختصرة كردود على خيارات
+        - رسائل الرضا والشكر مثل "راضي تماماً"، "شكراً"، "ممتاز"
+        - ردود تقييم الخدمة أو التأكيد
 
         مهم جداً:
         1. "تحية" فقط للتحيات المباشرة الواضحة
@@ -106,8 +109,9 @@ class MessageClassifier:
 2. إذا كانت الرسالة الأخيرة غير مترابطة مع المحادثة (موضوع جديد تماماً)، صنفها بناءً على محتواها المستقل
 3. إذا كانت رداً على رسالة قالب أو تفاعلية من البوت، صنفها كـ "رد على قالب"
 4. ابحث عن مؤشرات الردود على القوالب: أرقام منفردة، كلمات مختصرة، اختيارات من قائمة
-5. الرسائل العامة أو غير المحددة تصنف كـ "أخرى"
-6. "تحية" فقط للتحيات المباشرة الواضحة
+5. رسائل الرضا والشكر مثل "راضي تماماً"، "شكراً"، "ممتاز" تعتبر "رد على قالب"
+6. الرسائل العامة أو غير المحددة تصنف كـ "أخرى"
+7. "تحية" فقط للتحيات المباشرة الواضحة
 
 صنف الرسالة الأخيرة من المستخدم:"""
             
@@ -191,6 +195,42 @@ class MessageClassifier:
             print(f"❌ Error processing classification '{classification}': {str(e)}")
             user_message.message_type = None
             return None, language
+
+    async def is_message_unclear(self, text: str, conversation_history: list = None) -> bool:
+        """Check if a message is unclear or ambiguous and needs clarification"""
+        
+        # Define patterns for unclear messages
+        unclear_patterns = [
+            # Very short unclear messages
+            r'^[a-zA-Z\u0600-\u06FF]{1,3}$',  # 1-3 characters only
+            # Common unclear phrases
+            r'ايش|وش|ايه|ماذا|كيف|متى|وين',  # Question words without context
+            # Vague requests
+            r'بدي|عايز|أريد$',  # "I want" without specifying what
+        ]
+        
+        # Check for unclear patterns
+        for pattern in unclear_patterns:
+            if re.search(pattern, text, re.IGNORECASE):
+                # If it's very short or vague, consider it unclear
+                if len(text.strip()) < 10:  # Very short messages
+                    return True
+        
+        # Check context - if there's no clear conversation context and message is vague
+        if not conversation_history or len(conversation_history) == 0:
+            # Standalone vague messages
+            vague_standalone = [
+                r'^(ايش|وش|ايه|ماذا|كيف|متى|وين)\s*\?*$',
+                r'^(بدي|عايز|أريد)\s*$',
+                r'^(نعم|لا|موافق|طيب)\s*$',  # Yes/No without context
+                r'^[0-9]+\s*$'  # Just numbers without context
+            ]
+            
+            for pattern in vague_standalone:
+                if re.search(pattern, text, re.IGNORECASE):
+                    return True
+        
+        return False
 
     def get_default_response(self, message_type: MessageType, language: str) -> str:
         """Get default response based on message type and language."""

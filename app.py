@@ -224,6 +224,11 @@ async def process_message_async(data, phone_number, message_type, wati_message_i
         
         print(f"🧠 Message classified as: {classified_message_type} in language: {detected_language}")
         
+        # Check if message is unclear/ambiguous
+        is_unclear = await message_classifier.is_message_unclear(message_text, conversation_history)
+        if is_unclear:
+            print(f"🤔 Message detected as unclear/ambiguous")
+        
         # Store the detected language in session context
         context = json.loads(session.context) if session.context else {}
         context['language'] = detected_language
@@ -235,17 +240,30 @@ async def process_message_async(data, phone_number, message_type, wati_message_i
         if is_test_user:
             # TEST USERS GET FULL BOT FUNCTIONALITY - ALL MESSAGES GO THROUGH LLM
             print(f"🧪 Test user - Processing ALL messages with query agent")
-            response_text = await query_agent.process_query(
-                user_message=message_text,
-                conversation_history=conversation_history,
-                user_language=detected_language
-            )
+            
+            if is_unclear:
+                # For test users, ask for clarification when message is unclear
+                if detected_language == 'ar':
+                    response_text = "عذراً، لم أفهم طلبك بوضوح. ممكن توضح أكثر؟ مثلاً: هل تريد معرفة المدن المتاحة، أسعار التوصيل، أو تريد طلب مياه؟"
+                else:
+                    response_text = "Sorry, I didn't understand your request clearly. Could you please clarify? For example: Do you want to know available cities, delivery prices, or place a water order?"
+            else:
+                response_text = await query_agent.process_query(
+                    user_message=message_text,
+                    conversation_history=conversation_history,
+                    user_language=detected_language
+                )
         else:
-            # REGULAR USERS - STILL USE LLM FOR GREETINGS/SUGGESTIONS, TEAM RESPONSES FOR OTHERS
+            # REGULAR USERS - LIMITED FUNCTIONALITY
             print(f"👤 Regular user - Limited functionality")
             
-            if classified_message_type == MessageType.GREETING or classified_message_type == MessageType.SUGGESTION or classified_message_type == MessageType.OTHERS:
-                # Greetings, suggestions, and general messages (OTHERS) go through LLM for natural responses
+            if is_unclear:
+                # For regular users, don't reply to unclear messages
+                print(f"🔇 Regular user with unclear message - Not replying as requested")
+                return  # Exit without sending any response
+            
+            if classified_message_type == MessageType.GREETING or classified_message_type == MessageType.SUGGESTION:
+                # Greetings and suggestions go through LLM for natural responses
                 response_text = await query_agent.process_query(
                     user_message=message_text,
                     conversation_history=conversation_history,
