@@ -405,8 +405,83 @@ async def test_wati_template_detection():
     
     print(f"\n📊 WATI template detection test completed!")
 
+async def test_allowed_user_filtering():
+    """Test that only allowed users get processed"""
+    
+    print(f"\n🧪 Testing Allowed User Filtering")
+    print("=" * 60)
+    
+    # Define allowed numbers (same as in app.py)
+    allowed_numbers = [
+        "201142765209",
+        "966138686475",
+        "966505281144"
+    ]
+    
+    test_cases = [
+        {
+            "phone": "201142765209",
+            "normalized": "201142765209",
+            "should_be_allowed": True,
+            "description": "Test user 1"
+        },
+        {
+            "phone": "966138686475",
+            "normalized": "966138686475", 
+            "should_be_allowed": True,
+            "description": "Test user 2"
+        },
+        {
+            "phone": "966505281144",
+            "normalized": "966505281144",
+            "should_be_allowed": True,
+            "description": "Test user 3"
+        },
+        {
+            "phone": "966501234567",
+            "normalized": "966501234567",
+            "should_be_allowed": False,
+            "description": "Random user 1"
+        },
+        {
+            "phone": "201234567890",
+            "normalized": "201234567890",
+            "should_be_allowed": False,
+            "description": "Random user 2"
+        },
+        {
+            "phone": "+966 50 123 4567",
+            "normalized": "966501234567",
+            "should_be_allowed": False,
+            "description": "Random user 3 (with formatting)"
+        }
+    ]
+    
+    print("Testing allowed user filtering logic:")
+    
+    for i, case in enumerate(test_cases, 1):
+        print(f"\n{i}. Testing: {case['phone']}")
+        print(f"   Description: {case['description']}")
+        print(f"   Should be allowed: {case['should_be_allowed']}")
+        
+        # Apply the same normalization logic as in app.py
+        normalized_phone = "".join(char for char in str(case['phone']) if char.isdigit())
+        print(f"   Normalized: {normalized_phone}")
+        
+        # Check if allowed
+        is_allowed = normalized_phone in allowed_numbers
+        print(f"   🤖 Is allowed: {is_allowed}")
+        
+        if is_allowed == case['should_be_allowed']:
+            print(f"   ✅ CORRECT filtering!")
+        else:
+            print(f"   ❌ INCORRECT! Expected: {case['should_be_allowed']}, Got: {is_allowed}")
+    
+    print(f"\n📊 Allowed user filtering test completed!")
+
 if __name__ == "__main__":
     asyncio.run(test_enhanced_classification())
     asyncio.run(test_template_reply_detection())
     asyncio.run(test_unclear_message_detection())
-    asyncio.run(test_wati_template_detection()) 
+    asyncio.run(test_wati_template_detection())
+    asyncio.run(test_allowed_user_filtering()) 

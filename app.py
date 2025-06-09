@@ -147,11 +147,20 @@ async def process_message_async(data, phone_number, message_type, wati_message_i
         allowed_numbers = [
             "201142765209",
             "966138686475",  # 966 13 868 6475 (spaces removed)
-            "966505281144"
+            "966505281144",  
+            "966541794866"          
         ]
         
         # Normalize phone number by removing spaces and special characters
         normalized_phone = "".join(char for char in str(phone_number) if char.isdigit())
+        
+        # Check if user is allowed to use the bot at all
+        if normalized_phone not in allowed_numbers:
+            print(f"🚫 Non-allowed user detected: {phone_number} - Ignoring message entirely")
+            return  # Exit without any processing or response
+        
+        # User is allowed, now determine if they are a test user (for now all allowed users are test users)
+        is_allowed_user = normalized_phone in allowed_numbers
         is_test_user = normalized_phone in allowed_numbers
         
         if is_test_user:
