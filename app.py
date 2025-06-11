@@ -148,7 +148,8 @@ async def process_message_async(data, phone_number, message_type, wati_message_i
             "201142765209",
             "966138686475",  # 966 13 868 6475 (spaces removed)
             "966505281144",  
-            "966541794866"          
+            "966541794866",
+            "201003754330"      
         ]
         
         # Normalize phone number by removing spaces and special characters
@@ -237,7 +238,7 @@ async def process_message_async(data, phone_number, message_type, wati_message_i
             wati_message_id=wati_message_id
         )
 
-        # Check if we already replied to this message (prevent double replies)
+        # Check if we already replied to this mesFsage (prevent double replies)
         existing_reply = db.query(BotReply).filter_by(message_id=user_message.id).first()
         if existing_reply:
             print(f"🔄 Already replied to message {user_message.id}. Skipping to prevent double reply.")
