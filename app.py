@@ -262,13 +262,24 @@ async def process_message_async(data, phone_number, message_type, wati_message_i
         response_text = None
         
         if classified_message_type == MessageType.GREETING:
-            # Send greetings to LLM for natural response
-            print(f"👋 Sending GREETING to query agent")
-            response_text = await query_agent.process_query(
-                user_message=message_text,
-                conversation_history=conversation_history,
-                user_language=detected_language
-            )
+            # Send greetings directly to LLM for natural response
+            print(f"👋 Sending GREETING directly to LLM")
+            
+            # Build a simple greeting prompt
+            if detected_language == 'ar':
+                greeting_prompt = f"""أنت مساعد ذكي لشركة أبار لتوصيل المياه في السعودية.
+رد على التحية التالية بطريقة ودودة ومهنية،:
+
+رسالة العميل: {message_text}
+"""
+            else:
+                greeting_prompt = f"""You are a smart assistant for Abar Water Delivery Company in Saudi Arabia.
+Respond to the following greeting in a friendly and professional way, mentioning that you help with water delivery services:
+
+Customer message: {message_text}
+"""
+            
+            response_text = await language_handler.process_with_openai(greeting_prompt)
             
         elif classified_message_type == MessageType.COMPLAINT:
             # Handle complaints with default response
@@ -276,13 +287,22 @@ async def process_message_async(data, phone_number, message_type, wati_message_i
             response_text = message_classifier.get_default_response(classified_message_type, detected_language)
             
         elif classified_message_type == MessageType.THANKING:
-            # Send thanking to LLM for natural response
-            print(f"🙏 Sending THANKING to query agent")
-            response_text = await query_agent.process_query(
-                user_message=message_text,
-                conversation_history=conversation_history,
-                user_language=detected_language
-            )
+            # Send thanking directly to LLM for natural response
+            print(f"🙏 Sending THANKING directly to LLM")
+            
+            # Build a simple thanking response prompt
+            if detected_language == 'ar':
+                thanking_prompt = f"""أنت مساعد ذكي لشركة أبار لتوصيل المياه في السعودية.
+رد على رسالة الشكر التالية بطريقة ودودة ومهنية:
+
+رسالة العميل: {message_text}"""
+            else:
+                thanking_prompt = f"""You are a smart assistant for Abar Water Delivery Company in Saudi Arabia.
+Respond to the following thank you message in a friendly and professional way:
+
+Customer message: {message_text}"""
+            
+            response_text = await language_handler.process_with_openai(thanking_prompt)
             
         elif classified_message_type == MessageType.SUGGESTION:
             # Handle suggestions with default response
@@ -330,10 +350,38 @@ async def process_message_async(data, phone_number, message_type, wati_message_i
             print(f"🔇 No response generated - skipping message sending")
             return
         
-        # Check for duplicate bot messages
-        if DatabaseManager.check_duplicate_bot_message(db, user.id, response_text):
-            print(f"🔄 Preventing duplicate bot message - not sending response")
-            return
+        # Check for duplicate bot messages and reformulate if needed
+        duplicate_check = DatabaseManager.check_duplicate_bot_message(db, user.id, response_text)
+        
+        if duplicate_check.get("should_reformulate", False):
+            print(f"🔄 Reformulating response due to {duplicate_check.get('reason', 'unknown')} duplicate")
+            
+            # Create reformulation prompt based on language
+            if detected_language == 'ar':
+                reformulation_prompt = f"""أنت مساعد ذكي لشركة أبار لتوصيل المياه في السعودية.
+لديك الرد التالي لكنه مشابه جداً لرد سابق، أعد صياغته بطريقة مختلفة لكن بنفس المعنى:
+
+الرد الأصلي: {response_text}
+
+أعد كتابة الرد بطريقة مختلفة، مع الحفاظ على نفس المعنى والمعلومات المفيدة. اجعله طبيعي ومفيد."""
+            else:
+                reformulation_prompt = f"""You are a smart assistant for Abar Water Delivery Company in Saudi Arabia.
+You have the following response but it's very similar to a previous response, reformulate it differently but with the same meaning:
+
+Original response: {response_text}
+
+Rewrite the response in a different way, keeping the same meaning and useful information. Make it natural and helpful."""
+            
+            # Try to reformulate the response
+            try:
+                reformulated_response = await language_handler.process_with_openai(reformulation_prompt)
+                if reformulated_response and reformulated_response.strip():
+                    response_text = reformulated_response
+                    print(f"✅ Response successfully reformulated")
+                else:
+                    print(f"⚠️ Reformulation failed, using original response")
+            except Exception as e:
+                print(f"❌ Error during reformulation: {str(e)}, using original response")
         
         # Clean up response text - remove "bot:" prefix if present
         if response_text and response_text.startswith("bot: "):

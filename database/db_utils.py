@@ -305,10 +305,10 @@ class DatabaseManager:
         return db.query(Brand).filter(Brand.external_id == external_id).first()
     
     @staticmethod
-    def check_duplicate_bot_message(db: Session, user_id: int, proposed_message: str, limit: int = 3) -> bool:
-        """Check if the bot is about to send a message similar to recent ones"""
+    def check_duplicate_bot_message(db: Session, user_id: int, proposed_message: str, limit: int = 5) -> Dict[str, Any]:
+        """Check if the bot is about to send a message similar to recent ones and return reformulation info"""
         try:
-            # Get recent bot replies
+            # Get recent bot replies (last 5 by default)
             recent_bot_replies = db.query(BotReply)\
                 .join(UserMessage)\
                 .filter(UserMessage.user_id == user_id)\
@@ -317,7 +317,7 @@ class DatabaseManager:
                 .all()
             
             if not recent_bot_replies:
-                return False
+                return {"is_duplicate": False, "should_reformulate": False}
             
             # Clean the proposed message for comparison
             proposed_clean = proposed_message.strip().lower()
@@ -329,8 +329,13 @@ class DatabaseManager:
                     
                     # Check for exact match
                     if proposed_clean == reply_clean:
-                        print(f"🔄 Duplicate message detected: '{proposed_message[:50]}...'")
-                        return True
+                        print(f"🔄 Exact duplicate message detected: '{proposed_message[:50]}...'")
+                        return {
+                            "is_duplicate": True, 
+                            "should_reformulate": True,
+                            "duplicate_content": reply.content,
+                            "reason": "exact_match"
+                        }
                     
                     # Check for very similar messages (>80% similarity)
                     if len(proposed_clean) > 10 and len(reply_clean) > 10:
@@ -344,10 +349,16 @@ class DatabaseManager:
                             
                             if similarity > 0.8:
                                 print(f"🔄 Similar message detected (similarity: {similarity:.2f}): '{proposed_message[:50]}...'")
-                                return True
+                                return {
+                                    "is_duplicate": True, 
+                                    "should_reformulate": True,
+                                    "duplicate_content": reply.content,
+                                    "similarity": similarity,
+                                    "reason": "high_similarity"
+                                }
             
-            return False
+            return {"is_duplicate": False, "should_reformulate": False}
             
         except Exception as e:
             print(f"Error checking duplicate bot message: {str(e)}")
-            return False 
+            return {"is_duplicate": False, "should_reformulate": False, "error": str(e)} 
