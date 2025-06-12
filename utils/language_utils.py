@@ -92,8 +92,18 @@ class LanguageHandler:
         """Process text with OpenAI using Saudi Arabic context."""
         try:
             messages = []
-            if system_prompt:
-                messages.append({"role": "system", "content": system_prompt})
+            
+            # Enhanced system prompt to ensure natural responses
+            if not system_prompt:
+                system_prompt = """أنت موظف خدمة عملاء في شركة أبار لتوصيل المياه في السعودية.
+
+قواعد مهمة:
+- رد بطريقة طبيعية تماماً مثل أي موظف حقيقي
+- لا تستخدم أبداً عبارات مثل "رد الذكاء الاصطناعي:" أو "رد المساعد:" أو "أنا ذكاء اصطناعي"
+- ابدأ الرد مباشرة بالمحتوى
+- كن ودود وطبيعي ومفيد"""
+            
+            messages.append({"role": "system", "content": system_prompt})
             messages.append({"role": "user", "content": prompt})
 
             response = await self.openai_client.chat.completions.create(
@@ -106,7 +116,25 @@ class LanguageHandler:
             if response and response.choices and len(response.choices) > 0:
                 content = response.choices[0].message.content
                 if content:
-                    return content.strip()
+                    # Clean any potential robotic prefixes
+                    cleaned_content = content.strip()
+                    
+                    # Remove common robotic prefixes if they appear
+                    prefixes_to_remove = [
+                        "رد الذكاء الاصطناعي:",
+                        "رد المساعد:",
+                        "الذكاء الاصطناعي:",
+                        "المساعد:",
+                        "AI response:",
+                        "Assistant:"
+                    ]
+                    
+                    for prefix in prefixes_to_remove:
+                        if cleaned_content.startswith(prefix):
+                            cleaned_content = cleaned_content[len(prefix):].strip()
+                            break
+                    
+                    return cleaned_content
             
             print("OpenAI response was empty or invalid")
             return None

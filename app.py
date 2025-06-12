@@ -11,6 +11,8 @@ import uuid
 from datetime import datetime
 import aiohttp
 import urllib.parse
+import asyncio
+import time
 
 # Load environment variables from .env
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -119,15 +121,88 @@ async def webhook(request: Request, db=Depends(get_db)):
         # IMMEDIATE RESPONSE: Send quick response to Wati to prevent duplicate notifications
         immediate_response = {"status": "success", "message": "Processing"}
         
-        # Process the message asynchronously with a new database session
-        import asyncio
-        asyncio.create_task(process_message_async(data, phone_number, message_type, wati_message_id))
+        # Add message to batch instead of processing immediately
+        await add_message_to_batch(phone_number, data)
         
         return immediate_response
 
     except Exception as e:
         print(f"[Webhook ERROR] {str(e)}")
         return {"status": "error", "message": str(e)}
+
+# User message batching storage
+user_message_batches = {}  # Store pending messages for each user
+batch_timers = {}  # Store timers for each user
+
+async def add_message_to_batch(phone_number: str, message_data: dict):
+    """Add a message to user's batch and set/reset timer"""
+    current_time = time.time()
+    
+    # Initialize batch for new user
+    if phone_number not in user_message_batches:
+        user_message_batches[phone_number] = []
+    
+    # Add message to batch
+    user_message_batches[phone_number].append({
+        'data': message_data,
+        'timestamp': current_time,
+        'text': message_data.get('text', '')
+    })
+    
+    # Cancel existing timer if any
+    if phone_number in batch_timers:
+        batch_timers[phone_number].cancel()
+    
+    # Set new timer to process batch after 3 seconds of inactivity
+    async def process_batch_delayed():
+        await asyncio.sleep(3)  # Wait 3 seconds for more messages
+        await process_user_batch(phone_number)
+    
+    batch_timers[phone_number] = asyncio.create_task(process_batch_delayed())
+    print(f"📦 Added message to batch for {phone_number}. Batch size: {len(user_message_batches[phone_number])}")
+
+async def process_user_batch(phone_number: str):
+    """Process all messages in user's batch as one conversation"""
+    if phone_number not in user_message_batches or not user_message_batches[phone_number]:
+        return
+    
+    batch = user_message_batches[phone_number]
+    print(f"🔄 Processing batch of {len(batch)} messages for {phone_number}")
+    
+    # Clear the batch and timer
+    user_message_batches[phone_number] = []
+    if phone_number in batch_timers:
+        del batch_timers[phone_number]
+    
+    # Combine all messages into one conversation
+    combined_messages = []
+    wati_message_ids = []
+    
+    for msg_item in batch:
+        combined_messages.append(msg_item['text'])
+        if msg_item['data'].get('id'):
+            wati_message_ids.append(msg_item['data']['id'])
+    
+    # Create combined message text
+    if len(combined_messages) == 1:
+        combined_text = combined_messages[0]
+    else:
+        combined_text = "\n".join([f"رسالة {i+1}: {msg}" for i, msg in enumerate(combined_messages)])
+    
+    # Use the first message data as base
+    first_message_data = batch[0]['data']
+    first_message_data['text'] = combined_text
+    first_message_data['is_batch'] = True
+    first_message_data['batch_size'] = len(batch)
+    first_message_data['batch_message_ids'] = wati_message_ids
+    
+    # Process the combined message
+    await process_message_async(
+        first_message_data, 
+        phone_number, 
+        first_message_data.get('type', 'text'),
+        f"batch_{phone_number}_{int(time.time())}"
+    )
 
 async def process_message_async(data, phone_number, message_type, wati_message_id):
     """Process the message asynchronously after responding to Wati"""
@@ -138,8 +213,15 @@ async def process_message_async(data, phone_number, message_type, wati_message_i
     try:
         print(f"🔄 Starting async processing for message {wati_message_id} from {phone_number}")
         
+        # Check if this is a batch message
+        is_batch = data.get('is_batch', False)
+        batch_size = data.get('batch_size', 1)
+        
+        if is_batch:
+            print(f"📦 Processing combined batch of {batch_size} messages from {phone_number}")
+        
         # Double-check for duplicate message processing with fresh session
-        if wati_message_id and DatabaseManager.check_message_already_processed(db, wati_message_id):
+        if wati_message_id and not wati_message_id.startswith('batch_') and DatabaseManager.check_message_already_processed(db, wati_message_id):
             print(f"🔄 Duplicate message detected during async processing with ID: {wati_message_id}. Skipping.")
             return
         
@@ -267,17 +349,27 @@ async def process_message_async(data, phone_number, message_type, wati_message_i
             
             # Build a simple greeting prompt
             if detected_language == 'ar':
-                greeting_prompt = f"""أنت مساعد ذكي لشركة أبار لتوصيل المياه في السعودية.
-رد على التحية التالية بطريقة ودودة ومهنية،:
+                greeting_prompt = f"""أنت موظف خدمة عملاء في شركة أبار لتوصيل المياه في السعودية.
+رد على التحية التالية بطريقة طبيعية وودودة تماماً كما يرد أي موظف خدمة عملاء حقيقي:
 
 رسالة العميل: {message_text}
-"""
+
+ملاحظات مهمة:
+- رد بطريقة طبيعية وإنسانية تماماً 
+- لا تستخدم عبارات مثل "رد الذكاء الاصطناعي" أو "رد المساعد"
+- اجعل الرد قصير وودود
+- يمكنك أن تسأل كيف يمكنك مساعدته اليوم"""
             else:
-                greeting_prompt = f"""You are a smart assistant for Abar Water Delivery Company in Saudi Arabia.
-Respond to the following greeting in a friendly and professional way, mentioning that you help with water delivery services:
+                greeting_prompt = f"""You are a customer service employee at Abar Water Delivery Company in Saudi Arabia.
+Respond to the following greeting in a natural and friendly way, exactly like a real customer service employee would:
 
 Customer message: {message_text}
-"""
+
+Important notes:
+- Respond naturally and humanly
+- Don't use phrases like "AI response" or "Assistant reply"  
+- Keep the response short and friendly
+- You can ask how you can help them today"""
             
             response_text = await language_handler.process_with_openai(greeting_prompt)
             
@@ -292,15 +384,27 @@ Customer message: {message_text}
             
             # Build a simple thanking response prompt
             if detected_language == 'ar':
-                thanking_prompt = f"""أنت مساعد ذكي لشركة أبار لتوصيل المياه في السعودية.
-رد على رسالة الشكر التالية بطريقة ودودة ومهنية:
+                thanking_prompt = f"""أنت موظف خدمة عملاء في شركة أبار لتوصيل المياه في السعودية.
+رد على رسالة الشكر التالية بطريقة طبيعية وودودة تماماً كما يرد أي موظف خدمة عملاء حقيقي:
 
-رسالة العميل: {message_text}"""
+رسالة العميل: {message_text}
+
+ملاحظات مهمة:
+- رد بطريقة طبيعية وإنسانية تماماً
+- لا تستخدم عبارات مثل "رد الذكاء الاصطناعي" أو "رد المساعد"
+- اجعل الرد قصير ومناسب
+- يمكنك أن تسأل إذا كان يحتاج أي مساعدة أخرى"""
             else:
-                thanking_prompt = f"""You are a smart assistant for Abar Water Delivery Company in Saudi Arabia.
-Respond to the following thank you message in a friendly and professional way:
+                thanking_prompt = f"""You are a customer service employee at Abar Water Delivery Company in Saudi Arabia.
+Respond to the following thank you message in a natural and friendly way, exactly like a real customer service employee would:
 
-Customer message: {message_text}"""
+Customer message: {message_text}
+
+Important notes:
+- Respond naturally and humanly  
+- Don't use phrases like "AI response" or "Assistant reply"
+- Keep the response short and appropriate
+- You can ask if they need any other assistance"""
             
             response_text = await language_handler.process_with_openai(thanking_prompt)
             
