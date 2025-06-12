@@ -12,7 +12,32 @@ os.makedirs("database/data", exist_ok=True)
 
 # Database connection
 DATABASE_URL = "sqlite:///database/data/chatbot.sqlite"
-engine = create_engine(DATABASE_URL)
+
+# Configure SQLite for better concurrency
+engine = create_engine(
+    DATABASE_URL, 
+    pool_pre_ping=True,
+    pool_recycle=300,
+    connect_args={
+        "check_same_thread": False,
+        "isolation_level": None  # Enable autocommit mode for better concurrency
+    },
+    echo=False  # Set to True for SQL debugging
+)
+
+# Enable WAL mode for better concurrent access
+from sqlalchemy import event
+@event.listens_for(engine, "connect")
+def set_sqlite_pragma(dbapi_connection, connection_record):
+    """Configure SQLite for better concurrency"""
+    cursor = dbapi_connection.cursor()
+    # Enable WAL mode for better concurrent reads/writes
+    cursor.execute("PRAGMA journal_mode=WAL")
+    # Reduce lock timeout
+    cursor.execute("PRAGMA busy_timeout=30000")  # 30 seconds
+    # Optimize for concurrency
+    cursor.execute("PRAGMA synchronous=NORMAL")
+    cursor.close()
 
 # Create all tables
 Base.metadata.create_all(engine)

@@ -149,7 +149,9 @@ async def process_message_async(data, phone_number, message_type, wati_message_i
             "966138686475",  # 966 13 868 6475 (spaces removed)
             "966505281144",  
             "966541794866",
-            "201003754330"      
+            "201003754330",
+            "201064838829"
+                
         ]
         
         # Normalize phone number by removing spaces and special characters

@@ -12,7 +12,7 @@ import re
 
 # Configure APIs
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))  # Only for audio
-openai_client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+openai_client = openai.AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))  # Changed to AsyncOpenAI
 
 class MessageClassifier:
     def __init__(self):
