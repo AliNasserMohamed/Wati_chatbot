@@ -808,16 +808,153 @@ async def search_knowledge(query: str, n_results: int = 3):
         print(f"[Knowledge Search ERROR] {str(e)}")
         return {"status": "error", "message": str(e)}
 
-# Initialize knowledge base with default data
 @app.post("/knowledge/populate")
 async def populate_knowledge():
-    """Populate the knowledge base with default data"""
+    """
+    Populate the knowledge base with default Abar-specific QA pairs
+    """
     try:
         ids = knowledge_manager.populate_abar_knowledge()
-        return {"status": "success", "count": len(ids), "ids": ids}
+        return {
+            "status": "success", 
+            "message": f"Successfully populated knowledge base with {len(ids)} QA pairs",
+            "ids": ids
+        }
     except Exception as e:
-        print(f"[Knowledge Populate ERROR] {str(e)}")
-        return {"status": "error", "message": str(e)}
+        print(f"Error populating knowledge: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/knowledge/admin", response_class=HTMLResponse)
+async def knowledge_admin_page(request: Request):
+    """
+    Serve the knowledge base admin interface
+    """
+    return templates.TemplateResponse("knowledge_admin.html", {"request": request})
+
+@app.get("/knowledge/list")
+async def list_knowledge():
+    """
+    List all Q&A pairs in the knowledge base
+    """
+    try:
+        # Get all items from the vector database
+        from vectorstore.chroma_db import chroma_manager
+        
+        # Query with a broad search to get all items
+        results = chroma_manager.collection.get()
+        
+        items = []
+        if results and results.get("documents"):
+            for i, doc in enumerate(results["documents"]):
+                metadata = results["metadatas"][i] if results.get("metadatas") else {}
+                item_id = results["ids"][i] if results.get("ids") else str(i)
+                
+                # Skip question documents, only show answers
+                if metadata.get("type") == "question":
+                    continue
+                    
+                # Try to find the corresponding question
+                question = "سؤال غير متوفر"
+                question_id = f"q_{item_id}"
+                try:
+                    question_results = chroma_manager.collection.get(ids=[question_id])
+                    if question_results and question_results.get("documents"):
+                        question = question_results["documents"][0]
+                except:
+                    pass
+                
+                items.append({
+                    "id": item_id,
+                    "question": question,
+                    "answer": doc,
+                    "metadata": metadata
+                })
+        
+        return {
+            "status": "success",
+            "items": items,
+            "total": len(items)
+        }
+    except Exception as e:
+        print(f"Error listing knowledge: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.put("/knowledge/update")
+async def update_knowledge(request: Request):
+    """
+    Update an existing Q&A pair
+    """
+    try:
+        data = await request.json()
+        qa_id = data.get("id")
+        question = data.get("question")
+        answer = data.get("answer")
+        metadata = data.get("metadata", {})
+        
+        if not qa_id or not question or not answer:
+            raise HTTPException(status_code=400, detail="Missing required fields")
+        
+        from vectorstore.chroma_db import chroma_manager
+        
+        # Update the answer document
+        chroma_manager.collection.update(
+            ids=[qa_id],
+            documents=[answer],
+            metadatas=[metadata]
+        )
+        
+        # Update the question document
+        question_id = f"q_{qa_id}"
+        question_metadata = {"answer_id": qa_id, "type": "question", **metadata}
+        try:
+            chroma_manager.collection.update(
+                ids=[question_id],
+                documents=[question],
+                metadatas=[question_metadata]
+            )
+        except:
+            # If question doesn't exist, create it
+            chroma_manager.collection.add(
+                ids=[question_id],
+                documents=[question],
+                metadatas=[question_metadata]
+            )
+        
+        return {
+            "status": "success",
+            "message": "Q&A pair updated successfully",
+            "id": qa_id
+        }
+    except Exception as e:
+        print(f"Error updating knowledge: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/knowledge/delete/{qa_id}")
+async def delete_knowledge(qa_id: str):
+    """
+    Delete a Q&A pair from the knowledge base
+    """
+    try:
+        from vectorstore.chroma_db import chroma_manager
+        
+        # Delete the answer document
+        chroma_manager.collection.delete(ids=[qa_id])
+        
+        # Delete the question document
+        question_id = f"q_{qa_id}"
+        try:
+            chroma_manager.collection.delete(ids=[question_id])
+        except:
+            pass  # Question might not exist
+        
+        return {
+            "status": "success",
+            "message": "Q&A pair deleted successfully",
+            "id": qa_id
+        }
+    except Exception as e:
+        print(f"Error deleting knowledge: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 # User management endpoints
 @app.post("/user/update-conclusion")

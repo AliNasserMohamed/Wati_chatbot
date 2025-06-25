@@ -141,7 +141,16 @@ class QueryAgent:
             db = self._get_db_session()
             try:
                 cities = data_api.get_all_cities(db)
-                return {"success": True, "data": cities}
+                # Filter to return only city ID, Arabic name, and English name
+                filtered_cities = [
+                    {
+                        "id": city["id"],
+                        "name": city["name"],        # Arabic name
+                        "name_en": city["name_en"]   # English name
+                    }
+                    for city in cities
+                ]
+                return {"success": True, "data": filtered_cities}
             finally:
                 db.close()
         except Exception as e:
@@ -202,7 +211,15 @@ class QueryAgent:
             db = self._get_db_session()
             try:
                 brands = data_api.get_brands_by_city(db, city_id)
-                return {"success": True, "data": brands}
+                # Filter to return only brand ID and brand name
+                filtered_brands = [
+                    {
+                        "id": brand["id"],           # Brand ID
+                        "title": brand["title"]     # Brand name
+                    }
+                    for brand in brands
+                ]
+                return {"success": True, "data": filtered_brands}
             finally:
                 db.close()
         except Exception as e:
@@ -215,7 +232,16 @@ class QueryAgent:
             db = self._get_db_session()
             try:
                 products = data_api.get_products_by_brand(db, brand_id)
-                return {"success": True, "data": products}
+                # Filter to return only product name, price, and amount
+                filtered_products = [
+                    {
+                        "product_title": product["product_title"],         # Product name
+                        "product_contract_price": product["product_contract_price"],  # Price
+                        "product_packing": product["product_packing"]      # Amount
+                    }
+                    for product in products
+                ]
+                return {"success": True, "data": filtered_products}
             finally:
                 db.close()
         except Exception as e:
@@ -228,7 +254,16 @@ class QueryAgent:
             db = self._get_db_session()
             try:
                 cities = data_api.search_cities(db, query)
-                return {"success": True, "data": cities}
+                # Filter to return only city ID, Arabic name, and English name
+                filtered_cities = [
+                    {
+                        "id": city["id"],
+                        "name": city["name"],        # Arabic name
+                        "name_en": city["name_en"]   # English name
+                    }
+                    for city in cities
+                ]
+                return {"success": True, "data": filtered_cities}
             finally:
                 db.close()
         except Exception as e:
@@ -241,7 +276,16 @@ class QueryAgent:
             db = self._get_db_session()
             try:
                 products = data_api.search_products(db, query)
-                return {"success": True, "data": products}
+                # Filter to return only product name, price, and amount
+                filtered_products = [
+                    {
+                        "product_title": product["product_title"],         # Product name
+                        "product_contract_price": product["product_contract_price"],  # Price
+                        "product_packing": product["product_packing"]      # Amount
+                    }
+                    for product in products
+                ]
+                return {"success": True, "data": filtered_products}
             finally:
                 db.close()
         except Exception as e:
