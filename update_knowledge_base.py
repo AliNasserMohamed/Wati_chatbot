@@ -56,7 +56,7 @@ def add_new_qa_pairs():
         "وياك الله يسعدك",
         "",  # No reply needed for "أوكي تمام"
         "",  # No reply needed for "تفضل"
-        "مابينسمح مافهمت العياره"
+        " مافهمت العباره"
     ]
     
     # Metadata for each Q&A pair

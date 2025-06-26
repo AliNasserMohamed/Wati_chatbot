@@ -406,6 +406,7 @@ async def process_message_async(data, phone_number, message_type, wati_message_i
             # Found a good match in knowledge base - use it directly
             response_text = embedding_result['response']
             detected_language = temp_language
+            classified_message_type = MessageType.OTHERS  # Use existing enum value
             
             print(f"✅ Using embedding agent response: '{response_text[:50]}...'")
             print(f"📝 Matched question: '{embedding_result['matched_question'][:50]}...'")

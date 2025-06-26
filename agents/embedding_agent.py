@@ -98,7 +98,7 @@ class EmbeddingAgent:
         
         # Ask ChatGPT to evaluate if the response is appropriate
         evaluation_result = await self._evaluate_response_with_chatgpt(
-            user_message, matched_document, matched_answer, user_language
+            user_message, matched_document, matched_answer, user_language, conversation_history
         )
         
         print(f"🤖 EmbeddingAgent: ChatGPT evaluation: {evaluation_result}")
@@ -126,10 +126,27 @@ class EmbeddingAgent:
             }
     
     async def _evaluate_response_with_chatgpt(self, user_message: str, matched_question: str, 
-                                            matched_answer: str, language: str) -> Dict[str, Any]:
+                                            matched_answer: str, language: str, conversation_history: list = None) -> Dict[str, Any]:
         """
         Ask ChatGPT to evaluate if the response is good and appropriate
         """
+        
+        # Format conversation history for context
+        conversation_context = ""
+        if conversation_history:
+            # Get the latest 3 messages for context
+            recent_messages = conversation_history[-3:] if len(conversation_history) >= 3 else conversation_history
+            
+            if language == 'ar':
+                conversation_context = "\n\nسياق المحادثة (آخر 3 رسائل):\n"
+                for i, msg in enumerate(recent_messages, 1):
+                    role = "العميل" if msg.get('role') == 'user' else "الوكيل"
+                    conversation_context += f"{i}. {role}: {msg.get('content', '')}\n"
+            else:
+                conversation_context = "\n\nConversation context (last 3 messages):\n"
+                for i, msg in enumerate(recent_messages, 1):
+                    role = "Customer" if msg.get('role') == 'user' else "Agent"
+                    conversation_context += f"{i}. {role}: {msg.get('content', '')}\n"
         
         if language == 'ar':
             evaluation_prompt = f"""أنت مقيم ذكي لجودة الردود في خدمة العملاء لشركة أبار لتوصيل المياه.
@@ -138,12 +155,13 @@ class EmbeddingAgent:
 1. رسالة العميل الحالية
 2. سؤال مشابه من قاعدة البيانات
 3. الرد المحفوظ في قاعدة البيانات
+4. سياق المحادثة للرسائل السابقة{conversation_context}
 
-مهمتك تقييم ما إذا كان الرد المحفوظ مناسب للرسالة الحالية أم لا.
-
-رسالة العميل: "{user_message}"
+رسالة العميل الحالية: "{user_message}"
 السؤال المشابه من قاعدة البيانات: "{matched_question}"
 الرد المحفوظ: "{matched_answer}"
+
+مهمتك تقييم ما إذا كان الرد المحفوظ مناسب للرسالة الحالية أم لا، مع مراعاة سياق المحادثة.
 
 قم بالتقييم واختر إحدى الخيارات التالية:
 
@@ -159,12 +177,13 @@ I will give you:
 1. Current customer message
 2. Similar question from database
 3. Stored response from database
+4. Conversation context from previous messages{conversation_context}
 
-Your task is to evaluate whether the stored response is appropriate for the current message.
-
-Customer message: "{user_message}"
+Current customer message: "{user_message}"
 Similar question from database: "{matched_question}"
 Stored response: "{matched_answer}"
+
+Your task is to evaluate whether the stored response is appropriate for the current message, considering the conversation context.
 
 Evaluate and choose one of the following options:
 
