@@ -1,7 +1,10 @@
 import os
 from fastapi import FastAPI, Request, Depends, HTTPException, Header, Query
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
+from starlette.middleware.sessions import SessionMiddleware
+from starlette.responses import Response
 from typing import Optional, List
 from dotenv import load_dotenv
 import uvicorn
@@ -55,8 +58,64 @@ app = FastAPI(
     version="1.0.0"
 )
 
+# Add session middleware for login functionality
+app.add_middleware(SessionMiddleware, secret_key="abar-secret-key-2024")
+
 # Set up templates directory
 templates = Jinja2Templates(directory="templates")
+
+# Login credentials (in production, use environment variables)
+ADMIN_USERNAME = "admin"
+ADMIN_PASSWORD = "abar2024"
+
+# Authentication helper functions
+def check_authentication(request: Request) -> bool:
+    """Check if user is authenticated"""
+    return request.session.get("authenticated", False)
+
+def require_authentication(request: Request):
+    """Require authentication for protected routes"""
+    if not check_authentication(request):
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+# Login routes
+@app.get("/", response_class=HTMLResponse)
+async def root(request: Request):
+    """Root route - redirect to appropriate page based on authentication"""
+    if check_authentication(request):
+        return RedirectResponse(url="/knowledge/admin", status_code=302)
+    else:
+        return RedirectResponse(url="/login", status_code=302)
+
+@app.get("/login", response_class=HTMLResponse)
+async def login_page(request: Request):
+    """Display login page"""
+    # If already authenticated, redirect to admin panel
+    if check_authentication(request):
+        return RedirectResponse(url="/knowledge/admin", status_code=302)
+    return templates.TemplateResponse("login.html", {"request": request})
+
+@app.post("/login")
+async def login(request: Request):
+    """Handle login form submission"""
+    form = await request.form()
+    username = form.get("username")
+    password = form.get("password")
+    
+    if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
+        request.session["authenticated"] = True
+        return RedirectResponse(url="/knowledge/admin", status_code=302)
+    else:
+        return templates.TemplateResponse("login.html", {
+            "request": request,
+            "error": "اسم المستخدم أو كلمة المرور غير صحيحة"
+        })
+
+@app.get("/logout")
+async def logout(request: Request):
+    """Handle logout"""
+    request.session.clear()
+    return RedirectResponse(url="/login", status_code=302)
 
 # Wati webhook verification token (set this in your .env file)
 WATI_WEBHOOK_VERIFY_TOKEN = os.getenv("WATI_WEBHOOK_VERIFY_TOKEN", "your_verification_token")
@@ -827,8 +886,10 @@ async def populate_knowledge():
 @app.get("/knowledge/admin", response_class=HTMLResponse)
 async def knowledge_admin_page(request: Request):
     """
-    Serve the knowledge base admin interface
+    Serve the knowledge base admin interface (protected route)
     """
+    if not check_authentication(request):
+        return RedirectResponse(url="/login", status_code=302)
     return templates.TemplateResponse("knowledge_admin.html", {"request": request})
 
 @app.get("/knowledge/list")
@@ -989,13 +1050,10 @@ async def health_check():
 # Scraped Data Interface
 @app.get("/server/scrapped_data", response_class=HTMLResponse)
 async def scraped_data_interface(request: Request):
-    """Serve the HTML interface for viewing scraped data"""
-    try:
-        with open("templates/scraped_data.html", "r", encoding="utf-8") as f:
-            html_content = f.read()
-        return HTMLResponse(content=html_content, status_code=200)
-    except FileNotFoundError:
-        raise HTTPException(status_code=404, detail="Scraped data interface not found")
+    """Serve the HTML interface for viewing scraped data (protected route)"""
+    if not check_authentication(request):
+        return RedirectResponse(url="/login", status_code=302)
+    return templates.TemplateResponse("scraped_data.html", {"request": request})
 
 # Trigger initial data sync
 @app.post("/server/trigger_sync")

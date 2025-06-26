@@ -16,16 +16,16 @@ class ChromaManager:
             settings=Settings(anonymized_telemetry=False)
         )
         
-        # Use sentence-transformers model for Arabic language support
+        # Use Arabic-specific embedding model for better Arabic language support
         self.embedding_function = embedding_functions.SentenceTransformerEmbeddingFunction(
-            model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+            model_name="mohamed2811/Muffakir_Embedding_V2"
         )
         
         # Create or get the collection
         self.collection = self.client.get_or_create_collection(
             name="abar_knowledge_base",
             embedding_function=self.embedding_function,
-            metadata={"description": "Knowledge base for Abar chatbot"}
+            metadata={"description": "Knowledge base for Abar chatbot with Arabic embeddings"}
         )
     
     def add_knowledge(self, questions: List[str], answers: List[str], 

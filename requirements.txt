@@ -22,6 +22,7 @@ h11==0.16.0
 httpcore==1.0.9
 httpx==0.28.1
 idna==3.10
+itsdangerous==2.1.2
 jiter==0.10.0
 joblib==1.5.0
 jsonpatch==1.33
