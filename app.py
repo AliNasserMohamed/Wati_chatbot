@@ -30,6 +30,7 @@ print(f"WATI_API_KEY set: {'Yes' if os.getenv('WATI_API_KEY') else 'No'}")
 
 from database.db_utils import get_db, DatabaseManager
 from database.db_models import MessageType, UserSession, BotReply
+from agents.embedding_agent import embedding_agent
 from agents.message_classifier import message_classifier
 from agents.query_agent import query_agent
 from agents.service_request import service_request_agent
@@ -40,7 +41,7 @@ from services.scheduler import scheduler
 
 # Try to import knowledge_manager, create empty one if not available
 try:
-    from services.knowledge_manager import knowledge_manager
+    from utils.knowledge_manager import knowledge_manager
 except ImportError:
     print("Warning: knowledge_manager not found, creating placeholder")
     class PlaceholderKnowledgeManager:
@@ -387,28 +388,68 @@ async def process_message_async(data, phone_number, message_type, wati_message_i
             print(f"🔄 Already replied to message {user_message.id}. Skipping to prevent double reply.")
             return
 
-        # Classify message and detect language WITH conversation history
-        classified_message_type, detected_language = await message_classifier.classify_message(
-            message_text, db, user_message, conversation_history
+        # 🚀 STEP 1: First, try the embedding agent to find similar questions in knowledge base
+        print(f"🎯 Starting embedding agent processing...")
+        
+        # Quick language detection for embedding agent
+        temp_language = language_handler.detect_language(message_text)
+        
+        embedding_result = await embedding_agent.process_message(
+            user_message=message_text,
+            conversation_history=conversation_history,
+            user_language=temp_language
         )
         
-        print(f"🧠 Message classified as: {classified_message_type} in language: {detected_language}")
+        print(f"🎯 Embedding agent result: {embedding_result['action']} (confidence: {embedding_result['confidence']:.3f})")
         
-        # Store the detected language in session context
-        context = json.loads(session.context) if session.context else {}
-        context['language'] = detected_language
-        session.context = json.dumps(context)
-        
-        # Route message to appropriate handler based on classification
-        response_text = None
-        
-        if classified_message_type == MessageType.GREETING:
-            # Send greetings directly to LLM for natural response
-            print(f"👋 Sending GREETING directly to LLM")
+        if embedding_result['action'] == 'reply':
+            # Found a good match in knowledge base - use it directly
+            response_text = embedding_result['response']
+            detected_language = temp_language
             
-            # Build a simple greeting prompt
-            if detected_language == 'ar':
-                greeting_prompt = f"""أنت موظف خدمة عملاء في شركة أبار لتوصيل المياه في السعودية.
+            print(f"✅ Using embedding agent response: '{response_text[:50]}...'")
+            print(f"📝 Matched question: '{embedding_result['matched_question'][:50]}...'")
+            
+            # Store the detected language in session context
+            context = json.loads(session.context) if session.context else {}
+            context['language'] = detected_language
+            session.context = json.dumps(context)
+            
+            # Skip to response sending
+            user_message.language = detected_language
+            db.commit()
+            
+        elif embedding_result['action'] == 'skip':
+            # Message doesn't need a reply (emotions, ok, etc.)
+            print(f"🚫 Embedding agent determined no reply needed")
+            return
+            
+        else:
+            # Continue to classification agent
+            print(f"🔄 Embedding agent passed to classification agent")
+            
+            # Classify message and detect language WITH conversation history
+            classified_message_type, detected_language = await message_classifier.classify_message(
+                message_text, db, user_message, conversation_history
+            )
+            
+            print(f"🧠 Message classified as: {classified_message_type} in language: {detected_language}")
+            
+            # Store the detected language in session context
+            context = json.loads(session.context) if session.context else {}
+            context['language'] = detected_language
+            session.context = json.dumps(context)
+            
+            # Route message to appropriate handler based on classification
+            response_text = None
+            
+            if classified_message_type == MessageType.GREETING:
+                # Send greetings directly to LLM for natural response
+                print(f"👋 Sending GREETING directly to LLM")
+                
+                # Build a simple greeting prompt
+                if detected_language == 'ar':
+                    greeting_prompt = f"""أنت موظف خدمة عملاء في شركة أبار لتوصيل المياه في السعودية.
 رد على التحية التالية بطريقة طبيعية وودودة تماماً كما يرد أي موظف خدمة عملاء حقيقي:
 
 رسالة العميل: {message_text}
@@ -418,8 +459,8 @@ async def process_message_async(data, phone_number, message_type, wati_message_i
 - لا تستخدم عبارات مثل "رد الذكاء الاصطناعي" أو "رد المساعد"
 - اجعل الرد قصير وودود
 - يمكنك أن تسأل كيف يمكنك مساعدته اليوم"""
-            else:
-                greeting_prompt = f"""You are a customer service employee at Abar Water Delivery Company in Saudi Arabia.
+                else:
+                    greeting_prompt = f"""You are a customer service employee at Abar Water Delivery Company in Saudi Arabia.
 Respond to the following greeting in a natural and friendly way, exactly like a real customer service employee would:
 
 Customer message: {message_text}
@@ -429,21 +470,21 @@ Important notes:
 - Don't use phrases like "AI response" or "Assistant reply"  
 - Keep the response short and friendly
 - You can ask how you can help them today"""
-            
-            response_text = await language_handler.process_with_openai(greeting_prompt)
-            
-        elif classified_message_type == MessageType.COMPLAINT:
-            # Handle complaints with default response
-            print(f"📝 Handling COMPLAINT with default response")
-            response_text = message_classifier.get_default_response(classified_message_type, detected_language)
-            
-        elif classified_message_type == MessageType.THANKING:
-            # Send thanking directly to LLM for natural response
-            print(f"🙏 Sending THANKING directly to LLM")
-            
-            # Build a simple thanking response prompt
-            if detected_language == 'ar':
-                thanking_prompt = f"""أنت موظف خدمة عملاء في شركة أبار لتوصيل المياه في السعودية.
+                
+                response_text = await language_handler.process_with_openai(greeting_prompt)
+                
+            elif classified_message_type == MessageType.COMPLAINT:
+                # Handle complaints with default response
+                print(f"📝 Handling COMPLAINT with default response")
+                response_text = message_classifier.get_default_response(classified_message_type, detected_language)
+                
+            elif classified_message_type == MessageType.THANKING:
+                # Send thanking directly to LLM for natural response
+                print(f"🙏 Sending THANKING directly to LLM")
+                
+                # Build a simple thanking response prompt
+                if detected_language == 'ar':
+                    thanking_prompt = f"""أنت موظف خدمة عملاء في شركة أبار لتوصيل المياه في السعودية.
 رد على رسالة الشكر التالية بطريقة طبيعية وودودة تماماً كما يرد أي موظف خدمة عملاء حقيقي:
 
 رسالة العميل: {message_text}
@@ -453,8 +494,8 @@ Important notes:
 - لا تستخدم عبارات مثل "رد الذكاء الاصطناعي" أو "رد المساعد"
 - اجعل الرد قصير ومناسب
 - يمكنك أن تسأل إذا كان يحتاج أي مساعدة أخرى"""
-            else:
-                thanking_prompt = f"""You are a customer service employee at Abar Water Delivery Company in Saudi Arabia.
+                else:
+                    thanking_prompt = f"""You are a customer service employee at Abar Water Delivery Company in Saudi Arabia.
 Respond to the following thank you message in a natural and friendly way, exactly like a real customer service employee would:
 
 Customer message: {message_text}
@@ -464,49 +505,49 @@ Important notes:
 - Don't use phrases like "AI response" or "Assistant reply"
 - Keep the response short and appropriate
 - You can ask if they need any other assistance"""
-            
-            response_text = await language_handler.process_with_openai(thanking_prompt)
-            
-        elif classified_message_type == MessageType.SUGGESTION:
-            # Handle suggestions with default response
-            print(f"💡 Handling SUGGESTION with default response")
-            response_text = message_classifier.get_default_response(classified_message_type, detected_language)
-            
-        elif classified_message_type == MessageType.INQUIRY:
-            # Send inquiries to query agent
-            print(f"🔍 Sending INQUIRY to query agent")
-            response_text = await query_agent.process_query(
-                user_message=message_text,
-                conversation_history=conversation_history,
-                user_language=detected_language
-            )
-            
-        elif classified_message_type == MessageType.SERVICE_REQUEST:
-            # Send service requests to service agent
-            print(f"🛠️ Sending SERVICE_REQUEST to service agent")
-            response_text = await service_request_agent.process_service_request(
-                user_message=message_text,
-                conversation_history=conversation_history,
-                user_language=detected_language
-            )
-            
-        elif classified_message_type == MessageType.TEMPLATE_REPLY:
-            # Send template replies to query agent for context-aware processing
-            print(f"🔘 Sending TEMPLATE_REPLY to query agent")
-            response_text = await query_agent.process_query(
-                user_message=message_text,
-                conversation_history=conversation_history,
-                user_language=detected_language
-            )
-            
-        else:
-            # Fallback for unclassified or OTHER messages - send to query agent
-            print(f"❓ Sending unclassified/OTHER message to query agent")
-            response_text = await query_agent.process_query(
-                user_message=message_text,
-                conversation_history=conversation_history,
-                user_language=detected_language
-            )
+                
+                response_text = await language_handler.process_with_openai(thanking_prompt)
+                
+            elif classified_message_type == MessageType.SUGGESTION:
+                # Handle suggestions with default response
+                print(f"💡 Handling SUGGESTION with default response")
+                response_text = message_classifier.get_default_response(classified_message_type, detected_language)
+                
+            elif classified_message_type == MessageType.INQUIRY:
+                # Send inquiries to query agent
+                print(f"🔍 Sending INQUIRY to query agent")
+                response_text = await query_agent.process_query(
+                    user_message=message_text,
+                    conversation_history=conversation_history,
+                    user_language=detected_language
+                )
+                
+            elif classified_message_type == MessageType.SERVICE_REQUEST:
+                # Send service requests to service agent
+                print(f"🛠️ Sending SERVICE_REQUEST to service agent")
+                response_text = await service_request_agent.process_service_request(
+                    user_message=message_text,
+                    conversation_history=conversation_history,
+                    user_language=detected_language
+                )
+                
+            elif classified_message_type == MessageType.TEMPLATE_REPLY:
+                # Send template replies to query agent for context-aware processing
+                print(f"🔘 Sending TEMPLATE_REPLY to query agent")
+                response_text = await query_agent.process_query(
+                    user_message=message_text,
+                    conversation_history=conversation_history,
+                    user_language=detected_language
+                )
+                
+            else:
+                # Fallback for unclassified or OTHER messages - send to query agent
+                print(f"❓ Sending unclassified/OTHER message to query agent")
+                response_text = await query_agent.process_query(
+                    user_message=message_text,
+                    conversation_history=conversation_history,
+                    user_language=detected_language
+                )
         
         # Check if we have a response to send
         if not response_text:
