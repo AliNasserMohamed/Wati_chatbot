@@ -8,6 +8,7 @@ class EmbeddingAgent:
     def __init__(self):
         self.openai_client = openai.AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         self.similarity_threshold = 0.20  # Higher cosine similarity means better match
+        self.high_similarity_threshold = 0.80  # Very high similarity threshold for direct answers
         
     async def process_message(self, user_message: str, conversation_history: list = None, user_language: str = 'ar') -> Dict[str, Any]:
         """
