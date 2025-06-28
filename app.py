@@ -39,19 +39,8 @@ from services.data_api import data_api
 from services.data_scraper import data_scraper
 from services.scheduler import scheduler
 
-# Try to import knowledge_manager, create empty one if not available
-try:
-    from utils.knowledge_manager import knowledge_manager
-except ImportError:
-    print("Warning: knowledge_manager not found, creating placeholder")
-    class PlaceholderKnowledgeManager:
-        def add_qa_pair(self, *args, **kwargs):
-            return "placeholder_id"
-        def search_knowledge(self, *args, **kwargs):
-            return []
-        def populate_abar_knowledge(self):
-            return []
-    knowledge_manager = PlaceholderKnowledgeManager()
+# Import knowledge_manager
+from utils.knowledge_manager import knowledge_manager
 
 app = FastAPI(
     title="Abar Chatbot API",
@@ -882,7 +871,7 @@ async def get_product(product_id: int, db=Depends(get_db)):
 # Knowledge management endpoints
 @app.post("/knowledge/add")
 async def add_knowledge(request: Request):
-    """Add a question-answer pair to the knowledge base"""
+    """Add a question-answer pair to the knowledge base with duplicate checking"""
     try:
         data = await request.json()
         question = data.get("question")
@@ -892,21 +881,89 @@ async def add_knowledge(request: Request):
         if not question or not answer:
             raise HTTPException(status_code=400, detail="Question and answer are required")
         
-        id = knowledge_manager.add_qa_pair(question, answer, metadata)
-        return {"status": "success", "id": id}
+        # Add Q&A pair with duplicate checking
+        result = knowledge_manager.add_qa_pair(question, answer, metadata)
+        
+        if result["success"]:
+            return {
+                "status": "success", 
+                "id": result.get("id"),
+                "message": result.get("message", "Q&A pair added successfully"),
+                "added_count": result.get("added_count", 1),
+                "skipped_count": result.get("skipped_count", 0)
+            }
+        else:
+            if "duplicate" in result.get("error", "").lower():
+                return {
+                    "status": "warning",
+                    "message": "Question already exists in the knowledge base",
+                    "error": result["error"],
+                    "duplicate_info": result.get("duplicate_info"),
+                    "skipped_count": result.get("skipped_count", 1)
+                }
+            else:
+                raise HTTPException(status_code=400, detail=result["error"])
+                
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"[Knowledge Add ERROR] {str(e)}")
-        return {"status": "error", "message": str(e)}
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/knowledge/check-duplicate")
+async def check_duplicate_knowledge(request: Request):
+    """Check if a question already exists in the knowledge base"""
+    try:
+        data = await request.json()
+        question = data.get("question")
+        similarity_threshold = data.get("similarity_threshold", 0.85)
+        
+        if not question:
+            raise HTTPException(status_code=400, detail="Question is required")
+        
+        duplicate = knowledge_manager.check_duplicate(question, similarity_threshold)
+        
+        if duplicate:
+            return {
+                "status": "duplicate_found",
+                "duplicate": True,
+                "existing_question": duplicate["document"],
+                "similarity": duplicate.get("cosine_similarity", 0),
+                "metadata": duplicate.get("metadata", {})
+            }
+        else:
+            return {
+                "status": "no_duplicate",
+                "duplicate": False,
+                "message": "No duplicate found, safe to add"
+            }
+            
+    except Exception as e:
+        print(f"[Knowledge Check Duplicate ERROR] {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/knowledge/search")
 async def search_knowledge(query: str, n_results: int = 3):
     """Search the knowledge base"""
     try:
         results = knowledge_manager.search_knowledge(query, n_results)
-        return {"status": "success", "results": results}
+        return {"status": "success", "results": results, "total": len(results)}
     except Exception as e:
         print(f"[Knowledge Search ERROR] {str(e)}")
-        return {"status": "error", "message": str(e)}
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/knowledge/stats")
+async def get_knowledge_stats():
+    """Get knowledge base statistics"""
+    try:
+        stats_result = knowledge_manager.get_knowledge_stats()
+        if stats_result["success"]:
+            return {"status": "success", "stats": stats_result["stats"]}
+        else:
+            raise HTTPException(status_code=500, detail=stats_result["error"])
+    except Exception as e:
+        print(f"[Knowledge Stats ERROR] {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/knowledge/populate")
 async def populate_knowledge():
@@ -914,14 +971,25 @@ async def populate_knowledge():
     Populate the knowledge base with default Abar-specific QA pairs
     """
     try:
-        ids = knowledge_manager.populate_abar_knowledge()
-        return {
-            "status": "success", 
-            "message": f"Successfully populated knowledge base with {len(ids)} QA pairs",
-            "ids": ids
-        }
+        print("🚀 API: Starting knowledge base population...")
+        result = knowledge_manager.populate_abar_knowledge()
+        
+        if result["success"]:
+            return {
+                "status": "success", 
+                "message": result["message"],
+                "added_count": result["added_count"],
+                "skipped_count": result["skipped_count"],
+                "added_ids": result["added_ids"],
+                "skipped_duplicates": result.get("skipped_duplicates", [])
+            }
+        else:
+            raise HTTPException(status_code=500, detail=result["error"])
+            
+    except HTTPException:
+        raise
     except Exception as e:
-        print(f"Error populating knowledge: {str(e)}")
+        print(f"❌ Error populating knowledge: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/knowledge/admin", response_class=HTMLResponse)

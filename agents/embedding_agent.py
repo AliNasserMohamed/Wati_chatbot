@@ -37,14 +37,14 @@ class EmbeddingAgent:
         
         # Get the best match (highest cosine similarity)
         best_match = search_results[0]
-        cosine_similarity = best_match.get('similarity', 0.0)  # Default to 0 if not found
+        cosine_similarity = best_match.get('cosine_similarity', 0.0)  # Default to 0 if not found
         
         print(f"🎯 EmbeddingAgent: Best match found:")
         print(f"   - Question: {best_match['document'][:50]}...")
         print(f"   - Cosine Similarity: {cosine_similarity:.4f}")
         print(f"   - Metadata: {best_match['metadata']}")
         
-        # Check if cosine similarity is good enough
+        # Check if cosine similarity is good enough (higher is better)
         if cosine_similarity < self.similarity_threshold:
             print(f"❌ EmbeddingAgent: Cosine similarity too low ({cosine_similarity:.4f} < {self.similarity_threshold})")
             return {

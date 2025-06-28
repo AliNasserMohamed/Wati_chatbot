@@ -404,6 +404,40 @@
                 return;
             }
             
+            // First check for duplicates
+            try {
+                showLoading(true);
+                const duplicateResponse = await fetch('/knowledge/check-duplicate', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        question: question,
+                        similarity_threshold: 0.85
+                    })
+                });
+                
+                if (duplicateResponse.ok) {
+                    const duplicateResult = await duplicateResponse.json();
+                    
+                    if (duplicateResult.duplicate) {
+                        const similarity = (duplicateResult.similarity * 100).toFixed(1);
+                        const confirmMessage = `تم العثور على سؤال مشابه بنسبة ${similarity}%:\n\n"${duplicateResult.existing_question}"\n\nهل تريد إضافة السؤال الجديد رغم ذلك؟`;
+                        
+                        if (!confirm(confirmMessage)) {
+                            showLoading(false);
+                            showAlert('تم إلغاء إضافة السؤال', 'info');
+                            return;
+                        }
+                    }
+                }
+            } catch (error) {
+                console.warn('Duplicate check failed:', error);
+                // Continue with adding even if duplicate check fails
+            }
+            
+            // Proceed with adding the Q&A pair
             const qaData = {
                 question: question,
                 answer: answer,
@@ -416,7 +450,6 @@
             };
             
             try {
-                showLoading(true);
                 const response = await fetch('/knowledge/add', {
                     method: 'POST',
                     headers: {
@@ -427,37 +460,61 @@
                 
                 if (response.ok) {
                     const result = await response.json();
-                    showAlert('تم إضافة السؤال والجواب بنجاح!', 'success');
-                    document.getElementById('qaForm').reset();
-                    loadQAList();
+                    
+                    if (result.status === 'success') {
+                        showAlert('تم إضافة السؤال والجواب بنجاح إلى قاعدة البيانات المتجهة!', 'success');
+                        document.getElementById('qaForm').reset();
+                        loadQAList();
+                    } else if (result.status === 'warning') {
+                        showAlert(`تحذير: ${result.message}`, 'warning');
+                        if (result.duplicate_info) {
+                            console.log('Duplicate info:', result.duplicate_info);
+                        }
+                    } else {
+                        throw new Error(result.message || 'فشل في إضافة السؤال والجواب');
+                    }
                 } else {
-                    throw new Error('فشل في إضافة السؤال والجواب');
+                    const errorResult = await response.json();
+                    throw new Error(errorResult.detail || 'فشل في إضافة السؤال والجواب');
                 }
             } catch (error) {
                 console.error('Error adding Q&A:', error);
-                showAlert('حدث خطأ أثناء إضافة السؤال والجواب', 'danger');
+                showAlert(`حدث خطأ أثناء إضافة السؤال والجواب: ${error.message}`, 'danger');
             } finally {
                 showLoading(false);
             }
         }
 
-        // Load Q&A list
+        // Load Q&A list with improved error handling
         async function loadQAList() {
             try {
                 showLoading(true);
-                const response = await fetch('/knowledge/list');
                 
-                if (response.ok) {
-                    const data = await response.json();
+                // Load both the list and stats
+                const [listResponse, statsResponse] = await Promise.all([
+                    fetch('/knowledge/list'),
+                    fetch('/knowledge/stats')
+                ]);
+                
+                if (listResponse.ok) {
+                    const data = await listResponse.json();
                     allQAItems = data.items || [];
                     updateStats();
                     filterAndDisplayQA();
                 } else {
                     throw new Error('فشل في تحميل القائمة');
                 }
+                
+                if (statsResponse.ok) {
+                    const statsData = await statsResponse.json();
+                    if (statsData.status === 'success') {
+                        updateStatsFromAPI(statsData.stats);
+                    }
+                }
+                
             } catch (error) {
                 console.error('Error loading Q&A list:', error);
-                showAlert('حدث خطأ أثناء تحميل القائمة', 'danger');
+                showAlert(`حدث خطأ أثناء تحميل القائمة: ${error.message}`, 'danger');
             } finally {
                 showLoading(false);
             }
@@ -655,28 +712,47 @@
             }
         }
 
-        // Populate default knowledge
+        // Populate default knowledge with better feedback
         async function populateDefaultKnowledge() {
-            if (!confirm('هل تريد تحميل الأسئلة والأجوبة الافتراضية؟ هذا سيضيف مجموعة من الأسئلة المُعدة مسبقاً.')) {
+            if (!confirm('هل تريد تحميل الأسئلة والأجوبة الافتراضية إلى قاعدة البيانات المتجهة؟\n\nسيتم فحص التكرارات تلقائياً وتجاهل الأسئلة المكررة.')) {
                 return;
             }
             
             try {
                 showLoading(true);
+                showAlert('جاري تحميل البيانات الافتراضية إلى قاعدة البيانات المتجهة...', 'info');
+                
                 const response = await fetch('/knowledge/populate', {
                     method: 'POST'
                 });
                 
                 if (response.ok) {
                     const result = await response.json();
-                    showAlert('تم تحميل البيانات الافتراضية بنجاح!', 'success');
-                    loadQAList();
+                    
+                    if (result.status === 'success') {
+                        let message = `تم تحميل البيانات الافتراضية بنجاح!\n\n`;
+                        message += `✅ تم إضافة: ${result.added_count} أسئلة وأجوبة جديدة\n`;
+                        message += `⏭️ تم تجاهل: ${result.skipped_count} أسئلة مكررة\n`;
+                        message += `\n🔄 تم تحديث قاعدة البيانات المتجهة بنجاح!`;
+                        
+                        showAlert(message, 'success');
+                        
+                        // Show skipped duplicates if any
+                        if (result.skipped_count > 0 && result.skipped_duplicates) {
+                            console.log('Skipped duplicates:', result.skipped_duplicates);
+                        }
+                        
+                        loadQAList();
+                    } else {
+                        throw new Error(result.message || 'فشل في تحميل البيانات الافتراضية');
+                    }
                 } else {
-                    throw new Error('فشل في تحميل البيانات الافتراضية');
+                    const errorResult = await response.json();
+                    throw new Error(errorResult.detail || 'فشل في تحميل البيانات الافتراضية');
                 }
             } catch (error) {
                 console.error('Error populating default knowledge:', error);
-                showAlert('حدث خطأ أثناء تحميل البيانات الافتراضية', 'danger');
+                showAlert(`حدث خطأ أثناء تحميل البيانات الافتراضية: ${error.message}`, 'danger');
             } finally {
                 showLoading(false);
             }
@@ -695,6 +771,14 @@
             
             const categories = new Set(allQAItems.map(item => item.metadata?.category).filter(Boolean));
             document.getElementById('categoriesCount').textContent = categories.size;
+        }
+
+        // Update stats from API response
+        function updateStatsFromAPI(stats) {
+            document.getElementById('totalQA').textContent = stats.qa_pairs || 0;
+            
+            // Additional stats if needed
+            console.log('Knowledge base stats:', stats);
         }
 
         // Utility functions
