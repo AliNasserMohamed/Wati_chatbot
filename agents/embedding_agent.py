@@ -7,8 +7,7 @@ from utils.language_utils import language_handler
 class EmbeddingAgent:
     def __init__(self):
         self.openai_client = openai.AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-        self.similarity_threshold = 0.85  # Higher cosine similarity means better match
-        self.high_similarity_threshold = 0.92  # Very high cosine similarity threshold
+        self.similarity_threshold = 0.20  # Higher cosine similarity means better match
         
     async def process_message(self, user_message: str, conversation_history: list = None, user_language: str = 'ar') -> Dict[str, Any]:
         """
@@ -35,11 +34,25 @@ class EmbeddingAgent:
                 'matched_question': None
             }
         
+        # Print detailed information about all search results
+        print(f"📊 EmbeddingAgent: Found {len(search_results)} similar results:")
+        for i, result in enumerate(search_results, 1):
+            similarity_score = result.get('similarity', result.get('distance', 0.0))
+            document_preview = result['document'][:100] + "..." if len(result['document']) > 100 else result['document']
+            metadata = result.get('metadata', {})
+            
+            print(f"   Result {i}:")
+            print(f"   - Similarity Score: {similarity_score:.4f}")
+            print(f"   - Document Type: {metadata.get('type', 'unknown')}")
+            print(f"   - Content Preview: {document_preview}")
+            print(f"   - Full Metadata: {metadata}")
+            print(f"   ---")
+        
         # Get the best match (highest cosine similarity)
         best_match = search_results[0]
         cosine_similarity = best_match.get('cosine_similarity', 0.0)  # Default to 0 if not found
         
-        print(f"🎯 EmbeddingAgent: Best match found:")
+        print(f"🎯 EmbeddingAgent: Best match selected:")
         print(f"   - Question: {best_match['document'][:50]}...")
         print(f"   - Cosine Similarity: {cosine_similarity:.4f}")
         print(f"   - Metadata: {best_match['metadata']}")
@@ -58,23 +71,34 @@ class EmbeddingAgent:
         matched_document = best_match['document']
         metadata = best_match['metadata']
         
+        print(f"🔍 EmbeddingAgent: Retrieving answer for matched question...")
+        print(f"   - Matched Question Full Text: {matched_document}")
+        
         # If the matched document is a question, find its answer
         if metadata.get('type') == 'question':
             answer_id = metadata.get('answer_id')
+            print(f"   - Looking for answer with ID: {answer_id}")
             if answer_id:
                 # Search for the answer by ID
                 answer_results = chroma_manager.collection.get(ids=[answer_id])
                 if answer_results and answer_results['documents']:
                     matched_answer = answer_results['documents'][0]
+                    print(f"   - Found answer by ID: {matched_answer[:100]}...")
                 else:
                     matched_answer = matched_document  # Fallback
+                    print(f"   - Answer ID not found, using question as fallback")
             else:
                 matched_answer = matched_document  # Fallback
+                print(f"   - No answer ID provided, using question as answer")
         else:
             # The matched document is already an answer
             matched_answer = matched_document
+            print(f"   - Matched document is already an answer")
         
-        print(f"📝 EmbeddingAgent: Found answer: '{matched_answer[:50]}...'")
+        print(f"📝 EmbeddingAgent: Final answer retrieved:")
+        print(f"   - Answer Length: {len(matched_answer)} characters")
+        print(f"   - Answer Preview: '{matched_answer[:100]}...'")
+        print(f"   - Answer Full Text: {matched_answer}")
         
         # Check if the answer is empty or too short (likely needs no reply)
         if not matched_answer or matched_answer.strip() == "" or len(matched_answer.strip()) < 3:

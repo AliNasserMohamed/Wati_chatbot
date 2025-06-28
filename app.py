@@ -135,7 +135,7 @@ async def webhook(request: Request, db=Depends(get_db)):
     """Handle incoming WhatsApp messages from Wati webhook"""
     try:
         data = await request.json()
-        print(f"Webhook received: {json.dumps(data, indent=2)}")
+        #print(f"Webhook received: {json.dumps(data, indent=2)}")
         
         # Extract message data
         phone_number = data.get("waId")
