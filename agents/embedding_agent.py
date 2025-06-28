@@ -7,8 +7,8 @@ from utils.language_utils import language_handler
 class EmbeddingAgent:
     def __init__(self):
         self.openai_client = openai.AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-        self.similarity_threshold = 0.15  # Lower distance means higher similarity
-        self.high_similarity_threshold = 0.08  # Very high similarity threshold
+        self.similarity_threshold = 0.85  # Higher cosine similarity means better match
+        self.high_similarity_threshold = 0.92  # Very high cosine similarity threshold
         
     async def process_message(self, user_message: str, conversation_history: list = None, user_language: str = 'ar') -> Dict[str, Any]:
         """
@@ -35,18 +35,18 @@ class EmbeddingAgent:
                 'matched_question': None
             }
         
-        # Get the best match (lowest distance = highest similarity)
+        # Get the best match (highest cosine similarity)
         best_match = search_results[0]
-        similarity_distance = best_match.get('distance', 1.0)
+        cosine_similarity = best_match.get('similarity', 0.0)  # Default to 0 if not found
         
         print(f"🎯 EmbeddingAgent: Best match found:")
         print(f"   - Question: {best_match['document'][:50]}...")
-        print(f"   - Distance: {similarity_distance:.4f}")
+        print(f"   - Cosine Similarity: {cosine_similarity:.4f}")
         print(f"   - Metadata: {best_match['metadata']}")
         
-        # Check if similarity is good enough
-        if similarity_distance > self.similarity_threshold:
-            print(f"❌ EmbeddingAgent: Similarity too low ({similarity_distance:.4f} > {self.similarity_threshold})")
+        # Check if cosine similarity is good enough
+        if cosine_similarity < self.similarity_threshold:
+            print(f"❌ EmbeddingAgent: Cosine similarity too low ({cosine_similarity:.4f} < {self.similarity_threshold})")
             return {
                 'action': 'continue_to_classification',
                 'response': None,
@@ -82,17 +82,17 @@ class EmbeddingAgent:
             return {
                 'action': 'skip',
                 'response': None,
-                'confidence': 1.0 - similarity_distance,
+                'confidence': cosine_similarity,
                 'matched_question': matched_document
             }
         
-        # For very high similarity, skip the ChatGPT evaluation
-        if similarity_distance <= self.high_similarity_threshold:
-            print(f"✅ EmbeddingAgent: Very high similarity ({similarity_distance:.4f}) - using answer directly")
+        # For very high cosine similarity, skip the ChatGPT evaluation
+        if cosine_similarity >= self.high_similarity_threshold:
+            print(f"✅ EmbeddingAgent: Very high cosine similarity ({cosine_similarity:.4f}) - using answer directly")
             return {
                 'action': 'reply',
                 'response': matched_answer,
-                'confidence': 1.0 - similarity_distance,
+                'confidence': cosine_similarity,
                 'matched_question': matched_document
             }
         
@@ -107,21 +107,21 @@ class EmbeddingAgent:
             return {
                 'action': 'reply',
                 'response': evaluation_result.get('response', matched_answer),
-                'confidence': 1.0 - similarity_distance,
+                'confidence': cosine_similarity,
                 'matched_question': matched_document
             }
         elif evaluation_result['action'] == 'skip':
             return {
                 'action': 'skip',
                 'response': None,
-                'confidence': 1.0 - similarity_distance,
+                'confidence': cosine_similarity,
                 'matched_question': matched_document
             }
         else:
             return {
                 'action': 'continue_to_classification',
                 'response': None,
-                'confidence': 1.0 - similarity_distance,
+                'confidence': cosine_similarity,
                 'matched_question': matched_document
             }
     
