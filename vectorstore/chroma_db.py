@@ -191,11 +191,17 @@ class ChromaManager:
             formatted_results = []
             if results and results["documents"]:
                 for i, doc in enumerate(results["documents"][0]):
-                    # With L2 normalized vectors and inner product space, distances are actually negative dot products
-                    # Convert to positive cosine similarity (dot product of normalized vectors)
-                    dot_product_score = -results["distances"][0][i] if "distances" in results and results["distances"] else 0.0
-                    # Clamp to [0, 1] range to handle any numerical precision issues
-                    cosine_similarity = max(0.0, min(1.0, dot_product_score))
+                    # With L2 normalized vectors and inner product space, 
+                    # the distance represents (1 - cosine_similarity)
+                    # So cosine_similarity = 1 - distance
+                    if "distances" in results and results["distances"] and len(results["distances"][0]) > i:
+                        distance = results["distances"][0][i]
+                        # For inner product space with normalized vectors: cosine_similarity = 1 - distance
+                        cosine_similarity = 1.0 - distance
+                        # Clamp to [0, 1] range to handle any numerical precision issues
+                        cosine_similarity = max(0.0, min(1.0, cosine_similarity))
+                    else:
+                        cosine_similarity = 0.0
                     
                     formatted_results.append({
                         "document": doc,
