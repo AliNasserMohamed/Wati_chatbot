@@ -543,38 +543,38 @@ Important notes:
             print(f"🔇 No response generated - skipping message sending")
             return
         
-        # Check for duplicate bot messages and reformulate if needed
-        duplicate_check = DatabaseManager.check_duplicate_bot_message(db, user.id, response_text)
-        
-        if duplicate_check.get("should_reformulate", False):
-            print(f"🔄 Reformulating response due to {duplicate_check.get('reason', 'unknown')} duplicate")
-            
-            # Create reformulation prompt based on language
-            if detected_language == 'ar':
-                reformulation_prompt = f"""أنت مساعد ذكي لشركة أبار لتوصيل المياه في السعودية.
-لديك الرد التالي لكنه مشابه جداً لرد سابق، أعد صياغته بطريقة مختلفة لكن بنفس المعنى:
-
-الرد الأصلي: {response_text}
-
-أعد كتابة الرد بطريقة مختلفة، مع الحفاظ على نفس المعنى والمعلومات المفيدة. اجعله طبيعي ومفيد."""
-            else:
-                reformulation_prompt = f"""You are a smart assistant for Abar Water Delivery Company in Saudi Arabia.
-You have the following response but it's very similar to a previous response, reformulate it differently but with the same meaning:
-
-Original response: {response_text}
-
-Rewrite the response in a different way, keeping the same meaning and useful information. Make it natural and helpful."""
-            
-            # Try to reformulate the response
-            try:
-                reformulated_response = await language_handler.process_with_openai(reformulation_prompt)
-                if reformulated_response and reformulated_response.strip():
-                    response_text = reformulated_response
-                    print(f"✅ Response successfully reformulated")
-                else:
-                    print(f"⚠️ Reformulation failed, using original response")
-            except Exception as e:
-                print(f"❌ Error during reformulation: {str(e)}, using original response")
+        # COMMENTED OUT: Check for duplicate bot messages and reformulate if needed
+        # duplicate_check = DatabaseManager.check_duplicate_bot_message(db, user.id, response_text)
+        # 
+        # if duplicate_check.get("should_reformulate", False):
+        #     print(f"🔄 Reformulating response due to {duplicate_check.get('reason', 'unknown')} duplicate")
+        #     
+        #     # Create reformulation prompt based on language
+        #     if detected_language == 'ar':
+        #         reformulation_prompt = f"""أنت مساعد ذكي لشركة أبار لتوصيل المياه في السعودية.
+        # لديك الرد التالي لكنه مشابه جداً لرد سابق، أعد صياغته بطريقة مختلفة لكن بنفس المعنى:
+        # 
+        # الرد الأصلي: {response_text}
+        # 
+        # أعد كتابة الرد بطريقة مختلفة، مع الحفاظ على نفس المعنى والمعلومات المفيدة. اجعله طبيعي ومفيد."""
+        #     else:
+        #         reformulation_prompt = f"""You are a smart assistant for Abar Water Delivery Company in Saudi Arabia.
+        # You have the following response but it's very similar to a previous response, reformulate it differently but with the same meaning:
+        # 
+        # Original response: {response_text}
+        # 
+        # Rewrite the response in a different way, keeping the same meaning and useful information. Make it natural and helpful."""
+        #     
+        #     # Try to reformulate the response
+        #     try:
+        #         reformulated_response = await language_handler.process_with_openai(reformulation_prompt)
+        #         if reformulated_response and reformulated_response.strip():
+        #             response_text = reformulated_response
+        #             print(f"✅ Response successfully reformulated")
+        #         else:
+        #             print(f"⚠️ Reformulation failed, using original response")
+        #     except Exception as e:
+        #         print(f"❌ Error during reformulation: {str(e)}, using original response")
         
         # Clean up response text - remove "bot:" prefix if present
         if response_text and response_text.startswith("bot: "):
