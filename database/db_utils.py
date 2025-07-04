@@ -306,59 +306,51 @@ class DatabaseManager:
     
     @staticmethod
     def check_duplicate_bot_message(db: Session, user_id: int, proposed_message: str, limit: int = 5) -> Dict[str, Any]:
-        """Check if the bot is about to send a message similar to recent ones and return reformulation info"""
-        try:
-            # Get recent bot replies (last 5 by default)
-            recent_bot_replies = db.query(BotReply)\
-                .join(UserMessage)\
-                .filter(UserMessage.user_id == user_id)\
-                .order_by(BotReply.timestamp.desc())\
-                .limit(limit)\
-                .all()
-            
-            if not recent_bot_replies:
-                return {"is_duplicate": False, "should_reformulate": False}
-            
-            # Clean the proposed message for comparison
-            proposed_clean = proposed_message.strip().lower()
-            
-            # Check if any recent bot reply is very similar
-            for reply in recent_bot_replies:
-                if reply.content:
-                    reply_clean = reply.content.strip().lower()
-                    
-                    # Check for exact match
-                    if proposed_clean == reply_clean:
-                        print(f"🔄 Exact duplicate message detected: '{proposed_message[:50]}...'")
-                        return {
-                            "is_duplicate": True, 
-                            "should_reformulate": True,
-                            "duplicate_content": reply.content,
-                            "reason": "exact_match"
-                        }
-                    
-                    # Check for very similar messages (>80% similarity)
-                    if len(proposed_clean) > 10 and len(reply_clean) > 10:
-                        # Simple similarity check - if messages share >80% of words
-                        proposed_words = set(proposed_clean.split())
-                        reply_words = set(reply_clean.split())
-                        
-                        if len(proposed_words) > 0 and len(reply_words) > 0:
-                            common_words = proposed_words.intersection(reply_words)
-                            similarity = len(common_words) / max(len(proposed_words), len(reply_words))
-                            
-                            if similarity > 0.8:
-                                print(f"🔄 Similar message detected (similarity: {similarity:.2f}): '{proposed_message[:50]}...'")
-                                return {
-                                    "is_duplicate": True, 
-                                    "should_reformulate": True,
-                                    "duplicate_content": reply.content,
-                                    "similarity": similarity,
-                                    "reason": "high_similarity"
-                                }
-            
-            return {"is_duplicate": False, "should_reformulate": False}
-            
-        except Exception as e:
-            print(f"Error checking duplicate bot message: {str(e)}")
-            return {"is_duplicate": False, "should_reformulate": False, "error": str(e)} 
+        """
+        Check if the proposed bot message is a duplicate of recent messages
+        Returns dict with 'is_duplicate' and 'recent_messages'
+        """
+        # Get recent bot replies for this user
+        recent_replies = db.query(BotReply).join(UserMessage).filter(
+            UserMessage.user_id == user_id
+        ).order_by(BotReply.timestamp.desc()).limit(limit).all()
+        
+        recent_messages = [reply.content for reply in recent_replies]
+        
+        # Simple duplicate check - could be enhanced with fuzzy matching
+        is_duplicate = proposed_message in recent_messages
+        
+        return {
+            'is_duplicate': is_duplicate,
+            'recent_messages': recent_messages
+        }
+    
+    
+        """Get statistics about embedding Q&A performance"""
+        query = db.query(EmbeddingQA)
+        if user_id:
+            query = query.filter(EmbeddingQA.user_id == user_id)
+        
+        qa_records = query.all()
+        
+        if not qa_records:
+            return {
+                'total_records': 0,
+                'avg_similarity': 0,
+                'llm_evaluations': {}
+            }
+        
+        similarities = [record.cosine_similarity for record in qa_records]
+        evaluations = [record.llm_evaluation for record in qa_records if record.llm_evaluation]
+        
+        evaluation_counts = {}
+        for eval_type in evaluations:
+            evaluation_counts[eval_type] = evaluation_counts.get(eval_type, 0) + 1
+        
+        return {
+            'total_records': len(qa_records),
+            'avg_similarity': sum(similarities) / len(similarities),
+            'min_similarity': min(similarities),
+            'max_similarity': max(similarities),
+            'llm_evaluations': evaluation_counts
+        } 

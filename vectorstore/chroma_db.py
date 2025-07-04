@@ -5,6 +5,9 @@ from chromadb.utils import embedding_functions
 from typing import List, Dict, Any, Optional
 import uuid
 import numpy as np
+import asyncio
+import threading
+from contextlib import asynccontextmanager
 
 # Create vector store directory if it doesn't exist
 os.makedirs("vectorstore/data", exist_ok=True)
@@ -28,6 +31,20 @@ class ChromaManager:
             embedding_function=self.embedding_function,
             metadata={"description": "Knowledge base for Abar chatbot with Arabic embeddings","hnsw:space": "ip"}
         )
+        
+        # Add thread-safe locking for concurrent access
+        self._lock = asyncio.Lock()
+        self._thread_lock = threading.Lock()
+    
+    @asynccontextmanager
+    async def _async_lock(self):
+        """Async context manager for thread-safe operations"""
+        async with self._lock:
+            yield
+    
+    def _sync_lock(self):
+        """Synchronous context manager for thread-safe operations"""
+        return self._thread_lock
     
     def _l2_normalize_embeddings(self, texts: List[str]) -> List[List[float]]:
         """
@@ -45,49 +62,50 @@ class ChromaManager:
         
         return normalized_embeddings.tolist()
     
-    def check_duplicate_question(self, question: str, similarity_threshold: float = 0.85) -> Optional[Dict[str, Any]]:
+    async def check_duplicate_question(self, question: str, similarity_threshold: float = 0.85) -> Optional[Dict[str, Any]]:
         """
         Check if a question already exists in the knowledge base
         Returns the existing question data if found, None otherwise
         """
-        try:
-            # Search for similar questions
-            results = self.search(question, n_results=5)
-            
-            for result in results:
-                # Check if this is a question (not an answer)
-                if result.get("metadata", {}).get("type") == "question":
-                    # Check similarity threshold
-                    similarity = result.get("cosine_similarity", 0)
-                    if similarity >= similarity_threshold:
-                        print(f"🔍 Found duplicate question with similarity {similarity:.3f}")
-                        print(f"   Existing: {result['document']}")
-                        print(f"   New: {question}")
-                        return result
-            
-            # Also check for exact text matches
-            all_data = self.collection.get(include=["documents", "metadatas"])
-            if all_data and all_data.get("documents"):
-                for i, doc in enumerate(all_data["documents"]):
-                    metadata = all_data["metadatas"][i]
-                    if metadata.get("type") == "question":
-                        # Check for exact match (case-insensitive)
-                        if doc.strip().lower() == question.strip().lower():
-                            print(f"🔍 Found exact duplicate question")
-                            return {
-                                "document": doc,
-                                "metadata": metadata,
-                                "id": f"exact_match_{i}",  # Generate a temporary ID
-                                "cosine_similarity": 1.0
-                            }
-            
-            return None
-            
-        except Exception as e:
-            print(f"❌ Error checking for duplicates: {str(e)}")
-            return None
+        async with self._async_lock():
+            try:
+                # Search for similar questions
+                results = await self.search(question, n_results=5)
+                
+                for result in results:
+                    # Check if this is a question (not an answer)
+                    if result.get("metadata", {}).get("type") == "question":
+                        # Check similarity threshold
+                        similarity = result.get("cosine_similarity", 0)
+                        if similarity >= similarity_threshold:
+                            print(f"🔍 Found duplicate question with similarity {similarity:.3f}")
+                            print(f"   Existing: {result['document']}")
+                            print(f"   New: {question}")
+                            return result
+                
+                # Also check for exact text matches
+                all_data = self.collection.get(include=["documents", "metadatas"])
+                if all_data and all_data.get("documents"):
+                    for i, doc in enumerate(all_data["documents"]):
+                        metadata = all_data["metadatas"][i]
+                        if metadata.get("type") == "question":
+                            # Check for exact match (case-insensitive)
+                            if doc.strip().lower() == question.strip().lower():
+                                print(f"🔍 Found exact duplicate question")
+                                return {
+                                    "document": doc,
+                                    "metadata": metadata,
+                                    "id": f"exact_match_{i}",  # Generate a temporary ID
+                                    "cosine_similarity": 1.0
+                                }
+                
+                return None
+                
+            except Exception as e:
+                print(f"❌ Error checking for duplicates: {str(e)}")
+                return None
     
-    def add_knowledge(self, questions: List[str], answers: List[str], 
+    async def add_knowledge(self, questions: List[str], answers: List[str], 
                      metadatas: Optional[List[Dict[str, Any]]] = None, 
                      check_duplicates: bool = True) -> Dict[str, Any]:
         """
@@ -114,7 +132,7 @@ class ChromaManager:
             
             # Check for duplicates if enabled
             if check_duplicates:
-                duplicate = self.check_duplicate_question(question)
+                duplicate = await self.check_duplicate_question(question)
                 if duplicate:
                     skipped_duplicates.append({
                         "question": question,
@@ -173,50 +191,51 @@ class ChromaManager:
         print(f"📊 Add knowledge summary: {len(added_ids)} added, {len(skipped_duplicates)} skipped")
         return result
     
-    def search(self, query: str, n_results: int = 3) -> List[Dict[str, Any]]:
+    async def search(self, query: str, n_results: int = 3) -> List[Dict[str, Any]]:
         """
         Search the knowledge base using L2 normalized embeddings and dot product similarity
         Returns list of results with their metadata and cosine similarity scores
         """
-        try:
-            # Generate L2 normalized embedding for the query
-            query_embedding = self._l2_normalize_embeddings([query])[0]
-            
-            # Query using the normalized embedding
-            results = self.collection.query(
-                query_embeddings=[query_embedding],
-                n_results=n_results
-            )
-            
-            formatted_results = []
-            if results and results["documents"]:
-                for i, doc in enumerate(results["documents"][0]):
-                    # With L2 normalized vectors and inner product space, 
-                    # the distance represents (1 - cosine_similarity)
-                    # So cosine_similarity = 1 - distance
-                    if "distances" in results and results["distances"] and len(results["distances"][0]) > i:
-                        distance = results["distances"][0][i]
-                        # For inner product space with normalized vectors: cosine_similarity = 1 - distance
-                        cosine_similarity = 1.0 - distance
-                        # Clamp to [0, 1] range to handle any numerical precision issues
-                        cosine_similarity = max(0.0, min(1.0, cosine_similarity))
-                    else:
-                        cosine_similarity = 0.0
-                    
-                    formatted_results.append({
-                        "document": doc,
-                        "metadata": results["metadatas"][0][i],
-                        "id": results["ids"][0][i],
-                        "cosine_similarity": cosine_similarity
-                    })
-            
-            return formatted_results
-            
-        except Exception as e:
-            print(f"❌ Error searching: {str(e)}")
-            return []
+        async with self._async_lock():
+            try:
+                # Generate L2 normalized embedding for the query
+                query_embedding = self._l2_normalize_embeddings([query])[0]
+                
+                # Query using the normalized embedding
+                results = self.collection.query(
+                    query_embeddings=[query_embedding],
+                    n_results=n_results
+                )
+                
+                formatted_results = []
+                if results and results["documents"]:
+                    for i, doc in enumerate(results["documents"][0]):
+                        # With L2 normalized vectors and inner product space, 
+                        # the distance represents (1 - cosine_similarity)
+                        # So cosine_similarity = 1 - distance
+                        if "distances" in results and results["distances"] and len(results["distances"][0]) > i:
+                            distance = results["distances"][0][i]
+                            # For inner product space with normalized vectors: cosine_similarity = 1 - distance
+                            cosine_similarity = 1.0 - distance
+                            # Clamp to [0, 1] range to handle any numerical precision issues
+                            cosine_similarity = max(0.0, min(1.0, cosine_similarity))
+                        else:
+                            cosine_similarity = 0.0
+                        
+                        formatted_results.append({
+                            "document": doc,
+                            "metadata": results["metadatas"][0][i],
+                            "id": results["ids"][0][i],
+                            "cosine_similarity": cosine_similarity
+                        })
+                
+                return formatted_results
+                
+            except Exception as e:
+                print(f"❌ Error searching: {str(e)}")
+                return []
     
-    def populate_default_knowledge(self) -> Dict[str, Any]:
+    async def populate_default_knowledge(self) -> Dict[str, Any]:
         """
         Populate the knowledge base with default question-answer pairs for Abar
         """
@@ -246,7 +265,7 @@ class ChromaManager:
         ]
         
         # Add knowledge with duplicate checking enabled
-        result = self.add_knowledge(questions, answers, metadatas, check_duplicates=True)
+        result = await self.add_knowledge(questions, answers, metadatas, check_duplicates=True)
         
         print(f"✅ Default knowledge population completed!")
         print(f"   Added: {result['added_count']} new Q&A pairs")
@@ -258,47 +277,54 @@ class ChromaManager:
         """
         List all question documents from the collection.
         """
-        try:
-            all_data = self.collection.get(include=["documents", "metadatas"])
-            
-            questions = []
-            for doc, meta in zip(all_data["documents"], all_data["metadatas"]):
-                if meta.get("type") == "question":
-                    questions.append(doc)
-            
-            print(f"📄 Found {len(questions)} questions in the knowledge base.")
-            return questions
-            
-        except Exception as e:
-            print(f"❌ Error listing questions: {str(e)}")
-            return []
+        with self._sync_lock():
+            try:
+                all_data = self.collection.get(include=["documents", "metadatas"])
+                
+                questions = []
+                for doc, meta in zip(all_data["documents"], all_data["metadatas"]):
+                    if meta.get("type") == "question":
+                        questions.append(doc)
+                
+                print(f"📄 Found {len(questions)} questions in the knowledge base.")
+                return questions
+                
+            except Exception as e:
+                print(f"❌ Error listing questions: {str(e)}")
+                return []
     
     def get_stats(self) -> Dict[str, int]:
         """
         Get statistics about the knowledge base
         """
-        try:
-            all_data = self.collection.get(include=["metadatas"])
-            
-            questions_count = 0
-            answers_count = 0
-            
-            for meta in all_data["metadatas"]:
-                if meta.get("type") == "question":
-                    questions_count += 1
-                else:
-                    answers_count += 1
-            
-            return {
-                "total_documents": len(all_data["metadatas"]),
-                "questions": questions_count,
-                "answers": answers_count,
-                "qa_pairs": answers_count  # Each answer represents one Q&A pair
-            }
-            
-        except Exception as e:
-            print(f"❌ Error getting stats: {str(e)}")
-            return {"total_documents": 0, "questions": 0, "answers": 0, "qa_pairs": 0}
+        with self._sync_lock():
+            try:
+                all_data = self.collection.get(include=["metadatas"])
+                
+                questions_count = 0
+                answers_count = 0
+                
+                for meta in all_data["metadatas"]:
+                    if meta.get("type") == "question":
+                        questions_count += 1
+                    else:
+                        answers_count += 1
+                
+                return {
+                    "total_documents": len(all_data["metadatas"]),
+                    "questions": questions_count,
+                    "answers": answers_count,
+                    "qa_pairs": answers_count  # Each answer represents one Q&A pair
+                }
+                
+            except Exception as e:
+                print(f"❌ Error getting stats: {str(e)}")
+                return {"total_documents": 0, "questions": 0, "answers": 0, "qa_pairs": 0}
+    
+    def get_collection_safe(self):
+        """Get collection with thread safety for direct operations"""
+        with self._sync_lock():
+            return self.collection
 
 
 # Create and export the instance

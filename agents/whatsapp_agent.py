@@ -95,7 +95,7 @@ class WhatsAppAgent:
                 "message": lambda x: x["message"],
                 "user_info": lambda x: x.get("user_info", "لا توجد معلومات متاحة عن المستخدم حاليًا."),
                 "chat_history": lambda x: self._format_chat_history(x.get("chat_history", [])),
-                "knowledge_base": lambda x: self._get_relevant_knowledge(x["message"])
+                "knowledge_base": lambda x: x["message"]  # Pass message to be processed separately
             }
             | self.prompt
             | self.chat_model
@@ -114,9 +114,9 @@ class WhatsAppAgent:
         
         return formatted_history
     
-    def _get_relevant_knowledge(self, query: str) -> str:
+    async def _get_relevant_knowledge(self, query: str) -> str:
         """Get relevant knowledge from vector database"""
-        results = chroma_manager.search(query, n_results=2)
+        results = await chroma_manager.search(query, n_results=2)
         
         if not results:
             return "لا توجد معلومات ذات صلة في قاعدة المعرفة."
@@ -141,12 +141,16 @@ class WhatsAppAgent:
         
         return info
     
-    def process_message(self, message: str, user_id: Optional[int] = None, 
+    async def process_message(self, message: str, user_id: Optional[int] = None, 
                         phone_number: Optional[str] = None, db: Optional[Session] = None) -> str:
         """Process incoming message and generate response"""
         try:
             # Prepare conversation context
             context = {"message": message}
+            
+            # Get relevant knowledge asynchronously
+            knowledge_base = await self._get_relevant_knowledge(message)
+            context["knowledge_base"] = knowledge_base
             
             # Add user info and chat history if database is available
             if db and (user_id or phone_number):
@@ -170,7 +174,7 @@ class WhatsAppAgent:
                     context["chat_history"] = DatabaseManager.get_user_message_history(db, user.id)
                     
                     # Generate response
-                    response = self.chain.invoke(context)
+                    response = await self.chain.ainvoke(context)
                     
                     # Save the response
                     DatabaseManager.save_bot_reply(db, user_message.id, response)
@@ -178,7 +182,7 @@ class WhatsAppAgent:
                     return response
             
             # If no database or user, just process the message
-            return self.chain.invoke(context)
+            return await self.chain.ainvoke(context)
             
         except Exception as e:
             print(f"[Error processing message] {str(e)}")

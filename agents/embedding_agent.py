@@ -8,7 +8,7 @@ class EmbeddingAgent:
     def __init__(self):
         self.openai_client = openai.AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         self.similarity_threshold = 0.20  # Higher cosine similarity means better match
-        self.high_similarity_threshold = 0.80  # Very high similarity threshold for direct answers
+        self.high_similarity_threshold = 0.60  # Very high similarity threshold for direct answers
         
     async def process_message(self, user_message: str, conversation_history: list = None, user_language: str = 'ar') -> Dict[str, Any]:
         """
@@ -24,7 +24,7 @@ class EmbeddingAgent:
         print(f"🔍 EmbeddingAgent: Processing message: '{user_message[:50]}...'")
         
         # Search for similar questions in the knowledge base
-        search_results = chroma_manager.search(user_message, n_results=3)
+        search_results = await chroma_manager.search(user_message, n_results=3)
         
         if not search_results:
             print(f"📭 EmbeddingAgent: No knowledge base matches found")
@@ -80,8 +80,8 @@ class EmbeddingAgent:
             answer_id = metadata.get('answer_id')
             print(f"   - Looking for answer with ID: {answer_id}")
             if answer_id:
-                # Search for the answer by ID
-                answer_results = chroma_manager.collection.get(ids=[answer_id])
+                # Search for the answer by ID  
+                answer_results = chroma_manager.get_collection_safe().get(ids=[answer_id])
                 if answer_results and answer_results['documents']:
                     matched_answer = answer_results['documents'][0]
                     print(f"   - Found answer by ID: {matched_answer[:100]}...")

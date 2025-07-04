@@ -16,6 +16,9 @@ import aiohttp
 import urllib.parse
 import asyncio
 import time
+import threading
+from collections import defaultdict
+from typing import Dict, List, Any
 
 # Load environment variables from .env
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -179,79 +182,102 @@ async def webhook(request: Request, db=Depends(get_db)):
         print(f"[Webhook ERROR] {str(e)}")
         return {"status": "error", "message": str(e)}
 
-# User message batching storage
-user_message_batches = {}  # Store pending messages for each user
-batch_timers = {}  # Store timers for each user
+# Replace the global dictionaries with thread-safe alternatives
+class ThreadSafeMessageBatcher:
+    def __init__(self):
+        self._batches: Dict[str, List[Dict]] = {}
+        self._timers: Dict[str, asyncio.Task] = {}
+        self._locks: Dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
+    
+    async def add_message_to_batch(self, phone_number: str, message_data: dict):
+        """Add a message to user's batch with proper locking"""
+        async with self._locks[phone_number]:
+            current_time = time.time()
+            
+            # Initialize batch for new user
+            if phone_number not in self._batches:
+                self._batches[phone_number] = []
+            
+            # Add message to batch
+            self._batches[phone_number].append({
+                'data': message_data,
+                'timestamp': current_time,
+                'text': message_data.get('text', '')
+            })
+            
+            # Cancel existing timer if any
+            if phone_number in self._timers:
+                self._timers[phone_number].cancel()
+            
+            # Set new timer to process batch after 3 seconds of inactivity
+            self._timers[phone_number] = asyncio.create_task(
+                self._process_batch_delayed(phone_number)
+            )
+            print(f"📦 Added message to batch for {phone_number}. Batch size: {len(self._batches[phone_number])}")
+    
+    async def _process_batch_delayed(self, phone_number: str):
+        """Process batch after delay"""
+        await asyncio.sleep(3)  # Wait 3 seconds for more messages
+        await self.process_user_batch(phone_number)
+    
+    async def process_user_batch(self, phone_number: str):
+        """Process all messages in user's batch as one conversation"""
+        async with self._locks[phone_number]:
+            if phone_number not in self._batches or not self._batches[phone_number]:
+                return
+            
+            batch = self._batches[phone_number]
+            print(f"🔄 Processing batch of {len(batch)} messages for {phone_number}")
+            
+            # Clear the batch and timer
+            self._batches[phone_number] = []
+            if phone_number in self._timers:
+                del self._timers[phone_number]
+            
+            # Combine all messages into one conversation
+            combined_messages = []
+            wati_message_ids = []
+            
+            for msg_item in batch:
+                combined_messages.append(msg_item['text'])
+                if msg_item['data'].get('id'):
+                    wati_message_ids.append(msg_item['data']['id'])
+            
+            # Create combined message text
+            if len(combined_messages) == 1:
+                combined_text = combined_messages[0]
+            else:
+                combined_text = "\n".join([f"رسالة {i+1}: {msg}" for i, msg in enumerate(combined_messages)])
+            
+            # Use the first message data as base
+            first_message_data = batch[0]['data']
+            first_message_data['text'] = combined_text
+            first_message_data['is_batch'] = True
+            first_message_data['batch_size'] = len(batch)
+            first_message_data['batch_message_ids'] = wati_message_ids
+            
+            # Process the combined message
+            await process_message_async(
+                first_message_data, 
+                phone_number, 
+                first_message_data.get('type', 'text'),
+                f"batch_{phone_number}_{int(time.time())}"
+            )
+
+# Create thread-safe instance
+message_batcher = ThreadSafeMessageBatcher()
+
+# Remove the old global dictionaries
+# user_message_batches = {}  # REMOVED
+# batch_timers = {}  # REMOVED
 
 async def add_message_to_batch(phone_number: str, message_data: dict):
     """Add a message to user's batch and set/reset timer"""
-    current_time = time.time()
-    
-    # Initialize batch for new user
-    if phone_number not in user_message_batches:
-        user_message_batches[phone_number] = []
-    
-    # Add message to batch
-    user_message_batches[phone_number].append({
-        'data': message_data,
-        'timestamp': current_time,
-        'text': message_data.get('text', '')
-    })
-    
-    # Cancel existing timer if any
-    if phone_number in batch_timers:
-        batch_timers[phone_number].cancel()
-    
-    # Set new timer to process batch after 3 seconds of inactivity
-    async def process_batch_delayed():
-        await asyncio.sleep(3)  # Wait 3 seconds for more messages
-        await process_user_batch(phone_number)
-    
-    batch_timers[phone_number] = asyncio.create_task(process_batch_delayed())
-    print(f"📦 Added message to batch for {phone_number}. Batch size: {len(user_message_batches[phone_number])}")
+    await message_batcher.add_message_to_batch(phone_number, message_data)
 
 async def process_user_batch(phone_number: str):
     """Process all messages in user's batch as one conversation"""
-    if phone_number not in user_message_batches or not user_message_batches[phone_number]:
-        return
-    
-    batch = user_message_batches[phone_number]
-    print(f"🔄 Processing batch of {len(batch)} messages for {phone_number}")
-    
-    # Clear the batch and timer
-    user_message_batches[phone_number] = []
-    if phone_number in batch_timers:
-        del batch_timers[phone_number]
-    
-    # Combine all messages into one conversation
-    combined_messages = []
-    wati_message_ids = []
-    
-    for msg_item in batch:
-        combined_messages.append(msg_item['text'])
-        if msg_item['data'].get('id'):
-            wati_message_ids.append(msg_item['data']['id'])
-    
-    # Create combined message text
-    if len(combined_messages) == 1:
-        combined_text = combined_messages[0]
-    else:
-        combined_text = "\n".join([f"رسالة {i+1}: {msg}" for i, msg in enumerate(combined_messages)])
-    
-    # Use the first message data as base
-    first_message_data = batch[0]['data']
-    first_message_data['text'] = combined_text
-    first_message_data['is_batch'] = True
-    first_message_data['batch_size'] = len(batch)
-    first_message_data['batch_message_ids'] = wati_message_ids
-    
-    # Process the combined message
-    await process_message_async(
-        first_message_data, 
-        phone_number, 
-        first_message_data.get('type', 'text'),
-        f"batch_{phone_number}_{int(time.time())}"
-    )
+    await message_batcher.process_user_batch(phone_number)
 
 async def process_message_async(data, phone_number, message_type, wati_message_id):
     """Process the message asynchronously after responding to Wati"""
@@ -288,13 +314,15 @@ async def process_message_async(data, phone_number, message_type, wati_message_i
         normalized_phone = "".join(char for char in str(phone_number) if char.isdigit())
         
         # Check if user is allowed to use the bot at all
-        if normalized_phone not in allowed_numbers:
-            print(f"🚫 Non-allowed user detected: {phone_number} - Ignoring message entirely")
-            return  # Exit without any processing or response
+        # if normalized_phone not in allowed_numbers:
+        #     print(f"🚫 Non-allowed user detected: {phone_number} - Ignoring message entirely")
+        #     return  # Exit without any processing or response
         
         # User is allowed, now determine if they are a test user (for now all allowed users are test users)
-        is_allowed_user = normalized_phone in allowed_numbers
-        is_test_user = normalized_phone in allowed_numbers
+        # is_allowed_user = normalized_phone in allowed_numbers
+        # is_test_user = normalized_phone in allowed_numbers
+        is_allowed_user =True
+        is_test_user = True
         
         if is_test_user:
             print(f"🧪 Test user detected: {phone_number} - Full functionality enabled")
@@ -416,6 +444,7 @@ async def process_message_async(data, phone_number, message_type, wati_message_i
         else:
             # Continue to classification agent
             print(f"🔄 Embedding agent passed to classification agent")
+            return 
             
             # Classify message and detect language WITH conversation history
             classified_message_type, detected_language = await message_classifier.classify_message(
@@ -1011,7 +1040,7 @@ async def list_knowledge():
         from vectorstore.chroma_db import chroma_manager
         
         # Query with a broad search to get all items
-        results = chroma_manager.collection.get()
+        results = chroma_manager.get_collection_safe().get()
         
         items = []
         if results and results.get("documents"):
@@ -1027,7 +1056,7 @@ async def list_knowledge():
                 question = "سؤال غير متوفر"
                 question_id = f"q_{item_id}"
                 try:
-                    question_results = chroma_manager.collection.get(ids=[question_id])
+                    question_results = chroma_manager.get_collection_safe().get(ids=[question_id])
                     if question_results and question_results.get("documents"):
                         question = question_results["documents"][0]
                 except:
@@ -1067,7 +1096,7 @@ async def update_knowledge(request: Request):
         from vectorstore.chroma_db import chroma_manager
         
         # Update the answer document
-        chroma_manager.collection.update(
+        chroma_manager.get_collection_safe().update(
             ids=[qa_id],
             documents=[answer],
             metadatas=[metadata]
@@ -1077,14 +1106,14 @@ async def update_knowledge(request: Request):
         question_id = f"q_{qa_id}"
         question_metadata = {"answer_id": qa_id, "type": "question", **metadata}
         try:
-            chroma_manager.collection.update(
+            chroma_manager.get_collection_safe().update(
                 ids=[question_id],
                 documents=[question],
                 metadatas=[question_metadata]
             )
         except:
             # If question doesn't exist, create it
-            chroma_manager.collection.add(
+            chroma_manager.get_collection_safe().add(
                 ids=[question_id],
                 documents=[question],
                 metadatas=[question_metadata]
@@ -1108,12 +1137,12 @@ async def delete_knowledge(qa_id: str):
         from vectorstore.chroma_db import chroma_manager
         
         # Delete the answer document
-        chroma_manager.collection.delete(ids=[qa_id])
+        chroma_manager.get_collection_safe().delete(ids=[qa_id])
         
         # Delete the question document
         question_id = f"q_{qa_id}"
         try:
-            chroma_manager.collection.delete(ids=[question_id])
+            chroma_manager.get_collection_safe().delete(ids=[question_id])
         except:
             pass  # Question might not exist
         
