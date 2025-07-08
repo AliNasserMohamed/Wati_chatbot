@@ -7,7 +7,7 @@ from utils.language_utils import language_handler
 class EmbeddingAgent:
     def __init__(self):
         self.openai_client = openai.AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-        self.similarity_threshold = 0.20  # Higher cosine similarity means better match
+        self.similarity_threshold = 0.50  # Higher cosine similarity means better match
         self.high_similarity_threshold = 0.60  # Very high similarity threshold for direct answers
         
     async def process_message(self, user_message: str, conversation_history: list = None, user_language: str = 'ar') -> Dict[str, Any]:
@@ -195,6 +195,7 @@ class EmbeddingAgent:
 - "continue": إذا كان الرد غير مناسب أو غير مفهوم
 
 خاص: لا ترد على الرسائل العشوائية أو غير المفهومة حتى لو كانت في قاعدة البيانات.
+لا تقم برد التحية علي اي عميل اذا انت متاكد 100 بالمية ان ما ارسله هو تحية وليس اي رسالة اخري 
 
 اختر واحد فقط: reply أو skip أو continue"""
         else:
