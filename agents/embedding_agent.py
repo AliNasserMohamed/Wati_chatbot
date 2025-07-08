@@ -176,59 +176,67 @@ class EmbeddingAgent:
         if language == 'ar':
             evaluation_prompt = f"""أنت مقيم ذكي لجودة الردود في خدمة العملاء لشركة أبار لتوصيل المياه.
 
-سأعطيك:
-1. رسالة العميل الحالية
-2. سؤال مشابه من قاعدة البيانات
-3. الرد المحفوظ في قاعدة البيانات
-4. سياق المحادثة للرسائل السابقة{conversation_context}
+تحليل الرسالة الحالية وسياق المحادثة:
+- رسالة العميل الحالية: "{user_message}"
+- السؤال المشابه من قاعدة البيانات: "{matched_question}"
+- الرد المحفوظ: "{matched_answer}"
+{conversation_context}
 
-رسالة العميل الحالية: "{user_message}"
-السؤال المشابه من قاعدة البيانات: "{matched_question}"
-الرد المحفوظ: "{matched_answer}"
+مهام التقييم:
+1. تحليل سياق المحادثة الكامل لفهم الموضوع الحالي
+2. تحديد نوع رسالة العميل (تحية، شكر، سؤال، استفسار، إلخ)
+3. تقييم مدى ملاءمة الرد المحفوظ للسياق والرسالة
 
-مهمتك تقييم ما إذا كان الرد المحفوظ مناسب للرسالة الحالية أم لا، مع مراعاة سياق المحادثة.
+معايير الرد:
+- "reply": فقط للتحيات الحقيقية (مثل: السلام عليكم، مرحبا، أهلا، مساء الخير)
+- "reply": للشكر والتقدير المباشر (مثل: شكراً، يعطيك العافية، الله يوفقكم)
+- "skip": للرسائل التي لا تحتاج رد (مثل: أوكي، تمام، تفضل، نعم)
+- "continue": للأسئلة والاستفسارات التي تحتاج معالجة أكثر تعقيداً
+- "continue": إذا كان الرد غير مناسب أو غير مفهوم
 
-قم بالتقييم واختر إحدى الخيارات التالية:
+خاص: لا ترد على الرسائل العشوائية أو غير المفهومة حتى لو كانت في قاعدة البيانات.
 
-1. "reply" - إذا كان الرد مناسب ومفيد ويجيب على سؤال العميل
-2. "skip" - إذا كانت رسالة العميل لا تحتاج رد (مثل المشاعر، "أوكي", "شكراً", "تمام")
-3. "continue" - إذا كان الرد غير مناسب أو الرسالة تحتاج معالجة أكثر تعقيداً
-
-اكتب فقط الكلمة: reply أو skip أو continue"""
+اختر واحد فقط: reply أو skip أو continue"""
         else:
             evaluation_prompt = f"""You are a smart response quality evaluator for Abar water delivery customer service.
 
-I will give you:
-1. Current customer message
-2. Similar question from database
-3. Stored response from database
-4. Conversation context from previous messages{conversation_context}
+Analysis of current message and conversation context:
+- Current customer message: "{user_message}"
+- Similar question from database: "{matched_question}"
+- Stored response: "{matched_answer}"
+{conversation_context}
 
-Current customer message: "{user_message}"
-Similar question from database: "{matched_question}"
-Stored response: "{matched_answer}"
+Evaluation tasks:
+1. Analyze the complete conversation context to understand the current topic
+2. Identify the type of customer message (greeting, thanks, question, inquiry, etc.)
+3. Assess the appropriateness of the stored response for the context and message
 
-Your task is to evaluate whether the stored response is appropriate for the current message, considering the conversation context.
+Response criteria:
+- "reply": Only for genuine greetings (like: Hello, Hi, Good morning, Good evening, Peace be upon you)
+- "reply": For direct thanks and appreciation (like: Thank you, Thanks, God bless you)
+- "skip": For messages that don't need a reply (like: OK, Fine, Go ahead, Yes)
+- "continue": For questions and inquiries that need more complex processing
+- "continue": If the response is inappropriate or incomprehensible
 
-Evaluate and choose one of the following options:
+Special: Don't reply to random or incomprehensible messages even if they exist in the database.
 
-1. "reply" - if the response is appropriate, helpful and answers the customer's question
-2. "skip" - if the customer message doesn't need a reply (like emotions, "ok", "thanks", "fine")
-3. "continue" - if the response is not appropriate or the message needs more complex processing
-
-Write only the word: reply or skip or continue"""
+Choose only one: reply or skip or continue"""
         
         try:
             response = await self.openai_client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[
+                    {"role": "system", "content": "You are a careful evaluator. Focus on the conversation context and message type. Only reply to genuine greetings and thanks, not random messages."},
                     {"role": "user", "content": evaluation_prompt}
                 ],
-                max_tokens=10,
+                max_tokens=20,
                 temperature=0.1
             )
             
             evaluation = response.choices[0].message.content.strip().lower()
+            
+            # Log the evaluation for debugging
+            print(f"🤖 ChatGPT evaluation result: '{evaluation}'")
             
             # Map the response to our action format
             if 'reply' in evaluation:
@@ -239,6 +247,7 @@ Write only the word: reply or skip or continue"""
                 return {'action': 'continue'}
             else:
                 # Default to continue if we can't parse the response
+                print(f"⚠️ Could not parse evaluation result, defaulting to continue")
                 return {'action': 'continue'}
                 
         except Exception as e:

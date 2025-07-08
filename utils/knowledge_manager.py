@@ -120,8 +120,7 @@ class KnowledgeManager:
                 "مساء الخير",
                 "الله يوفقكم",
                 "أوكي تمام",
-                "تفضل",
-                "مابينسمح مافيه العياره"
+                "تفضل"
             ]
             
             answers = [
@@ -133,8 +132,7 @@ class KnowledgeManager:
                 "مساء النور، تفضل طال عمرك",
                 "وياك الله يسعدك",
                 "",  # No reply needed for "أوكي تمام"
-                "",  # No reply needed for "تفضل"
-                " مافهمت العباره"
+                ""   # No reply needed for "تفضل"
             ]
             
             metadatas = [
@@ -144,7 +142,6 @@ class KnowledgeManager:
                 {"source": "custom", "category": "thanks", "language": "ar"},
                 {"source": "custom", "category": "thanks", "language": "ar"},
                 {"source": "custom", "category": "greeting", "language": "ar"},
-                {"source": "custom", "category": "conversation", "language": "ar"},
                 {"source": "custom", "category": "conversation", "language": "ar"},
                 {"source": "custom", "category": "conversation", "language": "ar"},
                 {"source": "custom", "category": "conversation", "language": "ar"}

@@ -313,21 +313,14 @@ async def process_message_async(data, phone_number, message_type, wati_message_i
         # Normalize phone number by removing spaces and special characters
         normalized_phone = "".join(char for char in str(phone_number) if char.isdigit())
         
-        # Check if user is allowed to use the bot at all
-        # if normalized_phone not in allowed_numbers:
-        #     print(f"🚫 Non-allowed user detected: {phone_number} - Ignoring message entirely")
-        #     return  # Exit without any processing or response
+        # Check if user is allowed to access full bot functionality
+        is_allowed_user = normalized_phone in allowed_numbers
+        is_test_user = normalized_phone in allowed_numbers  # For now, all allowed users are test users
         
-        # User is allowed, now determine if they are a test user (for now all allowed users are test users)
-        # is_allowed_user = normalized_phone in allowed_numbers
-        # is_test_user = normalized_phone in allowed_numbers
-        is_allowed_user =True
-        is_test_user = True
-        
-        if is_test_user:
-            print(f"🧪 Test user detected: {phone_number} - Full functionality enabled")
+        if is_allowed_user:
+            print(f"✅ Allowed user detected: {phone_number} - Full functionality enabled")
         else:
-            print(f"👤 Regular user detected: {phone_number} - Limited to greetings and suggestions only")
+            print(f"🔒 Non-allowed user detected: {phone_number} - Limited to embedding agent replies only")
         
         # Get or create user session
         user = DatabaseManager.get_user_by_phone(db, phone_number)
@@ -444,7 +437,11 @@ async def process_message_async(data, phone_number, message_type, wati_message_i
         else:
             # Continue to classification agent
             print(f"🔄 Embedding agent passed to classification agent")
-            return 
+            
+            # Check if user is allowed to access other agents
+            if not is_allowed_user:
+                print(f"🔒 Non-allowed user cannot access other agents - no response sent")
+                return
             
             # Classify message and detect language WITH conversation history
             classified_message_type, detected_language = await message_classifier.classify_message(
@@ -572,46 +569,13 @@ Important notes:
             print(f"🔇 No response generated - skipping message sending")
             return
         
-        # COMMENTED OUT: Check for duplicate bot messages and reformulate if needed
-        # duplicate_check = DatabaseManager.check_duplicate_bot_message(db, user.id, response_text)
-        # 
-        # if duplicate_check.get("should_reformulate", False):
-        #     print(f"🔄 Reformulating response due to {duplicate_check.get('reason', 'unknown')} duplicate")
-        #     
-        #     # Create reformulation prompt based on language
-        #     if detected_language == 'ar':
-        #         reformulation_prompt = f"""أنت مساعد ذكي لشركة أبار لتوصيل المياه في السعودية.
-        # لديك الرد التالي لكنه مشابه جداً لرد سابق، أعد صياغته بطريقة مختلفة لكن بنفس المعنى:
-        # 
-        # الرد الأصلي: {response_text}
-        # 
-        # أعد كتابة الرد بطريقة مختلفة، مع الحفاظ على نفس المعنى والمعلومات المفيدة. اجعله طبيعي ومفيد."""
-        #     else:
-        #         reformulation_prompt = f"""You are a smart assistant for Abar Water Delivery Company in Saudi Arabia.
-        # You have the following response but it's very similar to a previous response, reformulate it differently but with the same meaning:
-        # 
-        # Original response: {response_text}
-        # 
-        # Rewrite the response in a different way, keeping the same meaning and useful information. Make it natural and helpful."""
-        #     
-        #     # Try to reformulate the response
-        #     try:
-        #         reformulated_response = await language_handler.process_with_openai(reformulation_prompt)
-        #         if reformulated_response and reformulated_response.strip():
-        #             response_text = reformulated_response
-        #             print(f"✅ Response successfully reformulated")
-        #         else:
-        #             print(f"⚠️ Reformulation failed, using original response")
-        #     except Exception as e:
-        #         print(f"❌ Error during reformulation: {str(e)}, using original response")
-        
-        # Clean up response text - remove "bot:" prefix if present
+
         if response_text and response_text.startswith("bot: "):
             response_text = response_text[5:]  # Remove "bot: " prefix
         elif response_text and response_text.startswith("bot:"):
             response_text = response_text[4:]  # Remove "bot:" prefix
         
-        user_type = "TEST" if is_test_user else "REGULAR"
+        user_type = "ALLOWED" if is_allowed_user else "RESTRICTED"
         print(f"📤 Sending response for {classified_message_type or 'UNKNOWN'} ({user_type} user) in {detected_language}: {response_text[:50]}...")
 
         # Create bot reply record with language (prevent double replies)
