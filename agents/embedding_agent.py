@@ -227,7 +227,30 @@ Choose only one: reply or skip or continue"""
             response = await self.openai_client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[
-                    {"role": "system", "content": "You are a careful evaluator. Focus on the conversation context and message type. Only reply to genuine greetings and thanks, not random messages."},
+                    {"role": "system", "content": """
+                        You are a strict evaluator for customer service response quality at Abar Water Delivery.
+
+                        Your task is to classify messages into one of three actions only: reply, skip, or continue.
+
+                        Rules:
+                        - reply: Only if the message is a clear, standalone greeting (e.g. السلام عليكم, مرحبا) or direct thanks (e.g. شكراً, يعطيك العافية), with no request, question, or new information.
+                        - skip: If the message needs no response (e.g. أوكي, تمام, نعم, تفضل).
+                        - continue: If the message includes any question, request, scheduling, or new information — even if it contains polite words or partial greetings.
+
+                        Important:
+                        - DO NOT classify a message as a greeting or thanks just because it "sounds nice".
+                        - Think carefully: is the message truly a greeting or is it a request or question in polite form?
+
+                        Examples of polite but **not greetings**:
+                        - "يمدي توصلونه اليوم اكون شاكر لكم" → continue (this is a question)
+                        - "ابيه الليلة" → continue (this is a request)
+                        - "موعدنا بكره باذن الله" → continue (this is an informational statement)
+                        - "الصباح طال عمرك" → continue (this is a message with context, not a greeting)
+
+                        Final instruction:
+                        Always choose **only one**: `reply`, `skip`, or `continue`.
+                        Be conservative — do not choose `reply` unless you are 100% certain it's ONLY a greeting or thanks.
+                        """},
                     {"role": "user", "content": evaluation_prompt}
                 ],
                 max_tokens=20,
