@@ -112,6 +112,7 @@ class KnowledgeManager:
             
             # Greeting-related questions and responses from the frontend system
             questions = [
+                # Arabic greetings
                 "السلام عليكم",
                 "الوووو", 
                 "هلا",
@@ -120,10 +121,26 @@ class KnowledgeManager:
                 "مساء الخير",
                 "الله يوفقكم",
                 "أوكي تمام",
-                "تفضل"
+                "تفضل",
+                "مرحبا",
+                # English greetings
+                "Hello",
+                "Hi",
+                "Good morning",
+                "Good evening",
+                "Good afternoon",
+                "Thank you",
+                "Thanks",
+                "Thanks a lot",
+                "Much appreciated",
+                "OK",
+                "Alright",
+                "Sure",
+                "No problem"
             ]
             
             answers = [
+                # Arabic responses
                 "عليكم السلام ورحمة الله، تفضل طال عمرك",
                 "حياك الله، تفضل استاذي",
                 "حياك الله، تفضل طال عمرك",
@@ -132,10 +149,26 @@ class KnowledgeManager:
                 "مساء النور، تفضل طال عمرك",
                 "وياك الله يسعدك",
                 "",  # No reply needed for "أوكي تمام"
-                ""   # No reply needed for "تفضل"
+                "",  # No reply needed for "تفضل"
+                "مرحبا طال عمرك",
+                # English responses
+                "Hello! Welcome to Abar Water Delivery. How can I help you today?",
+                "Hi there! How can I assist you with your water delivery needs?",
+                "Good morning! Welcome to Abar. How may I help you?",
+                "Good evening! How can I help you with water delivery today?",
+                "Good afternoon! Welcome to Abar Water Delivery. What can I do for you?",
+                "You're welcome! Is there anything else I can help you with?",
+                "You're welcome! How else can I assist you?",
+                "You're very welcome! Feel free to ask if you need anything else.",
+                "My pleasure! Let me know if you need any other assistance.",
+                "",  # No reply needed for "OK"
+                "",  # No reply needed for "Alright"  
+                "",  # No reply needed for "Sure"
+                ""   # No reply needed for "No problem"
             ]
             
             metadatas = [
+                # Arabic metadata
                 {"source": "custom", "category": "greeting", "language": "ar"},
                 {"source": "custom", "category": "greeting", "language": "ar"},
                 {"source": "custom", "category": "greeting", "language": "ar"},
@@ -144,7 +177,22 @@ class KnowledgeManager:
                 {"source": "custom", "category": "greeting", "language": "ar"},
                 {"source": "custom", "category": "conversation", "language": "ar"},
                 {"source": "custom", "category": "conversation", "language": "ar"},
-                {"source": "custom", "category": "conversation", "language": "ar"}
+                {"source": "custom", "category": "conversation", "language": "ar"},
+                {"source": "custom", "category": "greeting", "language": "ar"},
+                # English metadata
+                {"source": "custom", "category": "greeting", "language": "en"},
+                {"source": "custom", "category": "greeting", "language": "en"},
+                {"source": "custom", "category": "greeting", "language": "en"},
+                {"source": "custom", "category": "greeting", "language": "en"},
+                {"source": "custom", "category": "greeting", "language": "en"},
+                {"source": "custom", "category": "thanks", "language": "en"},
+                {"source": "custom", "category": "thanks", "language": "en"},
+                {"source": "custom", "category": "thanks", "language": "en"},
+                {"source": "custom", "category": "thanks", "language": "en"},
+                {"source": "custom", "category": "conversation", "language": "en"},
+                {"source": "custom", "category": "conversation", "language": "en"},
+                {"source": "custom", "category": "conversation", "language": "en"},
+                {"source": "custom", "category": "conversation", "language": "en"}
             ]
             
             # Use the ChromaManager's populate_default_knowledge and this method together
