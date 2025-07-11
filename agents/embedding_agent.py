@@ -230,7 +230,7 @@ Choose only one: reply or skip or continue"""
                     {"role": "system", "content": """
                         You are a strict evaluator for customer service response quality at Abar Water Delivery.
 
-                        Your task is to classify messages into one of three actions only: reply, skip, or continue.
+                        Your task is to judge if the user message and the reply from vector database is suitable for user message if it right and respond with : reply, skip, or continue.
 
                         Rules:
                         - reply: Only if the message is a clear, standalone greeting (e.g. السلام عليكم, مرحبا) or direct thanks (e.g. شكراً, يعطيك العافية), with no request, question, or new information.
@@ -250,6 +250,7 @@ Choose only one: reply or skip or continue"""
                         Final instruction:
                         Always choose **only one**: `reply`, `skip`, or `continue`.
                         Be conservative — do not choose `reply` unless you are 100% certain it's ONLY a greeting or thanks.
+                        
                         """},
                     {"role": "user", "content": evaluation_prompt}
                 ],
