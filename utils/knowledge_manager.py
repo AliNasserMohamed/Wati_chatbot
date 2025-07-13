@@ -103,7 +103,7 @@ class KnowledgeManager:
             print(f"❌ Error getting knowledge stats: {str(e)}")
             return {"success": False, "error": str(e)}
     
-    def populate_abar_knowledge(self) -> Dict[str, Any]:
+    async def populate_abar_knowledge(self) -> Dict[str, Any]:
         """
         Populate the knowledge base with greeting-related QA pairs from the frontend system
         """
@@ -119,6 +119,7 @@ class KnowledgeManager:
                 "يعطيك العافية",
                 "شكراً لكم",
                 "مساء الخير",
+                "صباح الخير",
                 "الله يوفقكم",
                 "أوكي تمام",
                 "تفضل",
@@ -147,6 +148,7 @@ class KnowledgeManager:
                 "الله يعافيك",
                 "العفو، بالخدمة طال عمرك",
                 "مساء النور، تفضل طال عمرك",
+                "صباح  النور، تفضل طال عمرك",
                 "وياك الله يسعدك",
                 "",  # No reply needed for "أوكي تمام"
                 "",  # No reply needed for "تفضل"
@@ -175,6 +177,7 @@ class KnowledgeManager:
                 {"source": "custom", "category": "thanks", "language": "ar"},
                 {"source": "custom", "category": "thanks", "language": "ar"},
                 {"source": "custom", "category": "greeting", "language": "ar"},
+                {"source": "custom", "category": "greeting", "language": "ar"},  # صباح الخير
                 {"source": "custom", "category": "conversation", "language": "ar"},
                 {"source": "custom", "category": "conversation", "language": "ar"},
                 {"source": "custom", "category": "conversation", "language": "ar"},
@@ -196,8 +199,8 @@ class KnowledgeManager:
             ]
             
             # Use the ChromaManager's populate_default_knowledge and this method together
-            result1 = self.chroma_manager.populate_default_knowledge()
-            result2 = self.chroma_manager.add_knowledge(questions, answers, metadatas, check_duplicates=True)
+            result1 = await self.chroma_manager.populate_default_knowledge()
+            result2 = await self.chroma_manager.add_knowledge(questions, answers, metadatas, check_duplicates=True)
             
             # Combine results
             total_added = result1["added_count"] + result2["added_count"]

@@ -1148,6 +1148,48 @@ async def health_check():
     """Check if the API is running"""
     return {"status": "healthy", "version": "1.0.0"}
 
+# Model cache management endpoints
+@app.get("/models/cache/info")
+async def get_model_cache_info():
+    """Get information about cached embedding models"""
+    try:
+        from vectorstore.model_cache import model_cache
+        cache_info = model_cache.get_cache_info()
+        return {"status": "success", "cache_info": cache_info}
+    except Exception as e:
+        print(f"[Model Cache INFO ERROR] {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/models/cache/preload")
+async def preload_models():
+    """Pre-load all embedding models used by the application"""
+    try:
+        from vectorstore.model_cache import model_cache
+        
+        models_to_preload = [
+            "mohamed2811/Muffakir_Embedding_V2",  # Arabic model
+            "all-MiniLM-L6-v2"  # Lightweight model
+        ]
+        
+        results = []
+        for model_name in models_to_preload:
+            try:
+                model = model_cache.load_model(model_name)
+                results.append({"model": model_name, "status": "loaded", "cached": True})
+            except Exception as e:
+                results.append({"model": model_name, "status": "error", "error": str(e)})
+        
+        cache_info = model_cache.get_cache_info()
+        return {
+            "status": "success", 
+            "message": "Model preloading completed",
+            "results": results,
+            "cache_info": cache_info
+        }
+    except Exception as e:
+        print(f"[Model Preload ERROR] {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 # Scraped Data Interface
 @app.get("/server/scrapped_data", response_class=HTMLResponse)
 async def scraped_data_interface(request: Request):

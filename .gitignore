@@ -48,6 +48,15 @@ venv.bak/
 
 # Logs
 *.log
+
+# Model Cache
+models/cache/
+*.model
+*.bin
+pytorch_model.bin
+config.json
+tokenizer.json
+tokenizer_config.json
 logs/
 
 # OS generated files

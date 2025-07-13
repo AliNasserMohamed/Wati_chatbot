@@ -4,6 +4,8 @@ from chromadb.config import Settings
 from chromadb.utils import embedding_functions
 from typing import List, Dict, Any, Optional
 import uuid
+from vectorstore.model_cache import model_cache
+from vectorstore.cached_embedding_function import CachedSentenceTransformerEmbeddingFunction
 
 # Create vector store directory if it doesn't exist
 os.makedirs("vectorstore/data_lite", exist_ok=True)
@@ -16,8 +18,9 @@ class ChromaManagerLite:
             settings=Settings(anonymized_telemetry=False)
         )
         
-        # Use a lightweight English embedding model that supports multiple languages
-        self.embedding_function = embedding_functions.SentenceTransformerEmbeddingFunction(
+        # Use a lightweight English embedding model with caching that supports multiple languages
+        print("🔧 Initializing lightweight embedding model with caching...")
+        self.embedding_function = CachedSentenceTransformerEmbeddingFunction(
             model_name="all-MiniLM-L6-v2"  # Much smaller and faster model
         )
         

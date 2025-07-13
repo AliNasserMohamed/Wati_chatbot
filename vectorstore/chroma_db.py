@@ -8,6 +8,8 @@ import numpy as np
 import asyncio
 import threading
 from contextlib import asynccontextmanager
+from vectorstore.model_cache import model_cache
+from vectorstore.cached_embedding_function import CachedSentenceTransformerEmbeddingFunction
 
 # Create vector store directory if it doesn't exist
 os.makedirs("vectorstore/data", exist_ok=True)
@@ -20,8 +22,9 @@ class ChromaManager:
             settings=Settings(anonymized_telemetry=False)
         )
         
-        # Use Arabic-specific embedding model for better Arabic language support
-        self.embedding_function = embedding_functions.SentenceTransformerEmbeddingFunction(
+        # Use Arabic-specific embedding model with caching for better Arabic language support
+        print("🔧 Initializing Arabic embedding model with caching...")
+        self.embedding_function = CachedSentenceTransformerEmbeddingFunction(
             model_name="mohamed2811/Muffakir_Embedding_V2"
         )
         
@@ -50,7 +53,7 @@ class ChromaManager:
         """
         Generate embeddings and apply L2 normalization
         """
-        # Get embeddings from the embedding function
+        # Get embeddings from the cached embedding function
         embeddings = self.embedding_function(texts)
         
         # Convert to numpy array and apply L2 normalization
