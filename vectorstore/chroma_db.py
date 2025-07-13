@@ -246,25 +246,14 @@ class ChromaManager:
         
         questions = [
             "ما هو تطبيق ابار؟",
-
         ]
         
         answers = [
             "تطبيق ابار هو تطبيق لتوصيل المياه المعبأة من أكثر من 200 علامة تجارية مختلفة للمياه.",
-
         ]
         
         metadatas = [
             {"source": "default", "category": "general_info"},
-            {"source": "default", "category": "usage"},
-            {"source": "default", "category": "brands"},
-            {"source": "default", "category": "delivery"},
-            {"source": "default", "category": "tracking"},
-            {"source": "default", "category": "delivery"},
-            {"source": "default", "category": "ordering"},
-            {"source": "default", "category": "cancellation"},
-            {"source": "default", "category": "payment"},
-            {"source": "default", "category": "support"}
         ]
         
         # Add knowledge with duplicate checking enabled
