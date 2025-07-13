@@ -18,6 +18,10 @@ class CachedSentenceTransformerEmbeddingFunction(EmbeddingFunction):
         self.model_name = model_name
         self._model = None
         
+    def name(self) -> str:
+        """Return the name of the embedding function (required by ChromaDB)"""
+        return "sentence_transformer"
+        
     def _ensure_model_loaded(self):
         """Ensure the model is loaded (lazy loading)"""
         if self._model is None:
