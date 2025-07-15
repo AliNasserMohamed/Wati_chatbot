@@ -51,6 +51,15 @@ app = FastAPI(
     version="1.0.0"
 )
 
+# Add UTF-8 response headers for Arabic text
+@app.middleware("http")
+async def add_utf8_headers(request: Request, call_next):
+    response = await call_next(request)
+    # Ensure UTF-8 encoding for Arabic text
+    if "application/json" in response.headers.get("content-type", ""):
+        response.headers["content-type"] = "application/json; charset=utf-8"
+    return response
+
 # Add session middleware for login functionality
 app.add_middleware(SessionMiddleware, secret_key="abar-secret-key-2024")
 
@@ -138,12 +147,31 @@ async def webhook(request: Request, db=Depends(get_db)):
     """Handle incoming WhatsApp messages from Wati webhook"""
     try:
         data = await request.json()
-        #print(f"Webhook received: {json.dumps(data, indent=2)}")
+        
+        # Debug: Print webhook data to understand structure
+        print(f"🔍 Webhook received from: {data.get('waId', 'Unknown')}")
+        print(f"   Message ID: {data.get('id', 'None')}")
+        print(f"   Type: {data.get('type', 'Unknown')}")
+        print(f"   Event Type: {data.get('eventType', 'None')}")
+        print(f"   From Bot: {data.get('fromBot', False)}")
+        print(f"   From Me: {data.get('fromMe', False)}")
+        print(f"   Text: {data.get('text', 'N/A')[:100]}...")
         
         # Extract message data
         phone_number = data.get("waId")
         message_type = data.get("type", "text")  # Can be text, audio, etc.
         wati_message_id = data.get("id")  # Extract Wati message ID
+        
+        # 🚨 CRITICAL: Check if this is a message FROM the bot (prevent infinite loops)
+        from_bot = data.get("fromBot", False)
+        from_me = data.get("fromMe", False)
+        is_status_update = data.get("eventType") == "status"
+        
+        # Skip bot messages and status updates to prevent infinite loops
+        if from_bot or from_me or is_status_update:
+            print(f"🤖 Bot message or status update detected - Skipping to prevent infinite loop")
+            print(f"   from_bot: {from_bot}, from_me: {from_me}, eventType: {data.get('eventType')}")
+            return {"status": "success", "message": "Bot message - not processed"}
         
         # Check if this is a template reply from WATI (button reply, list reply, etc.)
         button_reply = data.get("buttonReply")
@@ -166,6 +194,24 @@ async def webhook(request: Request, db=Depends(get_db)):
         if wati_message_id and DatabaseManager.check_message_already_processed(db, wati_message_id):
             print(f"🔄 Duplicate message detected with ID: {wati_message_id}. Returning success immediately.")
             return {"status": "success", "message": "Already processed"}
+        
+        # Additional check: Skip if the same message was processed recently (time-based)
+        if wati_message_id:
+            current_time = time.time()
+            if wati_message_id in processed_messages:
+                last_processed_time = processed_messages[wati_message_id]
+                if current_time - last_processed_time < 30:  # 30 seconds cooldown
+                    print(f"🔄 Message {wati_message_id} processed recently. Skipping to prevent spam.")
+                    return {"status": "success", "message": "Recently processed"}
+            
+            # Track this message
+            processed_messages[wati_message_id] = current_time
+            
+            # Clean up old entries (keep only last 1000 messages)
+            if len(processed_messages) > 1000:
+                old_messages = sorted(processed_messages.items(), key=lambda x: x[1])
+                for msg_id, _ in old_messages[:500]:  # Remove oldest 500
+                    del processed_messages[msg_id]
         
         # Log the incoming message for debugging
         print(f"📱 New message from {phone_number}: {data.get('text', 'N/A')[:50]}...")
@@ -266,6 +312,9 @@ class ThreadSafeMessageBatcher:
 
 # Create thread-safe instance
 message_batcher = ThreadSafeMessageBatcher()
+
+# Initialize message tracking to prevent infinite loops
+processed_messages = {}
 
 # Remove the old global dictionaries
 # user_message_batches = {}  # REMOVED

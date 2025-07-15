@@ -11,7 +11,7 @@ from database.db_models import Base, User, UserMessage, BotReply, City, Brand, P
 os.makedirs("database/data", exist_ok=True)
 
 # Database connection
-DATABASE_URL = "sqlite:///database/data/chatbot.sqlite"
+DATABASE_URL = "sqlite:///database/data/chatbot.sqlite?charset=utf8"
 
 # Configure SQLite for better concurrency
 engine = create_engine(
@@ -29,7 +29,7 @@ engine = create_engine(
 from sqlalchemy import event
 @event.listens_for(engine, "connect")
 def set_sqlite_pragma(dbapi_connection, connection_record):
-    """Configure SQLite for better concurrency"""
+    """Configure SQLite for better concurrency and UTF-8 support"""
     cursor = dbapi_connection.cursor()
     # Enable WAL mode for better concurrent reads/writes
     cursor.execute("PRAGMA journal_mode=WAL")
@@ -37,6 +37,9 @@ def set_sqlite_pragma(dbapi_connection, connection_record):
     cursor.execute("PRAGMA busy_timeout=30000")  # 30 seconds
     # Optimize for concurrency
     cursor.execute("PRAGMA synchronous=NORMAL")
+    # Ensure UTF-8 encoding
+    cursor.execute("PRAGMA encoding='UTF-8'")
+    cursor.execute("PRAGMA foreign_keys=ON")
     cursor.close()
 
 # Create all tables
