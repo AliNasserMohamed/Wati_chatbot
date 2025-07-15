@@ -49,18 +49,18 @@ class EmbeddingAgent:
             print(f"   - Full Metadata: {metadata}")
             print(f"   ---")
         
-        # Get the best match (highest cosine similarity)
+        # Get the best match (highest similarity)
         best_match = search_results[0]
-        cosine_similarity = best_match.get('cosine_similarity', 0.0)  # Default to 0 if not found
+        similarity_score = best_match.get('similarity', 0.0)  # Use 'similarity' not 'cosine_similarity'
         
         print(f"🎯 EmbeddingAgent: Best match selected:")
         print(f"   - Question: {best_match['document'][:50]}...")
-        print(f"   - Cosine Similarity: {cosine_similarity:.4f}")
+        print(f"   - Similarity: {similarity_score:.4f}")
         print(f"   - Metadata: {best_match['metadata']}")
         
-        # Check if cosine similarity is good enough (higher is better)
-        if cosine_similarity < self.similarity_threshold:
-            print(f"❌ EmbeddingAgent: Cosine similarity too low ({cosine_similarity:.4f} < {self.similarity_threshold})")
+        # Check if similarity is good enough (higher is better)
+        if similarity_score < self.similarity_threshold:
+            print(f"❌ EmbeddingAgent: Similarity too low ({similarity_score:.4f} < {self.similarity_threshold})")
             return {
                 'action': 'continue_to_classification',
                 'response': None,
@@ -107,17 +107,17 @@ class EmbeddingAgent:
             return {
                 'action': 'skip',
                 'response': None,
-                'confidence': cosine_similarity,
+                'confidence': similarity_score,
                 'matched_question': matched_document
             }
         
-        # For very high cosine similarity, skip the ChatGPT evaluation
-        if cosine_similarity >= self.high_similarity_threshold:
-            print(f"✅ EmbeddingAgent: Very high cosine similarity ({cosine_similarity:.4f}) - using answer directly")
+        # For very high similarity, skip the ChatGPT evaluation
+        if similarity_score >= self.high_similarity_threshold:
+            print(f"✅ EmbeddingAgent: Very high similarity ({similarity_score:.4f}) - using answer directly")
             return {
                 'action': 'reply',
                 'response': matched_answer,
-                'confidence': cosine_similarity,
+                'confidence': similarity_score,
                 'matched_question': matched_document
             }
         
@@ -132,21 +132,21 @@ class EmbeddingAgent:
             return {
                 'action': 'reply',
                 'response': evaluation_result.get('response', matched_answer),
-                'confidence': cosine_similarity,
+                'confidence': similarity_score,
                 'matched_question': matched_document
             }
         elif evaluation_result['action'] == 'skip':
             return {
                 'action': 'skip',
                 'response': None,
-                'confidence': cosine_similarity,
+                'confidence': similarity_score,
                 'matched_question': matched_document
             }
         else:
             return {
                 'action': 'continue_to_classification',
                 'response': None,
-                'confidence': cosine_similarity,
+                'confidence': similarity_score,
                 'matched_question': matched_document
             }
     

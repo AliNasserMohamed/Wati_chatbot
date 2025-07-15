@@ -631,21 +631,25 @@ async def send_whatsapp_message(phone_number: str, message: str):
     try:
         print(f"📤 Sending WhatsApp message to {phone_number}")
         print(f"🔗 Using Wati API URL: {wati_api_url}")
+        print(f"🔤 Original message: {message}")
+        print(f"🔤 Message bytes: {message.encode('utf-8')}")
         
-        # URL encode the message to handle special characters
-        encoded_message = urllib.parse.quote(message)
+        # URL encode the message to handle special characters, including Arabic
+        encoded_message = urllib.parse.quote(message, safe='', encoding='utf-8')
         
         # Use sendSessionMessage endpoint as shown in working examples
         send_url = f"{wati_api_url}/sendSessionMessage/{phone_number}?messageText={encoded_message}"
         
         print(f"📡 Request URL: {send_url[:80]}...")  # Show partial URL for debugging
+        print(f"🔡 Encoded message: {encoded_message[:100]}...")  # Show partial encoded message
         
-        # Headers based on working examples
+        # Headers based on working examples with proper UTF-8 support
         headers = {
             "Authorization": f"Bearer {wati_api_key}",
-            "Content-Type": "application/json",
+            "Content-Type": "application/json; charset=utf-8",
             "accept": "*/*",
-            "accept-language": "en-GB,en;q=0.9,ar-EG;q=0.8,ar;q=0.7,en-US;q=0.6",
+            "accept-language": "ar,en-GB;q=0.9,en;q=0.8,ar-EG;q=0.7,en-US;q=0.6",
+            "accept-charset": "utf-8",
             "origin": "https://live.wati.io",
             "referer": "https://live.wati.io/",
             "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36"
