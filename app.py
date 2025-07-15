@@ -863,7 +863,7 @@ async def get_product(product_id: int, db=Depends(get_db)):
 # Knowledge management endpoints
 @app.post("/knowledge/add")
 async def add_knowledge(request: Request):
-    """Add a question-answer pair to the knowledge base with duplicate checking"""
+    """Add a question-answer pair to the CSV file and then to the knowledge base"""
     try:
         data = await request.json()
         question = data.get("question")
@@ -873,14 +873,35 @@ async def add_knowledge(request: Request):
         if not question or not answer:
             raise HTTPException(status_code=400, detail="Question and answer are required")
         
-        # Add Q&A pair with duplicate checking
+        # Extract category, language, and other fields from metadata
+        category = metadata.get("category", "general")
+        language = metadata.get("language", "ar")
+        source = metadata.get("source", "admin")
+        priority = metadata.get("priority", "normal")
+        
+        # First add to CSV file
+        from utils.csv_manager import csv_manager
+        csv_success = csv_manager.add_qa_pair(
+            question=question,
+            answer=answer,
+            category=category,
+            language=language,
+            source=source,
+            priority=priority,
+            metadata=metadata
+        )
+        
+        if not csv_success:
+            raise HTTPException(status_code=500, detail="Failed to add Q&A pair to CSV file")
+        
+        # Then add to vector database with duplicate checking
         result = knowledge_manager.add_qa_pair(question, answer, metadata)
         
         if result["success"]:
             return {
                 "status": "success", 
                 "id": result.get("id"),
-                "message": result.get("message", "Q&A pair added successfully"),
+                "message": result.get("message", "Q&A pair added successfully to CSV and knowledge base"),
                 "added_count": result.get("added_count", 1),
                 "skipped_count": result.get("skipped_count", 0)
             }
@@ -996,41 +1017,28 @@ async def knowledge_admin_page(request: Request):
 @app.get("/knowledge/list")
 async def list_knowledge():
     """
-    List all Q&A pairs in the knowledge base
+    List all Q&A pairs from the CSV file
     """
     try:
-        # Get all items from the vector database
-        from vectorstore.chroma_db import chroma_manager
+        # Get all items from the CSV file
+        from utils.csv_manager import csv_manager
         
-        # Query with a broad search to get all items
-        results = chroma_manager.get_collection_safe().get()
+        qa_pairs = csv_manager.read_qa_pairs()
         
         items = []
-        if results and results.get("documents"):
-            for i, doc in enumerate(results["documents"]):
-                metadata = results["metadatas"][i] if results.get("metadatas") else {}
-                item_id = results["ids"][i] if results.get("ids") else str(i)
-                
-                # Skip question documents, only show answers
-                if metadata.get("type") == "question":
-                    continue
-                    
-                # Try to find the corresponding question
-                question = "سؤال غير متوفر"
-                question_id = f"q_{item_id}"
-                try:
-                    question_results = chroma_manager.get_collection_safe().get(ids=[question_id])
-                    if question_results and question_results.get("documents"):
-                        question = question_results["documents"][0]
-                except:
-                    pass
-                
-                items.append({
-                    "id": item_id,
-                    "question": question,
-                    "answer": doc,
-                    "metadata": metadata
-                })
+        for i, pair in enumerate(qa_pairs):
+            items.append({
+                "id": f"csv_{i}",  # Use CSV index as ID
+                "question": pair.get("question", ""),
+                "answer": pair.get("answer", ""),
+                "metadata": {
+                    "category": pair.get("category", "general"),
+                    "language": pair.get("language", "ar"),
+                    "source": pair.get("source", "csv"),
+                    "priority": pair.get("priority", "normal"),
+                    **pair.get("metadata", {})
+                }
+            })
         
         return {
             "status": "success",

@@ -4,14 +4,13 @@ Script to populate the knowledge base with updated questions and answers
 """
 import sys
 import os
-import asyncio
 
 # Add the current directory to Python path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from utils.knowledge_manager import knowledge_manager
 
-async def populate_knowledge_base():
+def populate_knowledge_base():
     """
     Populate the knowledge base with the updated questions and answers
     """
@@ -30,8 +29,8 @@ async def populate_knowledge_base():
         
         print("\n🔄 Populating knowledge base with updated Q&A pairs...")
         
-        # Populate the knowledge base (now async)
-        result = await knowledge_manager.populate_abar_knowledge()
+        # Populate the knowledge base (now synchronous)
+        result = knowledge_manager.populate_abar_knowledge()
         
         if result["success"]:
             print(f"✅ Knowledge base population completed successfully!")
@@ -56,11 +55,12 @@ async def populate_knowledge_base():
             print(f"   - Q&A pairs: {stats_after['stats']['qa_pairs']}")
         
         print("\n🎉 Knowledge base is now updated with your latest questions and answers!")
-        print("💡 The vector database now includes:")
+        print("💡 The vector database now includes all Q&A pairs from CSV:")
         print("   - Arabic greetings (including صباح الخير)")
         print("   - English greetings")
         print("   - Thank you messages in both languages")
         print("   - Default Abar app information")
+        print("   - All other Q&A pairs from the CSV file")
         
         return True
         
@@ -71,7 +71,7 @@ async def populate_knowledge_base():
         return False
 
 if __name__ == "__main__":
-    success = asyncio.run(populate_knowledge_base())
+    success = populate_knowledge_base()
     if success:
         print("\n✅ Script completed successfully!")
     else:

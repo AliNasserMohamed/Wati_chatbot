@@ -21,8 +21,8 @@ class KnowledgeManager:
             if not answer or not answer.strip():
                 return {"success": False, "error": "Answer cannot be empty"}
             
-            # Add knowledge with duplicate checking
-            result = self.chroma_manager.add_knowledge([question], [answer], [metadata], check_duplicates=True)
+            # Add knowledge with duplicate checking using synchronous method
+            result = self.chroma_manager.add_knowledge_sync([question], [answer], [metadata], check_duplicates=True)
             
             if result["added_count"] > 0:
                 return {
@@ -57,7 +57,7 @@ class KnowledgeManager:
         Returns result dict with operation details
         """
         try:
-            result = self.chroma_manager.add_knowledge(questions, answers, metadatas, check_duplicates)
+            result = self.chroma_manager.add_knowledge_sync(questions, answers, metadatas, check_duplicates)
             
             return {
                 "success": True,
@@ -77,7 +77,7 @@ class KnowledgeManager:
         Search the knowledge base for similar questions/answers
         """
         try:
-            return self.chroma_manager.search(query, n_results)
+            return self.chroma_manager.search_sync(query, n_results)
         except Exception as e:
             print(f"❌ Error in search_knowledge: {str(e)}")
             return []
@@ -87,7 +87,7 @@ class KnowledgeManager:
         Check if a question already exists in the knowledge base
         """
         try:
-            return self.chroma_manager.check_duplicate_question(question, similarity_threshold)
+            return self.chroma_manager.check_duplicate_question_sync(question, similarity_threshold)
         except Exception as e:
             print(f"❌ Error in check_duplicate: {str(e)}")
             return None
@@ -103,118 +103,23 @@ class KnowledgeManager:
             print(f"❌ Error getting knowledge stats: {str(e)}")
             return {"success": False, "error": str(e)}
     
-    async def populate_abar_knowledge(self) -> Dict[str, Any]:
+    def populate_abar_knowledge(self) -> Dict[str, Any]:
         """
-        Populate the knowledge base with greeting-related QA pairs from the frontend system
+        Populate the knowledge base with Q&A pairs from CSV file
         """
         try:
-            print("🚀 Starting Abar knowledge population...")
+            print("🚀 Starting Abar knowledge population from CSV...")
             
-            # Greeting-related questions and responses from the frontend system
-            questions = [
-                # Arabic greetings
-                "السلام عليكم",
-                "الوووو", 
-                "هلا",
-                "يعطيك العافية",
-                "شكراً لكم",
-                "مساء الخير",
-                "صباح الخير",
-                "الله يوفقكم",
-                "أوكي تمام",
-                "تفضل",
-                "مرحبا",
-                # English greetings
-                "Hello",
-                "Hi",
-                "Good morning",
-                "Good evening",
-                "Good afternoon",
-                "Thank you",
-                "Thanks",
-                "Thanks a lot",
-                "Much appreciated",
-                "OK",
-                "Alright",
-                "Sure",
-                "No problem"
-            ]
-            
-            answers = [
-                # Arabic responses
-                "عليكم السلام ورحمة الله، تفضل طال عمرك",
-                "حياك الله، تفضل استاذي",
-                "حياك الله، تفضل طال عمرك",
-                "الله يعافيك",
-                "العفو، بالخدمة طال عمرك",
-                "مساء النور، تفضل طال عمرك",
-                "صباح  النور، تفضل طال عمرك",
-                "وياك الله يسعدك",
-                "",  # No reply needed for "أوكي تمام"
-                "",  # No reply needed for "تفضل"
-                "مرحبا طال عمرك",
-                # English responses
-                "Hello! Welcome to Abar Water Delivery. How can I help you today?",
-                "Hi there! How can I assist you with your water delivery needs?",
-                "Good morning! Welcome to Abar. How may I help you?",
-                "Good evening! How can I help you with water delivery today?",
-                "Good afternoon! Welcome to Abar Water Delivery. What can I do for you?",
-                "You're welcome! Is there anything else I can help you with?",
-                "You're welcome! How else can I assist you?",
-                "You're very welcome! Feel free to ask if you need anything else.",
-                "My pleasure! Let me know if you need any other assistance.",
-                "",  # No reply needed for "OK"
-                "",  # No reply needed for "Alright"  
-                "",  # No reply needed for "Sure"
-                ""   # No reply needed for "No problem"
-            ]
-            
-            metadatas = [
-                # Arabic metadata
-                {"source": "custom", "category": "greeting", "language": "ar"},
-                {"source": "custom", "category": "greeting", "language": "ar"},
-                {"source": "custom", "category": "greeting", "language": "ar"},
-                {"source": "custom", "category": "thanks", "language": "ar"},
-                {"source": "custom", "category": "thanks", "language": "ar"},
-                {"source": "custom", "category": "greeting", "language": "ar"},
-                {"source": "custom", "category": "greeting", "language": "ar"},  # صباح الخير
-                {"source": "custom", "category": "conversation", "language": "ar"},
-                {"source": "custom", "category": "conversation", "language": "ar"},
-                {"source": "custom", "category": "conversation", "language": "ar"},
-                {"source": "custom", "category": "greeting", "language": "ar"},
-                # English metadata
-                {"source": "custom", "category": "greeting", "language": "en"},
-                {"source": "custom", "category": "greeting", "language": "en"},
-                {"source": "custom", "category": "greeting", "language": "en"},
-                {"source": "custom", "category": "greeting", "language": "en"},
-                {"source": "custom", "category": "greeting", "language": "en"},
-                {"source": "custom", "category": "thanks", "language": "en"},
-                {"source": "custom", "category": "thanks", "language": "en"},
-                {"source": "custom", "category": "thanks", "language": "en"},
-                {"source": "custom", "category": "thanks", "language": "en"},
-                {"source": "custom", "category": "conversation", "language": "en"},
-                {"source": "custom", "category": "conversation", "language": "en"},
-                {"source": "custom", "category": "conversation", "language": "en"},
-                {"source": "custom", "category": "conversation", "language": "en"}
-            ]
-            
-            # Use the ChromaManager's populate_default_knowledge and this method together
-            result1 = await self.chroma_manager.populate_default_knowledge()
-            result2 = await self.chroma_manager.add_knowledge(questions, answers, metadatas, check_duplicates=True)
-            
-            # Combine results
-            total_added = result1["added_count"] + result2["added_count"]
-            total_skipped = result1["skipped_count"] + result2["skipped_count"]
-            all_ids = result1["added_ids"] + result2["added_ids"]
-            all_skipped = result1["skipped_duplicates"] + result2["skipped_duplicates"]
+            # Use the ChromaManager's populate_default_knowledge_sync which now reads from CSV
+            result = self.chroma_manager.populate_default_knowledge_sync()
             
             return {
                 "success": True,
-                "added_ids": all_ids,
-                "added_count": total_added,
-                "skipped_duplicates": all_skipped,
-                "skipped_count": total_skipped,
-                "message": f"Successfully populated knowledge base. Added {total_added} Q&A pairs, skipped {total_skipped} duplicates."
+                "added_ids": result["added_ids"],
+                "added_count": result["added_count"],
+                "skipped_duplicates": result["skipped_duplicates"],
+                "skipped_count": result["skipped_count"],
+                "message": f"Successfully populated knowledge base from CSV. Added {result['added_count']} Q&A pairs, skipped {result['skipped_count']} duplicates."
             }
             
         except Exception as e:
