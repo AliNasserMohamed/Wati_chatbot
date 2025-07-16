@@ -105,12 +105,12 @@ class KnowledgeManager:
     
     def populate_abar_knowledge(self) -> Dict[str, Any]:
         """
-        Populate the knowledge base with Q&A pairs from CSV file
+        Populate the knowledge base with Q&A pairs from Excel file
         """
         try:
-            print("🚀 Starting Abar knowledge population from CSV...")
+            print("🚀 Starting Abar knowledge population from Excel...")
             
-            # Use the ChromaManager's populate_default_knowledge_sync which now reads from CSV
+            # Use the ChromaManager's populate_default_knowledge_sync which now reads from Excel
             result = self.chroma_manager.populate_default_knowledge_sync()
             
             return {
@@ -119,7 +119,7 @@ class KnowledgeManager:
                 "added_count": result["added_count"],
                 "skipped_duplicates": result["skipped_duplicates"],
                 "skipped_count": result["skipped_count"],
-                "message": f"Successfully populated knowledge base from CSV. Added {result['added_count']} Q&A pairs, skipped {result['skipped_count']} duplicates."
+                "message": f"Successfully populated knowledge base from Excel. Added {result['added_count']} Q&A pairs, skipped {result['skipped_count']} duplicates."
             }
             
         except Exception as e:

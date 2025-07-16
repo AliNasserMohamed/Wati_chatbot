@@ -174,9 +174,9 @@ class EmbeddingAgent:
                     conversation_context += f"{i}. {role}: {msg.get('content', '')}\n"
         
         if language == 'ar':
-            evaluation_prompt = f"""أنت مقيم ذكي لجودة الردود في خدمة العملاء لشركة أبار لتوصيل المياه.
+            evaluation_prompt = f""" أنت مقيم ذكي لجودة الردود في خدمة العملاء لشركة أبار لتوصيل المياه. ومهمتك هي تحديد اذا كان الرد الذي تم جلبه من الردود الجاهزة مناسب لرسالة العمسل ام غير مناسب 
 
-تحليل الرسالة الحالية وسياق المحادثة:
+
 - رسالة العميل الحالية: "{user_message}"
 - السؤال المشابه من قاعدة البيانات: "{matched_question}"
 - الرد المحفوظ: "{matched_answer}"
@@ -226,6 +226,7 @@ Special: Don't reply to random or incomprehensible messages even if they exist i
 Choose only one: reply or skip or continue"""
         
         try:
+            print(f"🤖 ChatGPT evaluation prompt: {evaluation_prompt}")
             response = await self.openai_client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[

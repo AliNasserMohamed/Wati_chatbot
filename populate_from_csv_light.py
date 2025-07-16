@@ -1,42 +1,39 @@
 #!/usr/bin/env python3
 """
-SUPER FAST script to populate vector database from CSV using lightweight embeddings
+SUPER FAST script to populate vector database from Excel using lightweight embeddings
 """
 import sys
 import os
 import time
 from typing import List, Dict, Any
 
-# Add the current directory to Python path
+# Add the parent directory to the Python path  
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from utils.csv_manager import csv_manager
+from utils.excel_manager import csv_manager
 
-def populate_vector_db_from_csv_light():
+def populate_vector_db_from_excel_light():
     """
-    FAST populate vector database from CSV using lightweight embeddings
+    FAST populate vector database from Excel using lightweight embeddings
     """
-    print("🚀 FAST Populating Vector Database from CSV (Lightweight Mode)")
-    print("=" * 60)
+    print("🚀 FAST Populating Vector Database from Excel (Lightweight Mode)")
+    print("=" * 70)
     
     try:
-        # Import the lightweight ChromaDB manager
-        from vectorstore.chroma_db import chroma_manager
-        
-        # Step 1: Read CSV data
-        print("\n📖 Step 1: Reading CSV data...")
+        # Step 1: Read Excel data
+        print("\n📖 Step 1: Reading Excel data...")
         start_time = time.time()
         
         qa_pairs = csv_manager.read_qa_pairs()
         if not qa_pairs:
-            print("❌ No Q&A pairs found in CSV file")
+            print("❌ No Q&A pairs found in Excel file")
             return False
-            
-        read_time = time.time() - start_time
-        print(f"   ✅ Successfully read {len(qa_pairs)} Q&A pairs from CSV ({read_time:.2f}s)")
         
-        # Step 2: Prepare data for vector database
-        print("\n📋 Step 2: Preparing data for vector database...")
+        read_time = time.time() - start_time
+        print(f"   ✅ Successfully read {len(qa_pairs)} Q&A pairs from Excel ({read_time:.2f}s)")
+
+        # Step 2: Prepare data for ChromaDB
+        print("\n📋 Step 2: Preparing data for ChromaDB...")
         start_time = time.time()
         
         questions = []
@@ -44,145 +41,122 @@ def populate_vector_db_from_csv_light():
         metadatas = []
         
         for i, pair in enumerate(qa_pairs):
-            questions.append(pair['question'])
-            answers.append(pair['answer'])
+            question = pair.get('question', '').strip()
+            answer = pair.get('answer', '').strip()
             
-            # Build metadata
+            if not question or not answer:
+                print(f"   ⚠️  Skipping empty Q&A pair at index {i}")
+                continue
+            
+            # Prepare metadata (same for both question and answer)
             metadata = {
-                "source": pair.get('source', 'csv'),
                 "category": pair.get('category', 'general'),
                 "language": pair.get('language', 'ar'),
-                "priority": pair.get('priority', 'normal')
+                "source": pair.get('source', 'excel'),
+                "priority": pair.get('priority', 'normal'),
             }
             
-            # Add additional metadata if present
-            if pair.get('metadata'):
+            # Add any additional metadata
+            if pair.get('metadata') and isinstance(pair['metadata'], dict):
                 metadata.update(pair['metadata'])
             
+            questions.append(question)
+            answers.append(answer)
             metadatas.append(metadata)
-            
-            # Show progress for large datasets
-            if (i + 1) % 10 == 0:
-                print(f"   📝 Processed {i + 1}/{len(qa_pairs)} pairs...")
         
         prep_time = time.time() - start_time
-        print(f"   ✅ Prepared {len(questions)} Q&A pairs for embedding ({prep_time:.2f}s)")
+        print(f"   ✅ Prepared {len(questions)} Q&A pairs for ChromaDB ({prep_time:.2f}s)")
         
-        # Step 3: Clear existing vector database (optional)
-        print("\n🗑️  Step 3: Clearing existing vector database...")
-        try:
-            # Get collection and delete if exists
-            collection = chroma_manager.get_collection_safe()
-            if collection:
-                collection.delete()
-                print("   ✅ Cleared existing vector database")
-        except Exception as e:
-            print(f"   ⚠️  Could not clear existing database: {str(e)}")
-        
-        # Step 4: Add ALL data at once (FASTEST METHOD)
-        print("\n🔄 Step 4: Adding data to vector database (BULK INSERT)...")
+        # Step 3: Clear existing data
+        print("\n🧹 Step 3: Clearing existing data...")
         start_time = time.time()
         
-        try:
-            print(f"   🚀 Adding all {len(questions)} Q&A pairs in one batch...")
-            
-            # Add ALL data to vector database at once using FAST SYNC method
-            result = chroma_manager.add_knowledge_sync(
-                questions, 
-                answers, 
-                metadatas, 
-                check_duplicates=False  # Skip duplicate checking for maximum speed
-            )
-            
-            if isinstance(result, dict):
-                total_added = result["added_count"]
-                total_skipped = result["skipped_count"]
-                print(f"      ✅ Bulk insert complete: {total_added} added, {total_skipped} skipped")
-            else:
-                # Simple list of IDs returned
-                total_added = len(result)
-                print(f"      ✅ Bulk insert complete: {total_added} added")
-            
-        except Exception as e:
-            print(f"      ❌ Bulk insert failed: {str(e)}")
-            return False
+        from vectorstore.chroma_db import chroma_manager
         
-        embedding_time = time.time() - start_time
-        print(f"\n   ✅ Vector database population completed ({embedding_time:.2f}s)")
-        print(f"      📊 Total added: {total_added}")
-        
-        # Step 5: Verify the population
-        print("\n🔍 Step 5: Verifying population...")
-        try:
-            stats = chroma_manager.get_stats()
-            print(f"   ✅ Vector database stats:")
-            print(f"      Total documents: {stats['total_documents']}")
-            print(f"      Questions: {stats['questions']}")
-            print(f"      Answers: {stats['answers']}")
-            print(f"      Q&A pairs: {stats['qa_pairs']}")
-        except Exception as e:
-            print(f"   ❌ Could not get stats: {str(e)}")
-        
-        # Step 6: Test search functionality
-        print("\n🔍 Step 6: Testing search functionality...")
-        try:
-            test_query = "مرحبا"
-            search_results = chroma_manager.search_sync(test_query, n_results=2)
+        # Get existing stats
+        existing_stats = chroma_manager.get_stats()
+        if existing_stats['total_documents'] > 0:
+            print(f"   ⚠️  Found {existing_stats['total_documents']} existing documents")
             
-            if search_results:
-                print(f"   ✅ Search test successful - found {len(search_results)} results for '{test_query}'")
-                for i, result in enumerate(search_results[:2]):
-                    similarity = result.get('similarity', 0)
-                    print(f"      {i+1}. Document: {result['document'][:50]}...")
-                    print(f"         Similarity: {similarity:.4f}")
-            else:
-                print(f"   ⚠️  Search test returned no results")
-        except Exception as e:
-            print(f"   ❌ Search test failed: {str(e)}")
+            # Clear existing data
+            collection = chroma_manager.collection
+            all_data = collection.get()
+            if all_data and all_data.get("ids"):
+                collection.delete(ids=all_data["ids"])
+                print(f"   ✅ Cleared {len(all_data['ids'])} existing documents")
         
-        print("\n🎉 FAST Vector Database Population Complete!")
-        print("=" * 60)
+        clear_time = time.time() - start_time
+        print(f"   ✅ Database cleared ({clear_time:.2f}s)")
+        
+        # Step 4: Add to ChromaDB using proper method (adds both questions and answers)
+        print("\n💾 Step 4: Adding to ChromaDB (FAST mode)...")
+        start_time = time.time()
+        
+        # Use the proper add_knowledge_sync method that adds both questions and answers
+        result = chroma_manager.add_knowledge_sync(
+            questions=questions,
+            answers=answers,
+            metadatas=metadatas,
+            check_duplicates=False  # Skip duplicate checking for speed
+        )
+        
+        add_time = time.time() - start_time
+        print(f"   ✅ Added {len(questions)} Q&A pairs to ChromaDB ({add_time:.2f}s)")
+        
+        # Step 5: Verify the addition
+        print("\n✅ Step 5: Verifying results...")
+        start_time = time.time()
+        
+        final_stats = chroma_manager.get_stats()
+        verify_time = time.time() - start_time
+        
+        print(f"   📊 Final database stats:")
+        print(f"      Total documents: {final_stats['total_documents']}")
+        print(f"      Questions: {final_stats['questions']}")
+        print(f"      Answers: {final_stats['answers']}")
+        print(f"      Q&A pairs: {final_stats['qa_pairs']}")
+        print(f"   ✅ Verification completed ({verify_time:.2f}s)")
+        
+        # Print performance summary
+        total_time = read_time + prep_time + clear_time + add_time + verify_time
+        print(f"\n🎉 SUCCESS! Vector database populated in {total_time:.2f}s")
+        print(f"   📖 Read: {read_time:.2f}s")
+        print(f"   📋 Prep: {prep_time:.2f}s")
+        print(f"   🧹 Clear: {clear_time:.2f}s")
+        print(f"   💾 Add: {add_time:.2f}s")
+        print(f"   ✅ Verify: {verify_time:.2f}s")
+        
         return True
         
     except Exception as e:
-        print(f"❌ Critical error during population: {str(e)}")
+        print(f"❌ Error: {str(e)}")
         import traceback
         traceback.print_exc()
         return False
 
-def main():
-    """Main function"""
-    print("🤖 Abar Chatbot - FAST Vector Database Population from CSV")
-    print("This uses lightweight embeddings for maximum speed")
-    print("The process should complete in seconds instead of minutes...")
-    print()
-    
-    # Ask for confirmation
-    try:
-        response = input("Do you want to proceed with FAST mode? (y/n): ")
-        if response.lower() not in ['y', 'yes']:
-            print("❌ Operation cancelled by user")
-            return
-    except KeyboardInterrupt:
-        print("\n❌ Operation cancelled by user")
-        return
-    
-    success = populate_vector_db_from_csv_light()
-    
-    if success:
-        print("\n✅ SUCCESS: Vector database has been populated with CSV data!")
-        print("💡 You can now run your chatbot and it will use the Q&A pairs from CSV")
-        print("🔄 To add new Q&A pairs, edit the CSV file and run this script again")
-    else:
-        print("\n❌ FAILED: Vector database population failed")
-        print("🔧 Please check the error messages above and try again")
-
 if __name__ == "__main__":
+    print("🤖 Abar Chatbot - FAST Vector Database Population from Excel")
+    print("This is the LIGHTWEIGHT version for super fast population")
+    print("=" * 70)
+    
+    # Show current database state
     try:
-        main()
-    except KeyboardInterrupt:
-        print("\n❌ Operation cancelled by user")
+        from vectorstore.chroma_db import chroma_manager
+        current_stats = chroma_manager.get_stats()
+        print(f"\n📊 Current database state:")
+        print(f"   Total documents: {current_stats['total_documents']}")
+        print(f"\n🚀 Starting FAST population process...")
+        
+        success = populate_vector_db_from_excel_light()
+        
+        if success:
+            print(f"\n✅ SUCCESS: Vector database has been populated with Excel data!")
+            print(f"💡 You can now run your chatbot and it will use the Q&A pairs from Excel")
+            print(f"🔄 To add new Q&A pairs, edit the Excel file and run this script again")
+        else:
+            print(f"\n❌ FAILED: Could not populate vector database")
+            
     except Exception as e:
-        print(f"\n❌ Unexpected error: {str(e)}")
+        print(f"❌ Script error: {str(e)}")
         import traceback
         traceback.print_exc() 

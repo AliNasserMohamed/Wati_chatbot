@@ -1,40 +1,40 @@
 #!/usr/bin/env python3
 """
-Efficient script to populate vector database from CSV with progress tracking
+Efficient script to populate vector database from Excel with progress tracking
 """
 import sys
 import os
 import time
-from typing import List, Dict, Any
+from datetime import datetime
 
-# Add the current directory to Python path
+# Add the parent directory to the Python path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from utils.csv_manager import csv_manager
+from utils.excel_manager import csv_manager
 from vectorstore.chroma_db import chroma_manager
 
-def populate_vector_db_from_csv():
+def populate_vector_db_from_excel():
     """
-    Populate vector database from CSV file with progress tracking (SYNC VERSION for speed)
+    Populate vector database from Excel file with progress tracking (SYNC VERSION for speed)
     """
-    print("🚀 Populating Vector Database from CSV")
+    print("🚀 Populating Vector Database from Excel")
     print("=" * 60)
     
     try:
-        # Step 1: Read CSV data
-        print("\n📖 Step 1: Reading CSV data...")
+        # Step 1: Read Excel data
+        print("\n📖 Step 1: Reading Excel data...")
         start_time = time.time()
         
         qa_pairs = csv_manager.read_qa_pairs()
         if not qa_pairs:
-            print("❌ No Q&A pairs found in CSV file")
+            print("❌ No Q&A pairs found in Excel file")
             return False
-            
-        read_time = time.time() - start_time
-        print(f"   ✅ Successfully read {len(qa_pairs)} Q&A pairs from CSV ({read_time:.2f}s)")
         
-        # Step 2: Prepare data for vector database
-        print("\n📋 Step 2: Preparing data for vector database...")
+        read_time = time.time() - start_time
+        print(f"   ✅ Successfully read {len(qa_pairs)} Q&A pairs from Excel ({read_time:.2f}s)")
+
+        # Step 2: Prepare data for ChromaDB
+        print("\n📋 Step 2: Preparing data for ChromaDB...")
         start_time = time.time()
         
         questions = []
@@ -42,158 +42,127 @@ def populate_vector_db_from_csv():
         metadatas = []
         
         for i, pair in enumerate(qa_pairs):
-            questions.append(pair['question'])
-            answers.append(pair['answer'])
+            question = pair.get('question', '').strip()
+            answer = pair.get('answer', '').strip()
             
-            # Build metadata
+            if not question or not answer:
+                print(f"   ⚠️  Skipping empty Q&A pair at index {i}")
+                continue
+            
+            # Prepare metadata (same for both question and answer)
             metadata = {
-                "source": pair.get('source', 'csv'),
                 "category": pair.get('category', 'general'),
                 "language": pair.get('language', 'ar'),
-                "priority": pair.get('priority', 'normal')
+                "source": pair.get('source', 'excel'),
+                "priority": pair.get('priority', 'normal'),
             }
             
-            # Add additional metadata if present
-            if pair.get('metadata'):
+            # Add any additional metadata
+            if pair.get('metadata') and isinstance(pair['metadata'], dict):
                 metadata.update(pair['metadata'])
             
+            questions.append(question)
+            answers.append(answer)
             metadatas.append(metadata)
-            
-            # Show progress for large datasets
-            if (i + 1) % 10 == 0:
-                print(f"   📝 Processed {i + 1}/{len(qa_pairs)} pairs...")
         
         prep_time = time.time() - start_time
-        print(f"   ✅ Prepared {len(questions)} Q&A pairs for embedding ({prep_time:.2f}s)")
+        print(f"   ✅ Prepared {len(questions)} Q&A pairs for vector database ({prep_time:.2f}s)")
         
-        # Step 3: Clear existing vector database (optional)
-        print("\n🗑️  Step 3: Clearing existing vector database...")
-        try:
-            # Get collection and delete if exists
-            collection = chroma_manager.get_collection_safe()
-            if collection:
-                collection.delete()
-                print("   ✅ Cleared existing vector database")
-        except Exception as e:
-            print(f"   ⚠️  Could not clear existing database: {str(e)}")
-        
-        # Step 4: Add data to vector database with progress tracking (FAST SYNC VERSION)
-        print("\n🔄 Step 4: Adding data to vector database...")
+        # Step 3: Check for existing data and clear if necessary
+        print("\n🔍 Step 3: Checking existing data...")
         start_time = time.time()
         
-        # Use larger batches for better performance
-        batch_size = 20  # Process 20 Q&A pairs at a time for speed
-        total_added = 0
-        total_skipped = 0
-        
-        for i in range(0, len(questions), batch_size):
-            batch_end = min(i + batch_size, len(questions))
-            batch_questions = questions[i:batch_end]
-            batch_answers = answers[i:batch_end]
-            batch_metadatas = metadatas[i:batch_end]
+        existing_stats = chroma_manager.get_stats()
+        if existing_stats['total_documents'] > 0:
+            print(f"   ⚠️  Found {existing_stats['total_documents']} existing documents")
+            print("   🧹 Clearing existing data to avoid duplicates...")
             
-            try:
-                print(f"   🔄 Processing batch {i//batch_size + 1}/{(len(questions) + batch_size - 1)//batch_size} ({i+1}-{batch_end}/{len(questions)})...")
-                
-                # Add batch to vector database using FAST SYNC method
-                result = chroma_manager.add_knowledge_sync(
-                    batch_questions, 
-                    batch_answers, 
-                    batch_metadatas, 
-                    check_duplicates=True
-                )
-                
-                if isinstance(result, dict):
-                    total_added += result["added_count"]
-                    total_skipped += result["skipped_count"]
-                    print(f"      ✅ Batch complete: {result['added_count']} added, {result['skipped_count']} skipped")
-                else:
-                    # Simple list of IDs returned
-                    batch_added = len(result)
-                    total_added += batch_added
-                    print(f"      ✅ Batch complete: {batch_added} added")
-                
-            except Exception as e:
-                print(f"      ❌ Batch failed: {str(e)}")
-                continue
+            # Get all existing IDs and delete them
+            all_data = chroma_manager.collection.get()
+            if all_data and all_data.get("ids"):
+                chroma_manager.collection.delete(ids=all_data["ids"])
+                print(f"   ✅ Cleared {len(all_data['ids'])} existing documents")
         
-        embedding_time = time.time() - start_time
-        print(f"\n   ✅ Vector database population completed ({embedding_time:.2f}s)")
-        print(f"      📊 Total added: {total_added}")
-        print(f"      📊 Total skipped: {total_skipped}")
+        check_time = time.time() - start_time
+        print(f"   ✅ Database ready for new data ({check_time:.2f}s)")
         
-        # Step 5: Verify the population
-        print("\n🔍 Step 5: Verifying population...")
-        try:
-            stats = chroma_manager.get_stats()
-            print(f"   ✅ Vector database stats:")
-            print(f"      Total documents: {stats['total_documents']}")
-            print(f"      Questions: {stats['questions']}")
-            print(f"      Answers: {stats['answers']}")
-            print(f"      Q&A pairs: {stats['qa_pairs']}")
-        except Exception as e:
-            print(f"   ❌ Could not get stats: {str(e)}")
+        # Step 4: Add to vector database using proper method
+        print("\n💾 Step 4: Adding to vector database...")
+        start_time = time.time()
         
-        # Step 6: Test search functionality
-        print("\n🔍 Step 6: Testing search functionality...")
-        try:
-            test_query = "مرحبا"
-            search_results = chroma_manager.search_sync(test_query, n_results=2)
-            
-            if search_results:
-                print(f"   ✅ Search test successful - found {len(search_results)} results for '{test_query}'")
-                for i, result in enumerate(search_results[:2]):
-                    similarity = result.get('similarity', 0)
-                    print(f"      {i+1}. Document: {result['document'][:50]}...")
-                    print(f"         Similarity: {similarity:.4f}")
-            else:
-                print(f"   ⚠️  Search test returned no results")
-        except Exception as e:
-            print(f"   ❌ Search test failed: {str(e)}")
+        # Use the proper add_knowledge_sync method that adds both questions and answers
+        result = chroma_manager.add_knowledge_sync(
+            questions=questions,
+            answers=answers,
+            metadatas=metadatas,
+            check_duplicates=True  # Enable duplicate checking for this script
+        )
         
-        print("\n🎉 Vector Database Population Complete!")
-        print("=" * 60)
+        add_time = time.time() - start_time
+        print(f"   ✅ Added {result['added_count']} Q&A pairs to vector database ({add_time:.2f}s)")
+        if result['skipped_count'] > 0:
+            print(f"   ⚠️  Skipped {result['skipped_count']} duplicates")
+        
+        # Step 5: Verify the addition
+        print("\n✅ Step 5: Verifying addition...")
+        start_time = time.time()
+        
+        final_stats = chroma_manager.get_stats()
+        verify_time = time.time() - start_time
+        
+        print(f"   📊 Final database stats:")
+        print(f"      Total documents: {final_stats['total_documents']}")
+        print(f"      Questions: {final_stats['questions']}")
+        print(f"      Answers: {final_stats['answers']}")
+        print(f"      Q&A pairs: {final_stats['qa_pairs']}")
+        print(f"      Arabic documents: {final_stats['arabic_documents']}")
+        print(f"   ✅ Verification completed ({verify_time:.2f}s)")
+        
+        # Print performance summary
+        total_time = read_time + prep_time + check_time + add_time + verify_time
+        print(f"\n🎉 SUCCESS! Vector database populated in {total_time:.2f}s")
+        print(f"   📖 Read: {read_time:.2f}s")
+        print(f"   📋 Prep: {prep_time:.2f}s")
+        print(f"   🔍 Check: {check_time:.2f}s")
+        print(f"   💾 Add: {add_time:.2f}s")
+        print(f"   ✅ Verify: {verify_time:.2f}s")
+        
         return True
         
     except Exception as e:
-        print(f"❌ Critical error during population: {str(e)}")
+        print(f"❌ Error: {str(e)}")
         import traceback
         traceback.print_exc()
         return False
 
-def main():
-    """Main function"""
-    print("🤖 Abar Chatbot - Vector Database Population from CSV")
-    print("This script will populate the vector database with Q&A pairs from CSV file")
-    print("The process may take a few minutes depending on the amount of data...")
-    print()
+if __name__ == "__main__":
+    print("🤖 Abar Chatbot - Vector Database Population from Excel")
+    print("This version includes progress tracking and duplicate checking")
+    print("=" * 60)
     
-    # Ask for confirmation
+    # Show current database state
     try:
-        response = input("Do you want to proceed? (y/n): ")
-        if response.lower() not in ['y', 'yes']:
-            print("❌ Operation cancelled by user")
-            return
-    except KeyboardInterrupt:
-        print("\n❌ Operation cancelled by user")
-        return
+        current_stats = chroma_manager.get_stats()
+        print(f"\n📊 Current database state:")
+        print(f"   Total documents: {current_stats['total_documents']}")
+        print(f"   Questions: {current_stats['questions']}")
+        print(f"   Answers: {current_stats['answers']}")
+        print(f"   Q&A pairs: {current_stats['qa_pairs']}")
+        
+        if current_stats['total_documents'] > 0:
+            print(f"\n⚠️  Warning: This will replace {current_stats['total_documents']} existing documents")
+        
+    except Exception as e:
+        print(f"⚠️  Could not get current stats: {str(e)}")
     
-    success = populate_vector_db_from_csv()
+    # Run the population
+    print("\n🚀 Starting population process...")
+    success = populate_vector_db_from_excel()
     
     if success:
-        print("\n✅ SUCCESS: Vector database has been populated with CSV data!")
-        print("💡 You can now run your chatbot and it will use the Q&A pairs from CSV")
-        print("🔄 To add new Q&A pairs, edit the CSV file and run this script again")
+        print("\n✅ SUCCESS: Vector database has been populated with Excel data!")
+        print("💡 You can now run your chatbot and it will use the Q&A pairs from Excel")
+        print("🔄 To add new Q&A pairs, edit the Excel file and run this script again")
     else:
-        print("\n❌ FAILED: Vector database population failed")
-        print("🔧 Please check the error messages above and try again")
-
-if __name__ == "__main__":
-    try:
-        main()
-    except KeyboardInterrupt:
-        print("\n❌ Operation cancelled by user")
-    except Exception as e:
-        print(f"\n❌ Unexpected error: {str(e)}")
-        import traceback
-        traceback.print_exc() 
+        print("\n❌ FAILED: Could not populate vector database")
+        print("🔧 Check the error messages above and try again") 

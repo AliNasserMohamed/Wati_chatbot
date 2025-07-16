@@ -916,7 +916,7 @@ async def get_product(product_id: int, db=Depends(get_db)):
 # Knowledge management endpoints
 @app.post("/knowledge/add")
 async def add_knowledge(request: Request):
-    """Add a question-answer pair to the CSV file and then to the knowledge base"""
+    """Add a question-answer pair to the Excel file and then to the knowledge base"""
     try:
         data = await request.json()
         question = data.get("question")
@@ -932,8 +932,8 @@ async def add_knowledge(request: Request):
         source = metadata.get("source", "admin")
         priority = metadata.get("priority", "normal")
         
-        # First add to CSV file
-        from utils.csv_manager import csv_manager
+        # First add to Excel file
+        from utils.excel_manager import csv_manager
         csv_success = csv_manager.add_qa_pair(
             question=question,
             answer=answer,
@@ -945,7 +945,7 @@ async def add_knowledge(request: Request):
         )
         
         if not csv_success:
-            raise HTTPException(status_code=500, detail="Failed to add Q&A pair to CSV file")
+            raise HTTPException(status_code=500, detail="Failed to add Q&A pair to Excel file")
         
         # Then add to vector database with duplicate checking
         result = knowledge_manager.add_qa_pair(question, answer, metadata)
@@ -954,7 +954,7 @@ async def add_knowledge(request: Request):
             return {
                 "status": "success", 
                 "id": result.get("id"),
-                "message": result.get("message", "Q&A pair added successfully to CSV and knowledge base"),
+                "message": result.get("message", "Q&A pair added successfully to Excel and knowledge base"),
                 "added_count": result.get("added_count", 1),
                 "skipped_count": result.get("skipped_count", 0)
             }
@@ -1070,24 +1070,24 @@ async def knowledge_admin_page(request: Request):
 @app.get("/knowledge/list")
 async def list_knowledge():
     """
-    List all Q&A pairs from the CSV file
+    List all Q&A pairs from the Excel file
     """
     try:
-        # Get all items from the CSV file
-        from utils.csv_manager import csv_manager
+        # Get all items from the Excel file
+        from utils.excel_manager import csv_manager
         
         qa_pairs = csv_manager.read_qa_pairs()
         
         items = []
         for i, pair in enumerate(qa_pairs):
             items.append({
-                "id": f"csv_{i}",  # Use CSV index as ID
+                "id": f"excel_{i}",  # Use Excel index as ID
                 "question": pair.get("question", ""),
                 "answer": pair.get("answer", ""),
                 "metadata": {
                     "category": pair.get("category", "general"),
                     "language": pair.get("language", "ar"),
-                    "source": pair.get("source", "csv"),
+                    "source": pair.get("source", "excel"),
                     "priority": pair.get("priority", "normal"),
                     **pair.get("metadata", {})
                 }
