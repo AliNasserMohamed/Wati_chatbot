@@ -338,6 +338,24 @@ class ChromaManager:
                 print(f"❌ Error searching Arabic text: {str(e)}")
                 return []
     
+    async def search(self, query: str, n_results: int = 3) -> List[Dict[str, Any]]:
+        """
+        Async wrapper for search_sync method
+        """
+        # Run the synchronous search in a thread pool to avoid blocking
+        import asyncio
+        import concurrent.futures
+        
+        loop = asyncio.get_event_loop()
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            result = await loop.run_in_executor(
+                executor, 
+                self.search_sync, 
+                query, 
+                n_results
+            )
+        return result
+    
     # ... [Include other methods with similar Arabic text preprocessing] ...
     
     def get_stats(self) -> Dict[str, int]:
@@ -412,6 +430,77 @@ class ChromaManager:
         except Exception as e:
             print(f"❌ Arabic embedding test failed: {str(e)}")
             return False
+
+    def populate_default_knowledge_sync(self) -> Dict[str, Any]:
+        """
+        Populate the knowledge base with Q&A pairs from Excel file
+        """
+        try:
+            print("🚀 ChromaManager: Reading data from Excel file...")
+            
+            # Import Excel manager
+            from utils.excel_manager import csv_manager
+            
+            # Read Q&A pairs from Excel
+            qa_pairs = csv_manager.read_qa_pairs()
+            if not qa_pairs:
+                return {
+                    "success": False,
+                    "error": "No Q&A pairs found in Excel file",
+                    "added_ids": [],
+                    "added_count": 0,
+                    "skipped_duplicates": [],
+                    "skipped_count": 0
+                }
+            
+            # Prepare data for ChromaDB
+            questions = []
+            answers = []
+            metadatas = []
+            
+            for pair in qa_pairs:
+                question = pair.get('question', '').strip()
+                answer = pair.get('answer', '').strip()
+                
+                if not question or not answer:
+                    continue
+                
+                # Prepare metadata
+                metadata = {
+                    "category": pair.get('category', 'general'),
+                    "language": pair.get('language', 'ar'),
+                    "source": pair.get('source', 'excel'),
+                    "priority": pair.get('priority', 'normal'),
+                }
+                
+                # Add any additional metadata
+                if pair.get('metadata') and isinstance(pair['metadata'], dict):
+                    metadata.update(pair['metadata'])
+                
+                questions.append(question)
+                answers.append(answer)
+                metadatas.append(metadata)
+            
+            # Use the add_knowledge_sync method
+            result = self.add_knowledge_sync(
+                questions=questions,
+                answers=answers,
+                metadatas=metadatas,
+                check_duplicates=True
+            )
+            
+            return result
+            
+        except Exception as e:
+            print(f"❌ Error populating from Excel: {str(e)}")
+            return {
+                "success": False,
+                "error": str(e),
+                "added_ids": [],
+                "added_count": 0,
+                "skipped_duplicates": [],
+                "skipped_count": 0
+            }
 
 # Create and export the instance
 chroma_manager = ChromaManager()
