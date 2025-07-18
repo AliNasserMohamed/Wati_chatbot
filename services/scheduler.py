@@ -27,7 +27,8 @@ class DataSyncScheduler:
             
             db = SessionLocal()
             try:
-                results = data_scraper.full_sync(db)
+                # Run async method in sync context
+                results = asyncio.run(data_scraper.full_sync(db))
                 logger.info(f"Scheduled sync completed successfully: {results}")
             finally:
                 db.close()
@@ -84,7 +85,8 @@ class DataSyncScheduler:
             
             db = SessionLocal()
             try:
-                results = data_scraper.full_sync(db)
+                # Run async method in sync context
+                results = asyncio.run(data_scraper.full_sync(db))
                 logger.info(f"Manual sync completed successfully: {results}")
                 return {"status": "success", "results": results}
             finally:

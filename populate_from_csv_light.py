@@ -44,9 +44,15 @@ def populate_vector_db_from_excel_light():
             question = pair.get('question', '').strip()
             answer = pair.get('answer', '').strip()
             
-            if not question or not answer:
-                print(f"   ⚠️  Skipping empty Q&A pair at index {i}")
+            # Skip only if question is empty (questions without answers should be embedded)
+            if not question:
+                print(f"   ⚠️  Skipping empty question at index {i}")
                 continue
+            
+            # Allow questions without answers - embed them with empty answer
+            if not answer:
+                print(f"   ℹ️  Question without answer at index {i}: '{question[:50]}...' - will embed with empty answer")
+                answer = ""  # Explicitly set to empty string for embedding
             
             # Prepare metadata (same for both question and answer)
             metadata = {
@@ -54,6 +60,7 @@ def populate_vector_db_from_excel_light():
                 "language": pair.get('language', 'ar'),
                 "source": pair.get('source', 'excel'),
                 "priority": pair.get('priority', 'normal'),
+                "has_answer": bool(answer),  # Track if the original had an answer
             }
             
             # Add any additional metadata

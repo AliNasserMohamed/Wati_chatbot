@@ -39,11 +39,18 @@ class ExcelManager:
             df = df.fillna('')
             
             for _, row in df.iterrows():
-                # Parse metadata JSON if it exists
+                # Parse metadata JSON if it exists - handle both 'metadata' and 'metadatas' columns
                 metadata = {}
-                if row.get('metadata') and str(row['metadata']).strip():
+                metadata_column = None
+                
+                if 'metadata' in row and row.get('metadata') and str(row['metadata']).strip():
+                    metadata_column = 'metadata'
+                elif 'metadatas' in row and row.get('metadatas') and str(row['metadatas']).strip():
+                    metadata_column = 'metadatas'
+                
+                if metadata_column:
                     try:
-                        metadata = json.loads(str(row['metadata']))
+                        metadata = json.loads(str(row[metadata_column]))
                     except (json.JSONDecodeError, ValueError):
                         metadata = {}
                 
@@ -86,6 +93,16 @@ class ExcelManager:
             # Ensure directory exists
             os.makedirs(os.path.dirname(self.excel_path), exist_ok=True)
             
+            # Determine which metadata column to use
+            metadata_column = 'metadata'  # default
+            if mode == 'a' and os.path.exists(self.excel_path):
+                # Check existing file structure to maintain compatibility
+                existing_df = pd.read_excel(self.excel_path, engine='openpyxl')
+                if 'metadatas' in existing_df.columns:
+                    metadata_column = 'metadatas'
+                elif 'metadata' in existing_df.columns:
+                    metadata_column = 'metadata'
+            
             # Prepare data for DataFrame
             data = []
             for qa_pair in qa_pairs:
@@ -104,7 +121,7 @@ class ExcelManager:
                     'language': qa_pair.get('language', 'ar'),
                     'source': qa_pair.get('source', 'excel'),
                     'priority': qa_pair.get('priority', 'normal'),
-                    'metadata': metadata_str
+                    metadata_column: metadata_str
                 }
                 data.append(row)
             
@@ -264,6 +281,102 @@ class ExcelManager:
         except Exception as e:
             print(f"❌ Error creating backup: {str(e)}")
             return ""
+    
+    def update_qa_pair(self, index: int, question: str, answer: str, 
+                       category: str = 'general', language: str = 'ar', 
+                       source: str = 'admin', priority: str = 'normal',
+                       metadata: Dict[str, Any] = None) -> bool:
+        """
+        Update a Q&A pair at a specific index
+        
+        Args:
+            index: Index of the Q&A pair to update
+            question: The updated question text
+            answer: The updated answer text
+            category: Category of the Q&A pair
+            language: Language code ('ar' or 'en')
+            source: Source of the Q&A pair
+            priority: Priority level
+            metadata: Additional metadata
+        
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        try:
+            # Read existing data
+            df = pd.read_excel(self.excel_path, engine='openpyxl')
+            
+            # Check if index is valid
+            if index < 0 or index >= len(df):
+                print(f"❌ Invalid index: {index}")
+                return False
+            
+            # Determine which metadata column to use
+            metadata_column = 'metadata'  # default
+            if 'metadatas' in df.columns:
+                metadata_column = 'metadatas'
+            elif 'metadata' in df.columns:
+                metadata_column = 'metadata'
+            
+            # Default metadata
+            if metadata is None:
+                metadata = {
+                    'updated_at': datetime.now().isoformat(),
+                    'type': category
+                }
+            else:
+                metadata['updated_at'] = datetime.now().isoformat()
+            
+            # Update the row
+            df.at[index, 'question'] = question.strip()
+            df.at[index, 'answer'] = answer.strip() if answer else ''
+            df.at[index, 'category'] = category
+            df.at[index, 'language'] = language
+            df.at[index, 'source'] = source
+            df.at[index, 'priority'] = priority
+            df.at[index, metadata_column] = json.dumps(metadata, ensure_ascii=False)
+            
+            # Write back to Excel
+            df.to_excel(self.excel_path, index=False, engine='openpyxl')
+            
+            print(f"✅ Successfully updated Q&A pair at index {index}")
+            return True
+            
+        except Exception as e:
+            print(f"❌ Error updating Q&A pair: {str(e)}")
+            return False
+    
+    def delete_qa_pair(self, index: int) -> bool:
+        """
+        Delete a Q&A pair at a specific index
+        
+        Args:
+            index: Index of the Q&A pair to delete
+        
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        try:
+            # Read existing data
+            df = pd.read_excel(self.excel_path, engine='openpyxl')
+            
+            # Check if index is valid
+            if index < 0 or index >= len(df):
+                print(f"❌ Invalid index: {index}")
+                return False
+            
+            # Delete the row
+            df = df.drop(index=index).reset_index(drop=True)
+            
+            # Write back to Excel
+            df.to_excel(self.excel_path, index=False, engine='openpyxl')
+            
+            print(f"✅ Successfully deleted Q&A pair at index {index}")
+            return True
+            
+        except Exception as e:
+            print(f"❌ Error deleting Q&A pair: {str(e)}")
+            return False
 
 # Create a global instance
 excel_manager = ExcelManager()

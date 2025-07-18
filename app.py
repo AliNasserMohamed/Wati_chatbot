@@ -51,6 +51,20 @@ app = FastAPI(
     version="1.0.0"
 )
 
+# Global exception handler
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """Global exception handler to prevent app crashes"""
+    print(f"🚨 Global exception: {str(exc)}")
+    import traceback
+    traceback.print_exc()
+    
+    return {
+        "status": "error", 
+        "message": "An unexpected error occurred", 
+        "error": str(exc)
+    }
+
 # Add UTF-8 response headers for Arabic text
 @app.middleware("http")
 async def add_utf8_headers(request: Request, call_next):
@@ -226,7 +240,10 @@ async def webhook(request: Request, db=Depends(get_db)):
 
     except Exception as e:
         print(f"[Webhook ERROR] {str(e)}")
-        return {"status": "error", "message": str(e)}
+        import traceback
+        traceback.print_exc()
+        # Return success even on error to prevent Wati from retrying
+        return {"status": "error", "message": "Internal error occurred", "error": str(e)}
 
 # Replace the global dictionaries with thread-safe alternatives
 class ThreadSafeMessageBatcher:
@@ -302,13 +319,23 @@ class ThreadSafeMessageBatcher:
             first_message_data['batch_size'] = len(batch)
             first_message_data['batch_message_ids'] = wati_message_ids
             
-            # Process the combined message
-            await process_message_async(
-                first_message_data, 
-                phone_number, 
-                first_message_data.get('type', 'text'),
-                f"batch_{phone_number}_{int(time.time())}"
+                    # Process the combined message with timeout
+        try:
+            await asyncio.wait_for(
+                process_message_async(
+                    first_message_data, 
+                    phone_number, 
+                    first_message_data.get('type', 'text'),
+                    f"batch_{phone_number}_{int(time.time())}"
+                ),
+                timeout=120  # 2 minutes timeout
             )
+        except asyncio.TimeoutError:
+            print(f"⏰ Message processing timed out for {phone_number}")
+        except Exception as e:
+            print(f"❌ Error processing message for {phone_number}: {str(e)}")
+            import traceback
+            traceback.print_exc()
 
 # Create thread-safe instance
 message_batcher = ThreadSafeMessageBatcher()
@@ -327,6 +354,29 @@ async def add_message_to_batch(phone_number: str, message_data: dict):
 async def process_user_batch(phone_number: str):
     """Process all messages in user's batch as one conversation"""
     await message_batcher.process_user_batch(phone_number)
+
+def has_links(text: str) -> bool:
+    """
+    Check if text contains any URLs or links
+    Returns True if links are found, False otherwise
+    """
+    import re
+    
+    # Common URL patterns
+    url_patterns = [
+        r'https?://[^\s]+',  # http:// or https://
+        r'www\.[^\s]+',      # www.
+        r'[^\s]+\.[a-zA-Z]{2,}(?:/[^\s]*)?',  # domain.com or domain.org/path
+        r'[^\s]+\.(?:com|org|net|edu|gov|mil|int|co|uk|de|fr|jp|cn|ru|br|in|au|ca|mx|es|it|nl|ch|se|no|dk|fi|be|at|pl|cz|hu|gr|pt|ie|il|za|tr|kr|th|sg|my|id|ph|vn|tw|hk|nz|ar|cl|pe|ve|uy|py|bo|ec|co|cr|pa|ni|hn|gt|sv|bz|jm|tt|bb|gd|lc|vc|ag|kn|dm|bs|cu|do|ht|mx|us|ca)[^\s]*',  # More TLDs
+        r'(?:^|[^a-zA-Z0-9])(?:bit\.ly|tinyurl\.com|t\.co|short\.link|go\.gl|ow\.ly|is\.gd|buff\.ly|adf\.ly|goo\.gl|tiny\.cc|lnkd\.in|short\.link|cutt\.ly|rebrand\.ly|linktr\.ee|linkin\.bio)[^\s]*',  # URL shorteners
+        r'(?:^|[^a-zA-Z0-9])(?:instagram\.com|facebook\.com|twitter\.com|youtube\.com|tiktok\.com|snapchat\.com|whatsapp\.com|telegram\.me|t\.me)[^\s]*',  # Social media
+    ]
+    
+    for pattern in url_patterns:
+        if re.search(pattern, text, re.IGNORECASE):
+            return True
+    
+    return False
 
 async def process_message_async(data, phone_number, message_type, wati_message_id):
     """Process the message asynchronously after responding to Wati"""
@@ -402,6 +452,11 @@ async def process_message_async(data, phone_number, message_type, wati_message_i
             message_text = data.get("text", "")
 
         print(f"📝 Processing message text: '{message_text[:100]}...'")
+
+        # Check for links in the message and skip processing if found
+        if message_text and has_links(message_text):
+            print(f"🔗 Message contains links - skipping processing to prevent spam/harmful content")
+            return
 
         # ISSUE 2: Get enhanced conversation history FIRST (last 5 messages and their replies) 
         conversation_history = DatabaseManager.get_user_message_history(db, user.id, limit=5)
@@ -638,9 +693,17 @@ Important notes:
         db.commit()
         print(f"💾 Message and reply saved to database")
 
-        # Send response via WhatsApp
-        result = await send_whatsapp_message(phone_number, response_text)
-        print(f"✅ Response sent to {phone_number}: {response_text[:100]}...")
+        # Send response via WhatsApp with timeout
+        try:
+            result = await asyncio.wait_for(
+                send_whatsapp_message(phone_number, response_text),
+                timeout=30  # 30 seconds timeout
+            )
+            print(f"✅ Response sent to {phone_number}: {response_text[:100]}...")
+        except asyncio.TimeoutError:
+            print(f"⏰ WhatsApp message sending timed out for {phone_number}")
+        except Exception as e:
+            print(f"❌ Error sending WhatsApp message to {phone_number}: {str(e)}")
 
     except Exception as e:
         print(f"[Async Message Processing ERROR] {str(e)}")
@@ -705,7 +768,7 @@ async def send_whatsapp_message(phone_number: str, message: str):
         }
         
         # Empty payload as message is in URL (as per working examples)
-        async with aiohttp.ClientSession() as session:
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30)) as session:
             async with session.post(
                 send_url,
                 headers=headers,
@@ -772,7 +835,13 @@ async def send_message(request: Request, db=Depends(get_db)):
 async def manual_data_sync():
     """Manually trigger a full data sync"""
     try:
-        result = scheduler.run_manual_sync()
+        # Run the sync in a separate thread to avoid blocking
+        import asyncio
+        import concurrent.futures
+        
+        loop = asyncio.get_event_loop()
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            result = await loop.run_in_executor(executor, scheduler.run_manual_sync)
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -923,8 +992,12 @@ async def add_knowledge(request: Request):
         answer = data.get("answer")
         metadata = data.get("metadata", {"source": "api"})
         
-        if not question or not answer:
-            raise HTTPException(status_code=400, detail="Question and answer are required")
+        if not question:
+            raise HTTPException(status_code=400, detail="Question is required")
+        
+        # Allow empty answers - questions without answers are valid
+        if not answer:
+            answer = ""  # Set empty string for questions without answers
         
         # Extract category, language, and other fields from metadata
         category = metadata.get("category", "general")
@@ -932,8 +1005,11 @@ async def add_knowledge(request: Request):
         source = metadata.get("source", "admin")
         priority = metadata.get("priority", "normal")
         
-        # First add to Excel file
+        # Import required modules
         from utils.excel_manager import csv_manager
+        from vectorstore.chroma_db import chroma_manager
+        
+        # First add to Excel file (simple direct call)
         csv_success = csv_manager.add_qa_pair(
             question=question,
             answer=answer,
@@ -947,28 +1023,42 @@ async def add_knowledge(request: Request):
         if not csv_success:
             raise HTTPException(status_code=500, detail="Failed to add Q&A pair to Excel file")
         
-        # Then add to vector database with duplicate checking
-        result = knowledge_manager.add_qa_pair(question, answer, metadata)
+        # Then add to vector database using simple method from populate_from_csv_light.py
+        questions = [question]
+        answers = [answer]
+        metadatas = [metadata]
         
-        if result["success"]:
-            return {
-                "status": "success", 
-                "id": result.get("id"),
-                "message": result.get("message", "Q&A pair added successfully to Excel and knowledge base"),
-                "added_count": result.get("added_count", 1),
-                "skipped_count": result.get("skipped_count", 0)
-            }
-        else:
-            if "duplicate" in result.get("error", "").lower():
+        try:
+            # Use the same logic as populate_from_csv_light.py
+            result = chroma_manager.add_knowledge_sync(
+                questions=questions,
+                answers=answers,
+                metadatas=metadatas,
+                check_duplicates=False  # Skip duplicate checking for speed
+            )
+            
+            # The result is a list of IDs when check_duplicates=False
+            if isinstance(result, list) and len(result) > 0:
                 return {
-                    "status": "warning",
-                    "message": "Question already exists in the knowledge base",
-                    "error": result["error"],
-                    "duplicate_info": result.get("duplicate_info"),
-                    "skipped_count": result.get("skipped_count", 1)
+                    "status": "success", 
+                    "id": result[0],
+                    "message": "Q&A pair added successfully to Excel and knowledge base",
+                    "added_count": 1,
+                    "skipped_count": 0
                 }
             else:
-                raise HTTPException(status_code=400, detail=result["error"])
+                raise HTTPException(status_code=500, detail="Failed to add Q&A pair to vector database")
+                
+        except Exception as vector_error:
+            print(f"[Vector DB Add ERROR] {str(vector_error)}")
+            # Still return success since Excel was saved successfully
+            return {
+                "status": "success", 
+                "id": "excel_only",
+                "message": "Q&A pair added to Excel successfully (vector database failed)",
+                "added_count": 1,
+                "skipped_count": 0
+            }
                 
     except HTTPException:
         raise
@@ -978,7 +1068,7 @@ async def add_knowledge(request: Request):
 
 @app.post("/knowledge/check-duplicate")
 async def check_duplicate_knowledge(request: Request):
-    """Check if a question already exists in the knowledge base"""
+    """Check if a question already exists in the Excel file (fast method)"""
     try:
         data = await request.json()
         question = data.get("question")
@@ -987,22 +1077,38 @@ async def check_duplicate_knowledge(request: Request):
         if not question:
             raise HTTPException(status_code=400, detail="Question is required")
         
-        duplicate = knowledge_manager.check_duplicate(question, similarity_threshold)
+        # Use Excel-based duplicate check (much faster)
+        from utils.excel_manager import csv_manager
+        from difflib import SequenceMatcher
         
-        if duplicate:
-            return {
-                "status": "duplicate_found",
-                "duplicate": True,
-                "existing_question": duplicate["document"],
-                "similarity": duplicate.get("cosine_similarity", 0),
-                "metadata": duplicate.get("metadata", {})
-            }
-        else:
-            return {
-                "status": "no_duplicate",
-                "duplicate": False,
-                "message": "No duplicate found, safe to add"
-            }
+        # Read existing questions from Excel
+        qa_pairs = csv_manager.read_qa_pairs()
+        
+        # Check for duplicates using string similarity
+        question_lower = question.lower().strip()
+        
+        for pair in qa_pairs:
+            existing_question = pair.get("question", "").lower().strip()
+            if not existing_question:
+                continue
+                
+            # Calculate similarity using SequenceMatcher
+            similarity = SequenceMatcher(None, question_lower, existing_question).ratio()
+            
+            if similarity >= similarity_threshold:
+                return {
+                    "status": "duplicate_found",
+                    "duplicate": True,
+                    "existing_question": pair.get("question", ""),
+                    "similarity": similarity,
+                    "metadata": pair.get("metadata", {})
+                }
+        
+        return {
+            "status": "no_duplicate",
+            "duplicate": False,
+            "message": "No duplicate found, safe to add"
+        }
             
     except Exception as e:
         print(f"[Knowledge Check Duplicate ERROR] {str(e)}")
@@ -1068,9 +1174,16 @@ async def knowledge_admin_page(request: Request):
     return templates.TemplateResponse("knowledge_admin.html", {"request": request})
 
 @app.get("/knowledge/list")
-async def list_knowledge():
+async def list_knowledge(
+    page: int = Query(1, ge=1, description="Page number"),
+    page_size: int = Query(50, ge=1, le=500, description="Items per page"),
+    category: Optional[str] = Query(None, description="Filter by category"),
+    search: Optional[str] = Query(None, description="Search in questions and answers"),
+    sort_by: str = Query("id", description="Sort by field"),
+    sort_order: str = Query("asc", description="Sort order: asc or desc")
+):
     """
-    List all Q&A pairs from the Excel file
+    List Q&A pairs from the Excel file with pagination, filtering, and sorting
     """
     try:
         # Get all items from the Excel file
@@ -1078,6 +1191,7 @@ async def list_knowledge():
         
         qa_pairs = csv_manager.read_qa_pairs()
         
+        # Convert to our format
         items = []
         for i, pair in enumerate(qa_pairs):
             items.append({
@@ -1093,10 +1207,58 @@ async def list_knowledge():
                 }
             })
         
+        # Apply filters
+        filtered_items = items
+        
+        # Filter by category
+        if category:
+            filtered_items = [item for item in filtered_items 
+                            if item.get("metadata", {}).get("category") == category]
+        
+        # Filter by search term
+        if search:
+            search_lower = search.lower()
+            filtered_items = [item for item in filtered_items 
+                            if search_lower in item.get("question", "").lower() or 
+                               search_lower in item.get("answer", "").lower()]
+        
+        # Sort items
+        reverse = sort_order.lower() == "desc"
+        if sort_by == "question":
+            filtered_items.sort(key=lambda x: x.get("question", ""), reverse=reverse)
+        elif sort_by == "answer":
+            filtered_items.sort(key=lambda x: x.get("answer", ""), reverse=reverse)
+        elif sort_by == "category":
+            filtered_items.sort(key=lambda x: x.get("metadata", {}).get("category", ""), reverse=reverse)
+        
+        # Calculate pagination
+        total_items = len(filtered_items)
+        start_idx = (page - 1) * page_size
+        end_idx = start_idx + page_size
+        paginated_items = filtered_items[start_idx:end_idx]
+        
+        # Calculate pagination info
+        total_pages = (total_items + page_size - 1) // page_size
+        has_next = page < total_pages
+        has_prev = page > 1
+        
         return {
             "status": "success",
-            "items": items,
-            "total": len(items)
+            "items": paginated_items,
+            "pagination": {
+                "page": page,
+                "page_size": page_size,
+                "total_items": total_items,
+                "total_pages": total_pages,
+                "has_next": has_next,
+                "has_prev": has_prev
+            },
+            "filters": {
+                "category": category,
+                "search": search,
+                "sort_by": sort_by,
+                "sort_order": sort_order
+            }
         }
     except Exception as e:
         print(f"Error listing knowledge: {str(e)}")
@@ -1114,34 +1276,62 @@ async def update_knowledge(request: Request):
         answer = data.get("answer")
         metadata = data.get("metadata", {})
         
-        if not qa_id or not question or not answer:
-            raise HTTPException(status_code=400, detail="Missing required fields")
+        if not qa_id or not question:
+            raise HTTPException(status_code=400, detail="Missing required fields: ID and question are required")
         
-        from vectorstore.chroma_db import chroma_manager
+        # Allow empty answers
+        if not answer:
+            answer = ""
         
-        # Update the answer document
-        chroma_manager.get_collection_safe().update(
-            ids=[qa_id],
-            documents=[answer],
-            metadatas=[metadata]
-        )
+        # Extract Excel index from ID
+        if qa_id.startswith("excel_"):
+            excel_index = int(qa_id.replace("excel_", ""))
+            
+            # Update in Excel file
+            from utils.excel_manager import csv_manager
+            success = csv_manager.update_qa_pair(
+                index=excel_index,
+                question=question,
+                answer=answer,
+                category=metadata.get("category", "general"),
+                language=metadata.get("language", "ar"),
+                source=metadata.get("source", "excel"),
+                priority=metadata.get("priority", "normal"),
+                metadata=metadata
+            )
+            
+            if not success:
+                raise HTTPException(status_code=500, detail="Failed to update Q&A pair in Excel file")
         
-        # Update the question document
-        question_id = f"q_{qa_id}"
-        question_metadata = {"answer_id": qa_id, "type": "question", **metadata}
+        # Also update in vector database if it exists
         try:
+            from vectorstore.chroma_db import chroma_manager
+            
+            # Update the answer document
             chroma_manager.get_collection_safe().update(
-                ids=[question_id],
-                documents=[question],
-                metadatas=[question_metadata]
+                ids=[qa_id],
+                documents=[answer],
+                metadatas=[metadata]
             )
-        except:
-            # If question doesn't exist, create it
-            chroma_manager.get_collection_safe().add(
-                ids=[question_id],
-                documents=[question],
-                metadatas=[question_metadata]
-            )
+            
+            # Update the question document
+            question_id = f"q_{qa_id}"
+            question_metadata = {"answer_id": qa_id, "type": "question", **metadata}
+            try:
+                chroma_manager.get_collection_safe().update(
+                    ids=[question_id],
+                    documents=[question],
+                    metadatas=[question_metadata]
+                )
+            except:
+                # If question doesn't exist, create it
+                chroma_manager.get_collection_safe().add(
+                    ids=[question_id],
+                    documents=[question],
+                    metadatas=[question_metadata]
+                )
+        except Exception as e:
+            print(f"Warning: Failed to update vector database: {str(e)}")
         
         return {
             "status": "success",
@@ -1155,20 +1345,29 @@ async def update_knowledge(request: Request):
 @app.delete("/knowledge/delete/{qa_id}")
 async def delete_knowledge(qa_id: str):
     """
-    Delete a Q&A pair from the knowledge base
+    Delete a Q&A pair by ID
     """
     try:
-        from vectorstore.chroma_db import chroma_manager
+        # Extract Excel index from ID
+        if qa_id.startswith("excel_"):
+            excel_index = int(qa_id.replace("excel_", ""))
+            
+            # Delete from Excel file
+            from utils.excel_manager import csv_manager
+            success = csv_manager.delete_qa_pair(excel_index)
+            
+            if not success:
+                raise HTTPException(status_code=500, detail="Failed to delete Q&A pair from Excel file")
         
-        # Delete the answer document
-        chroma_manager.get_collection_safe().delete(ids=[qa_id])
-        
-        # Delete the question document
-        question_id = f"q_{qa_id}"
+        # Also delete from vector database if it exists
         try:
-            chroma_manager.get_collection_safe().delete(ids=[question_id])
-        except:
-            pass  # Question might not exist
+            from vectorstore.chroma_db import chroma_manager
+            
+            # Delete both answer and question documents
+            ids_to_delete = [qa_id, f"q_{qa_id}"]
+            chroma_manager.get_collection_safe().delete(ids=ids_to_delete)
+        except Exception as e:
+            print(f"Warning: Failed to delete from vector database: {str(e)}")
         
         return {
             "status": "success",
@@ -1265,7 +1464,7 @@ async def trigger_initial_sync(db=Depends(get_db)):
     """Trigger initial data synchronization"""
     try:
         print("🔄 Starting initial data sync...")
-        results = data_scraper.full_sync(db)
+        results = await data_scraper.full_sync(db)
         print(f"✅ Initial sync completed: {results}")
         return {"status": "success", "message": "Data sync completed", "results": results}
     except Exception as e:
@@ -1289,5 +1488,5 @@ async def startup_event():
 
 if __name__ == "__main__":
     print("Starting Abar Chatbot API...")
-    uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=False)
    

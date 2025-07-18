@@ -14,12 +14,13 @@ class KnowledgeManager:
             metadata = {"source": "manual"}
         
         try:
-            # Check if question and answer are valid
+            # Check if question is valid
             if not question or not question.strip():
                 return {"success": False, "error": "Question cannot be empty"}
             
-            if not answer or not answer.strip():
-                return {"success": False, "error": "Answer cannot be empty"}
+            # Allow empty answers - questions without answers are valid
+            if not answer:
+                answer = ""  # Set empty string for questions without answers
             
             # Add knowledge with duplicate checking using synchronous method
             result = self.chroma_manager.add_knowledge_sync([question], [answer], [metadata], check_duplicates=True)

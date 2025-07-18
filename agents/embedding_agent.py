@@ -23,6 +23,10 @@ class EmbeddingAgent:
         
         print(f"🔍 EmbeddingAgent: Processing message: '{user_message[:50]}...'")
         
+        # Detect the actual language of the user message
+        detected_user_language = language_handler.detect_language(user_message)
+        print(f"🌐 EmbeddingAgent: User message language detected as: {detected_user_language}")
+        
         # Search for similar questions in the knowledge base
         search_results = await chroma_manager.search(user_message, n_results=3)
         
@@ -123,7 +127,7 @@ class EmbeddingAgent:
         
         # Ask ChatGPT to evaluate if the response is appropriate
         evaluation_result = await self._evaluate_response_with_chatgpt(
-            user_message, matched_document, matched_answer, user_language, conversation_history
+            user_message, matched_document, matched_answer, detected_user_language, conversation_history
         )
         
         print(f"🤖 EmbeddingAgent: ChatGPT evaluation: {evaluation_result}")
@@ -156,6 +160,15 @@ class EmbeddingAgent:
         Ask ChatGPT to evaluate if the response is good and appropriate
         """
         
+        # First check if the user message and matched answer are in the same language
+        user_language = language_handler.detect_language(user_message)
+        answer_language = language_handler.detect_language(matched_answer)
+        
+        # If languages don't match, skip the response
+        if user_language != answer_language:
+            print(f"🌐 Language mismatch: user={user_language}, answer={answer_language} - skipping response")
+            return {'action': 'skip'}
+        
         # Format conversation history for context
         conversation_context = ""
         if conversation_history:
@@ -174,54 +187,53 @@ class EmbeddingAgent:
                     conversation_context += f"{i}. {role}: {msg.get('content', '')}\n"
         
         if language == 'ar':
-            evaluation_prompt = f""" أنت مقيم ذكي لجودة الردود في خدمة العملاء لشركة أبار لتوصيل المياه. ومهمتك هي تحديد اذا كان الرد الذي تم جلبه من الردود الجاهزة مناسب لرسالة العمسل ام غير مناسب 
+            evaluation_prompt = f"""أنت مقيم صارم جداً لجودة الردود في خدمة العملاء لشركة أبار لتوصيل المياه. 
 
+مهمتك الوحيدة: تحديد إذا كانت رسالة العميل تحية أو شكر حقيقي فقط.
 
 - رسالة العميل الحالية: "{user_message}"
 - السؤال المشابه من قاعدة البيانات: "{matched_question}"
 - الرد المحفوظ: "{matched_answer}"
 {conversation_context}
 
-مهام التقييم:
-1. تحليل سياق المحادثة الكامل لفهم الموضوع الحالي
-2. تحديد نوع رسالة العميل (تحية، شكر، سؤال، استفسار، إلخ)
-3. تقييم مدى ملاءمة الرد المحفوظ للسياق والرسالة
-4. معرفة اذا كان هذا تحية ام شكر ام سوال فما ينتهي بعلامة استفهام اكيد سوال ويمكن ان يكون النص سوال ولا ينتهي بعلامة استفهام 
-5. انت تتطلع علي الرسائل السابقة فاذا كانت هذه الرسالة متعلقة برسالة سابقة وتم الرد سابقا فلا تقم بالرد مرة اخري  
+قواعد صارمة:
+- "reply": فقط للتحيات الحقيقية البسيطة: (السلام عليكم، مرحبا، أهلا، مساء الخير، صباح الخير)
+- "reply": فقط للشكر المباشر البسيط: (شكراً، يعطيك العافية، الله يوفقكم، جزاك الله خير)
+- "skip": لأي رسالة أخرى مهما كانت مؤدبة أو تحتوي على تحية
 
-معايير الرد:
-- "reply": فقط للتحيات الحقيقية (مثل: السلام عليكم، مرحبا، أهلا، مساء الخير)
-- "reply": للشكر والتقدير المباشر (مثل: شكراً، يعطيك العافية، الله يوفقكم)
-- "skip": للرسائل التي لا تحتاج رد (مثل: أوكي، تمام، تفضل، نعم)
-- "continue":للأسئلة والاستفسارات 
-- "continue": إذا كان الرد غير مناسب أو غير مفهوم
+أمثلة للرسائل التي لا تُعتبر تحية أو شكر:
+- "السلام عليكم، عندي استفسار" → continue (يحتوي على سؤال)
+- "شكراً لك، بس عندي سؤال" → continue (يحتوي على سؤال)
+- "أبي أطلب مياه" → continue (طلب خدمة)
+- "ممكن تساعدني؟" → continue (طلب مساعدة)
+- "كيف أقدر أطلب؟" → continue (سؤال)
 
-خاص: لا ترد على الرسائل العشوائية أو غير المفهومة حتى لو كانت في قاعدة البيانات.
-لا تقم برد التحية علي اي عميل اذا انت متاكد 100 بالمية ان ما ارسله هو تحية وليس اي رسالة اخري 
+إذا كانت الرسالة تحتوي على أي شيء غير التحية أو الشكر فقط، اختر "continue".
 
 اختر واحد فقط: reply أو skip أو continue"""
         else:
-            evaluation_prompt = f"""You are a smart response quality evaluator for Abar water delivery customer service.
+            evaluation_prompt = f"""You are a very strict response quality evaluator for Abar water delivery customer service.
 
-Analysis of current message and conversation context:
+Your only task: Determine if the customer message is ONLY a greeting or thanks.
+
 - Current customer message: "{user_message}"
 - Similar question from database: "{matched_question}"
 - Stored response: "{matched_answer}"
 {conversation_context}
 
-Evaluation tasks:
-1. Analyze the complete conversation context to understand the current topic
-2. Identify the type of customer message (greeting, thanks, question, inquiry, etc.)
-3. Assess the appropriateness of the stored response for the context and message
+Strict rules:
+- "reply": Only for simple genuine greetings: (Hello, Hi, Good morning, Good evening, Peace be upon you)
+- "reply": Only for simple direct thanks: (Thank you, Thanks, God bless you, I appreciate it)
+- "skip": For any other message no matter how polite or containing greetings
 
-Response criteria:
-- "reply": Only for genuine greetings (like: Hello, Hi, Good morning, Good evening, Peace be upon you)
-- "reply": For direct thanks and appreciation (like: Thank you, Thanks, God bless you)
-- "skip": For messages that don't need a reply (like: OK, Fine, Go ahead, Yes)
-- "continue": For questions and inquiries that need more complex processing
-- "continue": If the response is inappropriate or incomprehensible
+Examples of messages that are NOT greetings or thanks:
+- "Hello, I have a question" → continue (contains question)
+- "Thank you, but I need help" → continue (contains request)
+- "I want to order water" → continue (service request)
+- "Can you help me?" → continue (request for help)
+- "How can I order?" → continue (question)
 
-Special: Don't reply to random or incomprehensible messages even if they exist in the database.
+If the message contains anything other than ONLY greeting or thanks, choose "continue".
 
 Choose only one: reply or skip or continue"""
         
@@ -231,28 +243,33 @@ Choose only one: reply or skip or continue"""
                 model="gpt-4o-mini",
                 messages=[
                     {"role": "system", "content": """
-                        You are a strict evaluator for customer service response quality at Abar Water Delivery.
+                        You are an extremely strict evaluator for customer service response quality at Abar Water Delivery.
 
-                        Your task is to judge if the user message and the reply from vector database is suitable for user message if it right and respond with : reply, skip, or continue.
+                        Your ONLY task: Determine if the customer message is PURELY a greeting or thanks with NO additional content.
 
                         Rules:
-                        - reply: Only if the message is a clear, standalone greeting (e.g. السلام عليكم, مرحبا) or direct thanks (e.g. شكراً, يعطيك العافية), with no request, question, or new information.
-                        - skip: If the message needs no response (e.g. أوكي, تمام, نعم, تفضل).
-                        - continue: If the message includes any question, request, scheduling, or new information — even if it contains polite words or partial greetings.
+                        - reply: ONLY if the message is a simple standalone greeting (e.g. السلام عليكم, مرحبا, أهلا) or simple direct thanks (e.g. شكراً, يعطيك العافية, الله يوفقكم), with ABSOLUTELY NO other content.
+                        - skip: If the message needs no response (e.g. أوكي, تمام, نعم).
+                        - continue: If the message includes ANY question, request, scheduling, or information — even if it starts with greetings or thanks.
 
-                        Important:
-                        - DO NOT classify a message as a greeting or thanks just because it "sounds nice".
-                        - Think carefully: is the message truly a greeting or is it a request or question in polite form?
+                        Critical examples of messages that are NOT greetings/thanks:
+                        - "السلام عليكم، عندي استفسار" → continue (contains question)
+                        - "شكراً لك، بس عندي سؤال" → continue (contains question)
+                        - "أبي أطلب مياه" → continue (service request)  
+                        - "ممكن تساعدني؟" → continue (request for help)
+                        - "كيف أقدر أطلب؟" → continue (question)
+                        - "يمدي توصلونه اليوم اكون شاكر لكم" → continue (question with thanks)
+                        - "ابيه الليلة" → continue (request)
+                        - "موعدنا بكره باذن الله" → continue (informational statement)
 
-                        Examples of polite but **not greetings**:
-                        - "يمدي توصلونه اليوم اكون شاكر لكم" → continue (this is a question)
-                        - "ابيه الليلة" → continue (this is a request)
-                        - "موعدنا بكره باذن الله" → continue (this is an informational statement)
-                        - "الصباح طال عمرك" → continue (this is a message with context, not a greeting)
+                        Only pure greetings/thanks are allowed:
+                        - "السلام عليكم" → reply
+                        - "شكراً" → reply
+                        - "يعطيك العافية" → reply
+                        - "مرحبا" → reply
 
                         Final instruction:
-                        Always choose **only one**: `reply`, `skip`, or `continue`.
-                        Be conservative — do not choose `reply` unless you are 100% certain it's ONLY a greeting or thanks.
+                        Be extremely conservative — choose `reply` ONLY if you are 100% certain it's PURELY a greeting or thanks with NO other content.
                         
                         """},
                     {"role": "user", "content": evaluation_prompt}

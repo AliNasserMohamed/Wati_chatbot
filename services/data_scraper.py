@@ -33,26 +33,30 @@ class DataScraperService:
             'AccessKey': '1234'
         }
     
-    def fetch_cities_arabic(self) -> Dict[str, Any]:
+    async def fetch_cities_arabic(self) -> Dict[str, Any]:
         """Fetch all cities from external API in Arabic"""
         url = f"{self.base_url}/get-cities"
         
         try:
-            response = requests.get(url, headers=self.headers_ar)
-            response.raise_for_status()
-            return response.json()
+            timeout = aiohttp.ClientTimeout(total=30)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.get(url, headers=self.headers_ar) as response:
+                    response.raise_for_status()
+                    return await response.json()
         except Exception as e:
             logger.error(f"Error fetching cities (Arabic): {str(e)}")
             raise
     
-    def fetch_cities_english(self) -> Dict[str, Any]:
+    async def fetch_cities_english(self) -> Dict[str, Any]:
         """Fetch all cities from external API in English"""
         url = f"{self.base_url}/get-cities"
         
         try:
-            response = requests.get(url, headers=self.headers_en)
-            response.raise_for_status()
-            return response.json()
+            timeout = aiohttp.ClientTimeout(total=30)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.get(url, headers=self.headers_en) as response:
+                    response.raise_for_status()
+                    return await response.json()
         except Exception as e:
             logger.error(f"Error fetching cities (English): {str(e)}")
             raise
@@ -99,7 +103,7 @@ class DataScraperService:
                 logger.error(f"Error fetching brand details: {str(e)}")
                 raise
     
-    def clean_slate_sync_cities(self, db: Session) -> int:
+    async def clean_slate_sync_cities(self, db: Session) -> int:
         """CLEAN SLATE: Delete all cities and sync fresh data with external IDs as primary keys"""
         try:
             logger.info("🗑️ Starting CLEAN SLATE cities sync...")
@@ -114,14 +118,14 @@ class DataScraperService:
             # STEP 2: FETCH FRESH DATA
             # Fetch Arabic cities
             logger.info("📥 Fetching cities in Arabic...")
-            arabic_data = self.fetch_cities_arabic()
+            arabic_data = await self.fetch_cities_arabic()
             
             if arabic_data.get('key') != 'success':
                 raise Exception(f"API error (Arabic): {arabic_data.get('msg', 'Unknown error')}")
             
             # Fetch English cities
             logger.info("📥 Fetching cities in English...")
-            english_data = self.fetch_cities_english()
+            english_data = await self.fetch_cities_english()
             
             if english_data.get('key') != 'success':
                 raise Exception(f"API error (English): {english_data.get('msg', 'Unknown error')}")
@@ -174,7 +178,7 @@ class DataScraperService:
             db.commit()
             raise
     
-    def clean_slate_sync_brands(self, db: Session) -> int:
+    async def clean_slate_sync_brands(self, db: Session) -> int:
         """CLEAN SLATE: Delete all brands and sync fresh data with external IDs as primary keys"""
         try:
             logger.info("🗑️ Starting CLEAN SLATE brands sync...")
@@ -199,98 +203,91 @@ class DataScraperService:
             city_brand_relationships = []
             
             # STEP 3: SYNC BRANDS FOR EACH CITY
-            for city in cities:
-                logger.info(f"🏙️ Syncing brands for city: {city.name} (ID: {city.id})")
-                
-                try:
-                    url = f"{self.base_url}/get-location-brands/{city.id}"
-                    response = requests.get(url, headers=self.headers_ar)
-                    response.raise_for_status()
+            timeout = aiohttp.ClientTimeout(total=30)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                for city in cities:
+                    logger.info(f"🏙️ Syncing brands for city: {city.name} (ID: {city.id})")
                     
-                    data = response.json()
-                    
-                    if data.get('key') != 'success':
-                        logger.warning(f"⚠️ API error for city {city.id}: {data.get('msg', 'Unknown error')}")
-                        continue
-                    
-                    brands_data = data.get('data', [])
-                    logger.info(f"📦 Found {len(brands_data)} brands for {city.name}")
-                    
-                    for brand_data in brands_data:
-                        contract_id = brand_data.get('contract_id')
-                        brand_title = brand_data.get('brand_title', '')
-                        brand_image = brand_data.get('brand_image', '')
+                    try:
+                        url = f"{self.base_url}/get-location-brands/{city.id}"
+                        async with session.get(url, headers=self.headers_ar) as response:
+                            response.raise_for_status()
+                            data = await response.json()
                         
-                        if contract_id and brand_title:
-                            # Create brand with external ID as primary key (if not exists)
-                            if contract_id not in all_brands:
-                                brand = Brand(
-                                    id=contract_id,  # Use external ID as primary key
-                                    external_id=contract_id,  # Keep for compatibility
-                                    title=brand_title,
-                                    image_url=brand_image
-                                )
-                                db.add(brand)
-                                all_brands[contract_id] = brand
-                                logger.info(f"✅ Created brand: ID={contract_id}, {brand_title}")
+                        if data.get('key') != 'success':
+                            logger.warning(f"⚠️ API error for city {city.id}: {data.get('msg', 'Unknown error')}")
+                            continue
+                        
+                        brands_data = data.get('data', [])
+                        logger.info(f"📦 Found {len(brands_data)} brands for {city.name}")
+                        
+                        for brand_data in brands_data:
+                            contract_id = brand_data.get('contract_id')
+                            brand_title = brand_data.get('brand_title', '')
+                            brand_image = brand_data.get('brand_image', '')
                             
-                            # Store city-brand relationship for bulk insert
-                            relationship = (city.id, contract_id)
-                            if relationship not in city_brand_relationships:
-                                city_brand_relationships.append(relationship)
-                            
-                            processed_count += 1
-                
-                except Exception as e:
-                    logger.error(f"❌ Error syncing brands for city {city.id}: {str(e)}")
-                    continue
+                            if contract_id and brand_title:
+                                # Create brand with external ID as primary key (if not exists)
+                                if contract_id not in all_brands:
+                                    brand = Brand(
+                                        id=contract_id,  # Use external ID as primary key
+                                        external_id=contract_id,  # Keep for compatibility
+                                        title=brand_title,
+                                        image_url=brand_image
+                                    )
+                                    db.add(brand)
+                                    all_brands[contract_id] = brand
+                                    logger.info(f"✅ Created brand: ID={contract_id}, {brand_title}")
+                                
+                                # Store city-brand relationship for bulk insert
+                                relationship = (city.id, contract_id)
+                                if relationship not in city_brand_relationships:
+                                    city_brand_relationships.append(relationship)
+                                
+                                processed_count += 1
+                    
+                    except Exception as e:
+                        logger.error(f"❌ Error syncing brands for city {city.id}: {str(e)}")
+                        continue
             
             # Commit brands first
             db.commit()
+            logger.info(f"✅ Committed {len(all_brands)} brands to database")
             
-            # STEP 4: Bulk insert city-brand relationships using raw SQL with IGNORE
+            # STEP 4: BULK INSERT CITY-BRAND RELATIONSHIPS
             if city_brand_relationships:
-                logger.info(f"🔗 Creating {len(city_brand_relationships)} city-brand relationships...")
+                logger.info(f"🔗 Inserting {len(city_brand_relationships)} city-brand relationships...")
                 
-                # Use raw SQL with INSERT OR IGNORE to handle duplicates
-                insert_sql = text("""
-                    INSERT OR IGNORE INTO city_brands (city_id, brand_id, created_at) 
-                    VALUES (:city_id, :brand_id, :created_at)
+                # Use bulk insert for better performance
+                insert_stmt = text("""
+                    INSERT INTO city_brands (city_id, brand_id) 
+                    VALUES (:city_id, :brand_id)
                 """)
                 
-                # Prepare data for bulk insert
                 relationship_data = [
-                    {
-                        'city_id': city_id, 
-                        'brand_id': brand_id, 
-                        'created_at': datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S.%f')
-                    }
+                    {"city_id": city_id, "brand_id": brand_id}
                     for city_id, brand_id in city_brand_relationships
                 ]
                 
-                # Execute bulk insert
-                db.execute(insert_sql, relationship_data)
+                db.execute(insert_stmt, relationship_data)
                 db.commit()
-                logger.info(f"✅ Created city-brand relationships successfully")
+                logger.info(f"✅ Inserted {len(city_brand_relationships)} city-brand relationships")
             
-            # Update sync log
-            sync_log.status = 'success'
-            sync_log.records_processed = len(all_brands)
-            sync_log.completed_at = datetime.utcnow()
-            db.commit()
+            DatabaseManager.create_sync_log(db, 'brands', 'completed', processed_count)
             
-            logger.info(f"🎉 Clean slate brands sync completed. Created {len(all_brands)} unique brands with {len(city_brand_relationships)} city-brand links.")
-            return len(all_brands)
+            logger.info(f"🎉 CLEAN SLATE brands sync completed!")
+            logger.info(f"📊 Total processed: {processed_count}")
+            logger.info(f"📊 Total brands: {len(all_brands)}")
+            logger.info(f"📊 Total relationships: {len(city_brand_relationships)}")
+            
+            return processed_count
             
         except Exception as e:
-            logger.error(f"❌ Brands sync failed: {str(e)}")
-            sync_log.status = 'failed'
-            sync_log.error_message = str(e)
-            sync_log.completed_at = datetime.utcnow()
-            db.commit()
+            logger.error(f"❌ CLEAN SLATE brands sync failed: {str(e)}")
+            DatabaseManager.create_sync_log(db, 'brands', 'failed', 0, str(e))
             raise
     
-    def clean_slate_sync_products(self, db: Session) -> int:
+    async def clean_slate_sync_products(self, db: Session) -> int:
         """CLEAN SLATE: Delete all products and sync fresh data with external IDs as primary keys"""
         try:
             logger.info("🗑️ Starting CLEAN SLATE products sync...")
@@ -315,10 +312,11 @@ class DataScraperService:
                 
                 try:
                     url = f"{self.base_url}/get-brand-products/{brand.id}"
-                    response = requests.get(url, headers=self.headers_ar)
-                    response.raise_for_status()
-                    
-                    data = response.json()
+                    timeout = aiohttp.ClientTimeout(total=30)
+                    async with aiohttp.ClientSession(timeout=timeout) as session:
+                        async with session.get(url, headers=self.headers_ar) as response:
+                            response.raise_for_status()
+                            data = await response.json()
                     
                     if data.get('key') != 'success':
                         logger.warning(f"⚠️ API error for brand {brand.id}: {data.get('msg', 'Unknown error')}")
@@ -387,7 +385,7 @@ class DataScraperService:
             db.commit()
             raise
             
-    def full_clean_slate_sync(self, db: Session) -> Dict[str, int]:
+    async def full_clean_slate_sync(self, db: Session) -> Dict[str, int]:
         """COMPLETE CLEAN SLATE: Delete all data and sync everything fresh"""
         logger.info("🚀 Starting COMPLETE CLEAN SLATE SYNC...")
         logger.info("⚠️ This will delete ALL existing data and sync fresh from external API")
@@ -399,19 +397,19 @@ class DataScraperService:
             logger.info("\n" + "="*50)
             logger.info("STEP 1: CLEAN SLATE CITIES SYNC")
             logger.info("="*50)
-            results['cities'] = self.clean_slate_sync_cities(db)
+            results['cities'] = await self.clean_slate_sync_cities(db)
             
             # Step 2: Sync Brands (deletes all brands first)
             logger.info("\n" + "="*50)
             logger.info("STEP 2: CLEAN SLATE BRANDS SYNC")
             logger.info("="*50)
-            results['brands'] = self.clean_slate_sync_brands(db)
+            results['brands'] = await self.clean_slate_sync_brands(db)
             
             # Step 3: Sync Products (deletes all products first)
             logger.info("\n" + "="*50)
             logger.info("STEP 3: CLEAN SLATE PRODUCTS SYNC")
             logger.info("="*50)
-            results['products'] = self.clean_slate_sync_products(db)
+            results['products'] = await self.clean_slate_sync_products(db)
             
             logger.info("\n" + "="*60)
             logger.info("🎉 COMPLETE CLEAN SLATE SYNC FINISHED!")
@@ -444,10 +442,10 @@ class DataScraperService:
         logger.warning("⚠️ sync_all_brands is deprecated. Use clean_slate_sync_brands for fresh data.")
         return self.clean_slate_sync_brands(db)
         
-    def full_sync(self, db: Session) -> Dict[str, int]:
+    async def full_sync(self, db: Session) -> Dict[str, int]:
         """DEPRECATED: Use full_clean_slate_sync instead"""
         logger.warning("⚠️ full_sync is deprecated. Use full_clean_slate_sync for fresh data.")
-        return self.full_clean_slate_sync(db)
+        return await self.full_clean_slate_sync(db)
 
 
 # Singleton instance

@@ -210,11 +210,20 @@ class ChromaManager:
             
             for i, (question, answer) in enumerate(zip(questions, answers)):
                 question = question.strip()
-                answer = answer.strip()
+                answer = answer.strip() if answer else ""  # Allow empty answers
                 
-                if not question or not answer:
-                    print(f"⚠️ Skipping empty question or answer at index {i}")
+                # Only skip if question is empty
+                if not question:
+                    print(f"⚠️ Skipping empty question at index {i}")
                     continue
+                
+                # Allow questions without answers
+                if not answer:
+                    print(f"ℹ️ Adding question without answer at index {i}: {question[:50]}...")
+                    # Add has_answer flag to metadata
+                    metadata = metadatas[i] if i < len(metadatas) else {"source": "manual"}
+                    metadata["has_answer"] = False
+                    metadatas[i] = metadata
                 
                 # Debug: Print Arabic text detection
                 if self.text_processor.is_arabic_text(question):
@@ -359,35 +368,92 @@ class ChromaManager:
     # ... [Include other methods with similar Arabic text preprocessing] ...
     
     def get_stats(self) -> Dict[str, int]:
-        """Get statistics about the knowledge base"""
+        """Get statistics about the knowledge base (optimized for speed)"""
         with self._sync_lock():
             try:
-                all_data = self.collection.get(include=["metadatas"])
-                
-                questions_count = 0
-                answers_count = 0
-                arabic_count = 0
-                
-                for meta in all_data["metadatas"]:
-                    if meta.get("type") == "question":
-                        questions_count += 1
-                    else:
-                        answers_count += 1
+                # Use count() method if available, otherwise fall back to get()
+                try:
+                    # First try to get just the count efficiently
+                    total_count = self.collection.count()
                     
-                    if meta.get("detected_language") == "arabic":
-                        arabic_count += 1
-                
-                return {
-                    "total_documents": len(all_data["metadatas"]),
-                    "questions": questions_count,
-                    "answers": answers_count,
-                    "qa_pairs": answers_count,
-                    "arabic_documents": arabic_count
-                }
+                    # If we have a reasonable number of documents, get detailed stats
+                    if total_count < 1000:  # Only get detailed stats for smaller collections
+                        all_data = self.collection.get(include=["metadatas"])
+                        
+                        questions_count = 0
+                        answers_count = 0
+                        arabic_count = 0
+                        categories = {}
+                        
+                        for meta in all_data["metadatas"]:
+                            if meta.get("type") == "question":
+                                questions_count += 1
+                            else:
+                                answers_count += 1
+                            
+                            if meta.get("detected_language") == "arabic":
+                                arabic_count += 1
+                                
+                            # Count categories
+                            category = meta.get("category", "general")
+                            categories[category] = categories.get(category, 0) + 1
+                        
+                        return {
+                            "total_documents": total_count,
+                            "questions": questions_count,
+                            "answers": answers_count,
+                            "qa_pairs": answers_count,
+                            "arabic_documents": arabic_count,
+                            "categories": categories
+                        }
+                    else:
+                        # For large collections, return basic stats only
+                        # Estimate: assume half are questions, half are answers
+                        estimated_qa_pairs = total_count // 2
+                        
+                        return {
+                            "total_documents": total_count,
+                            "questions": estimated_qa_pairs,
+                            "answers": estimated_qa_pairs,
+                            "qa_pairs": estimated_qa_pairs,
+                            "arabic_documents": estimated_qa_pairs,  # Most likely Arabic
+                            "categories": {"general": estimated_qa_pairs}  # Default category
+                        }
+                        
+                except AttributeError:
+                    # Fallback to the old method if count() is not available
+                    all_data = self.collection.get(include=["metadatas"])
+                    
+                    questions_count = 0
+                    answers_count = 0
+                    arabic_count = 0
+                    categories = {}
+                    
+                    for meta in all_data["metadatas"]:
+                        if meta.get("type") == "question":
+                            questions_count += 1
+                        else:
+                            answers_count += 1
+                        
+                        if meta.get("detected_language") == "arabic":
+                            arabic_count += 1
+                            
+                        # Count categories
+                        category = meta.get("category", "general")
+                        categories[category] = categories.get(category, 0) + 1
+                    
+                    return {
+                        "total_documents": len(all_data["metadatas"]),
+                        "questions": questions_count,
+                        "answers": answers_count,
+                        "qa_pairs": answers_count,
+                        "arabic_documents": arabic_count,
+                        "categories": categories
+                    }
                 
             except Exception as e:
                 print(f"❌ Error getting stats: {str(e)}")
-                return {"total_documents": 0, "questions": 0, "answers": 0, "qa_pairs": 0, "arabic_documents": 0}
+                return {"total_documents": 0, "questions": 0, "answers": 0, "qa_pairs": 0, "arabic_documents": 0, "categories": {}}
     
     def get_collection_safe(self):
         """Get collection with thread safety for direct operations"""
@@ -462,8 +528,13 @@ class ChromaManager:
                 question = pair.get('question', '').strip()
                 answer = pair.get('answer', '').strip()
                 
-                if not question or not answer:
+                # Only skip if question is empty
+                if not question:
                     continue
+                
+                # Allow empty answers
+                if not answer:
+                    answer = ""
                 
                 # Prepare metadata
                 metadata = {
