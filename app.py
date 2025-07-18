@@ -1402,6 +1402,32 @@ async def update_user_conclusion(request: Request, db=Depends(get_db)):
         print(f"[Update User ERROR] {str(e)}")
         return {"status": "error", "message": str(e)}
 
+@app.get("/debug/knowledge-structure")
+async def debug_knowledge_structure():
+    """Debug endpoint to test knowledge base structure"""
+    try:
+        result = await embedding_agent.debug_knowledge_base_structure(sample_size=10)
+        return result
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+@app.get("/debug/test-embedding")
+async def debug_test_embedding(message: str):
+    """Debug endpoint to test embedding agent with a specific message"""
+    try:
+        result = await embedding_agent.process_message(
+            user_message=message,
+            conversation_history=[],
+            user_language='ar'
+        )
+        return {
+            "status": "success",
+            "user_message": message,
+            "result": result
+        }
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
 # API health check endpoint
 @app.get("/health")
 async def health_check():

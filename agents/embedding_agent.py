@@ -50,17 +50,28 @@ class EmbeddingAgent:
             print(f"   - Similarity Score: {similarity_score:.4f}")
             print(f"   - Document Type: {metadata.get('type', 'unknown')}")
             print(f"   - Content Preview: {document_preview}")
+            print(f"   - Answer ID: {metadata.get('answer_id', 'N/A')}")
+            print(f"   - Has Answer: {metadata.get('has_answer', 'N/A')}")
             print(f"   - Full Metadata: {metadata}")
             print(f"   ---")
+            
+            # Additional debugging: Check if this is a question without an answer
+            if metadata.get('type') == 'question':
+                if not metadata.get('answer_id'):
+                    print(f"   ⚠️  WARNING: Question without answer_id!")
+                elif metadata.get('has_answer') == False:
+                    print(f"   ℹ️  Info: Question marked as having no answer")
         
         # Get the best match (highest similarity)
         best_match = search_results[0]
         similarity_score = best_match.get('similarity', 0.0)  # Use 'similarity' not 'cosine_similarity'
         
         print(f"🎯 EmbeddingAgent: Best match selected:")
-        print(f"   - Question: {best_match['document'][:50]}...")
+        print(f"   - Question: {best_match['document'][:100]}...")
         print(f"   - Similarity: {similarity_score:.4f}")
+        print(f"   - Type: {best_match.get('metadata', {}).get('type', 'unknown')}")
         print(f"   - Metadata: {best_match['metadata']}")
+        print(f"   - Answer ID: {best_match.get('metadata', {}).get('answer_id', 'N/A')}")
         
         # Check if similarity is good enough (higher is better)
         if similarity_score < self.similarity_threshold:
@@ -77,43 +88,74 @@ class EmbeddingAgent:
         metadata = best_match['metadata']
         
         print(f"🔍 EmbeddingAgent: Retrieving answer for matched question...")
-        print(f"   - Matched Question Full Text: {matched_document}")
+        print(f"   - Matched Document: {matched_document[:100]}...")
+        print(f"   - Metadata: {metadata}")
+        
+        # CRITICAL FIX: Always get the answer, never return the question
+        matched_answer = None
         
         # If the matched document is a question, find its answer
         if metadata.get('type') == 'question':
             answer_id = metadata.get('answer_id')
-            print(f"   - Looking for answer with ID: {answer_id}")
+            print(f"   - This is a QUESTION, looking for answer with ID: {answer_id}")
+            
             if answer_id:
-                # Search for the answer by ID  
-                answer_results = chroma_manager.get_collection_safe().get(ids=[answer_id])
-                if answer_results and answer_results['documents']:
-                    matched_answer = answer_results['documents'][0]
-                    print(f"   - Found answer by ID: {matched_answer[:100]}...")
-                else:
-                    matched_answer = matched_document  # Fallback
-                    print(f"   - Answer ID not found, using question as fallback")
+                try:
+                    # Search for the answer by ID  
+                    answer_results = chroma_manager.get_collection_safe().get(ids=[answer_id])
+                    if answer_results and answer_results['documents']:
+                        matched_answer = answer_results['documents'][0]
+                        print(f"   - ✅ Found ANSWER by ID: {matched_answer[:100]}...")
+                    else:
+                        print(f"   - ❌ Answer ID {answer_id} not found in database")
+                        matched_answer = None
+                except Exception as e:
+                    print(f"   - ❌ Error retrieving answer: {str(e)}")
+                    matched_answer = None
             else:
-                matched_answer = matched_document  # Fallback
-                print(f"   - No answer ID provided, using question as answer")
+                print(f"   - ❌ No answer_id provided in question metadata")
+                matched_answer = None
         else:
             # The matched document is already an answer
             matched_answer = matched_document
-            print(f"   - Matched document is already an answer")
+            print(f"   - ✅ Matched document is already an ANSWER")
         
-        print(f"📝 EmbeddingAgent: Final answer retrieved:")
-        print(f"   - Answer Length: {len(matched_answer)} characters")
-        print(f"   - Answer Preview: '{matched_answer[:100]}...'")
-        print(f"   - Answer Full Text: {matched_answer}")
-        
-        # Check if the answer is empty or too short (likely needs no reply)
-        if not matched_answer or matched_answer.strip() == "" or len(matched_answer.strip()) < 3:
-            print(f"🚫 EmbeddingAgent: Empty or very short answer - no reply needed")
+        # CRITICAL: If we don't have a proper answer, don't reply
+        if not matched_answer or matched_answer.strip() == "":
+            print(f"🚫 EmbeddingAgent: No valid answer found - skipping reply")
+            print(f"   - Question: {matched_document}")
+            print(f"   - Answer: {matched_answer}")
             return {
                 'action': 'skip',
                 'response': None,
                 'confidence': similarity_score,
                 'matched_question': matched_document
             }
+        
+        # Additional check: Make sure answer is not the same as question (shouldn't happen but safety check)
+        if matched_answer.strip() == matched_document.strip():
+            print(f"🚫 EmbeddingAgent: Answer is same as question - this indicates a data issue")
+            return {
+                'action': 'skip',
+                'response': None,
+                'confidence': similarity_score,
+                'matched_question': matched_document
+            }
+        
+        # Check if the answer is too short (likely needs no reply)
+        if len(matched_answer.strip()) < 3:
+            print(f"🚫 EmbeddingAgent: Answer too short - no reply needed")
+            return {
+                'action': 'skip',
+                'response': None,
+                'confidence': similarity_score,
+                'matched_question': matched_document
+            }
+        
+        print(f"📝 EmbeddingAgent: Final answer retrieved:")
+        print(f"   - Answer Length: {len(matched_answer)} characters")
+        print(f"   - Answer Preview: '{matched_answer[:100]}...'")
+        print(f"   - Full Answer: {matched_answer}")
         
         # For very high similarity, skip the ChatGPT evaluation
         if similarity_score >= self.high_similarity_threshold:
@@ -299,6 +341,94 @@ Choose only one: reply or skip or continue"""
             print(f"❌ EmbeddingAgent: Error evaluating response with ChatGPT: {str(e)}")
             # Default to continue on error
             return {'action': 'continue'}
+
+    async def debug_knowledge_base_structure(self, sample_size: int = 5) -> Dict[str, Any]:
+        """
+        Debug method to check the knowledge base structure and verify question-answer linking
+        """
+        print(f"🔍 DEBUG: Testing knowledge base structure...")
+        
+        try:
+            # Get a sample of documents from the knowledge base
+            from vectorstore.chroma_db import chroma_manager
+            
+            # Get all documents
+            all_data = chroma_manager.get_collection_safe().get(include=["documents", "metadatas", "embeddings"])
+            
+            if not all_data or not all_data['documents']:
+                print(f"❌ DEBUG: No documents found in knowledge base")
+                return {"status": "error", "message": "No documents found"}
+            
+            documents = all_data['documents']
+            metadatas = all_data['metadatas']
+            ids = all_data['ids']
+            
+            print(f"📊 DEBUG: Found {len(documents)} total documents")
+            
+            # Count questions and answers
+            questions = []
+            answers = []
+            
+            for i, (doc, metadata, doc_id) in enumerate(zip(documents, metadatas, ids)):
+                if metadata.get('type') == 'question':
+                    questions.append({'doc': doc, 'metadata': metadata, 'id': doc_id})
+                else:
+                    answers.append({'doc': doc, 'metadata': metadata, 'id': doc_id})
+            
+            print(f"📈 DEBUG: Found {len(questions)} questions and {len(answers)} answers")
+            
+            # Test a few question-answer pairs
+            test_results = []
+            
+            for i, question_info in enumerate(questions[:sample_size]):
+                print(f"\n🔍 DEBUG Test {i+1}:")
+                print(f"   Question: {question_info['doc'][:100]}...")
+                print(f"   Question ID: {question_info['id']}")
+                print(f"   Question Metadata: {question_info['metadata']}")
+                
+                answer_id = question_info['metadata'].get('answer_id')
+                if answer_id:
+                    print(f"   Looking for answer with ID: {answer_id}")
+                    
+                    # Try to find the answer
+                    answer_results = chroma_manager.get_collection_safe().get(ids=[answer_id])
+                    if answer_results and answer_results['documents']:
+                        answer = answer_results['documents'][0]
+                        answer_metadata = answer_results['metadatas'][0]
+                        print(f"   ✅ Found Answer: {answer[:100]}...")
+                        print(f"   Answer Metadata: {answer_metadata}")
+                        
+                        test_results.append({
+                            "question": question_info['doc'][:100],
+                            "answer": answer[:100],
+                            "status": "success"
+                        })
+                    else:
+                        print(f"   ❌ Answer not found for ID: {answer_id}")
+                        test_results.append({
+                            "question": question_info['doc'][:100],
+                            "answer": None,
+                            "status": "missing_answer"
+                        })
+                else:
+                    print(f"   ❌ No answer_id in question metadata")
+                    test_results.append({
+                        "question": question_info['doc'][:100],
+                        "answer": None,
+                        "status": "no_answer_id"
+                    })
+            
+            return {
+                "status": "success",
+                "total_documents": len(documents),
+                "questions_count": len(questions),
+                "answers_count": len(answers),
+                "test_results": test_results
+            }
+            
+        except Exception as e:
+            print(f"❌ DEBUG: Error testing knowledge base structure: {str(e)}")
+            return {"status": "error", "message": str(e)}
 
 # Create and export the instance
 embedding_agent = EmbeddingAgent() 
