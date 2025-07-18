@@ -258,14 +258,17 @@ class ChromaManager:
                     processed_answer = self._preprocess_text(answer)
                     processed_question = self._preprocess_text(question)
                     
+                    # Prepare answer metadata - force type="answer" based on column
+                    answer_metadata = {**metadata, "type": "answer"}
+                    
                     # Add answer to collection
                     self.collection.add(
                         documents=[processed_answer],
-                        metadatas=[metadata],
+                        metadatas=[answer_metadata],
                         ids=[qa_id]
                     )
                     
-                    # Add question with reference to answer ID
+                    # Add question with reference to answer ID - force type="question" based on column
                     question_id = f"q_{qa_id}"
                     question_metadata = {"answer_id": qa_id, "type": "question", **metadata}
                     
