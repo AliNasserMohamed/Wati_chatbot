@@ -336,15 +336,16 @@ class ChromaManager:
                 # Sort by similarity (highest first)
                 formatted_results.sort(key=lambda x: x["similarity"], reverse=True)
                 
-                print(f"🔍 Arabic ChromaDB Search: '{query[:50]}...'")
+                print(f"🔍 ChromaDB Search: '{query[:50]}...'")
                 print(f"   Found {len(formatted_results)} results")
                 for i, result in enumerate(formatted_results, 1):
-                    print(f"   Result {i}: Similarity={result['similarity']:.4f}")
+                    doc_type = result["metadata"].get("type", "answer")
+                    print(f"   Result {i}: [{doc_type.upper()}] Similarity={result['similarity']:.4f}")
                 
                 return formatted_results
                 
             except Exception as e:
-                print(f"❌ Error searching Arabic text: {str(e)}")
+                print(f"❌ Error searching text: {str(e)}")
                 return []
     
     async def search(self, query: str, n_results: int = 3) -> List[Dict[str, Any]]:
@@ -407,53 +408,35 @@ class ChromaManager:
                             "categories": categories
                         }
                     else:
-                        # For large collections, return basic stats only
-                        # Estimate: assume half are questions, half are answers
-                        estimated_qa_pairs = total_count // 2
-                        
+                        # For large collections, just return basic stats
                         return {
                             "total_documents": total_count,
-                            "questions": estimated_qa_pairs,
-                            "answers": estimated_qa_pairs,
-                            "qa_pairs": estimated_qa_pairs,
-                            "arabic_documents": estimated_qa_pairs,  # Most likely Arabic
-                            "categories": {"general": estimated_qa_pairs}  # Default category
+                            "questions": "N/A (large collection)",
+                            "answers": "N/A (large collection)",
+                            "qa_pairs": "N/A (large collection)",
+                            "arabic_documents": "N/A (large collection)",
+                            "categories": {}
                         }
-                        
-                except AttributeError:
-                    # Fallback to the old method if count() is not available
-                    all_data = self.collection.get(include=["metadatas"])
-                    
-                    questions_count = 0
-                    answers_count = 0
-                    arabic_count = 0
-                    categories = {}
-                    
-                    for meta in all_data["metadatas"]:
-                        if meta.get("type") == "question":
-                            questions_count += 1
-                        else:
-                            answers_count += 1
-                        
-                        if meta.get("detected_language") == "arabic":
-                            arabic_count += 1
-                            
-                        # Count categories
-                        category = meta.get("category", "general")
-                        categories[category] = categories.get(category, 0) + 1
-                    
+                except Exception as e:
+                    print(f"❌ Error getting collection count: {str(e)}")
                     return {
-                        "total_documents": len(all_data["metadatas"]),
-                        "questions": questions_count,
-                        "answers": answers_count,
-                        "qa_pairs": answers_count,
-                        "arabic_documents": arabic_count,
-                        "categories": categories
+                        "total_documents": 0,
+                        "questions": 0,
+                        "answers": 0,
+                        "qa_pairs": 0,
+                        "arabic_documents": 0,
+                        "categories": {}
                     }
-                
             except Exception as e:
-                print(f"❌ Error getting stats: {str(e)}")
-                return {"total_documents": 0, "questions": 0, "answers": 0, "qa_pairs": 0, "arabic_documents": 0, "categories": {}}
+                print(f"❌ Error getting knowledge base stats: {str(e)}")
+                return {
+                    "total_documents": 0,
+                    "questions": 0,
+                    "answers": 0,
+                    "qa_pairs": 0,
+                    "arabic_documents": 0,
+                    "categories": {}
+                }
     
     def get_collection_safe(self):
         """Get collection with thread safety for direct operations"""

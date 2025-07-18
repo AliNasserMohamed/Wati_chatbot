@@ -87,89 +87,112 @@ class EmbeddingAgent:
         matched_document = best_match['document']
         metadata = best_match['metadata']
         
-        print(f"🔍 EmbeddingAgent: Retrieving answer for matched question...")
+        print(f"🔍 EmbeddingAgent: Processing matched result...")
         print(f"   - Matched Document: {matched_document[:100]}...")
+        print(f"   - Document Type: {metadata.get('type', 'unknown')}")
         print(f"   - Metadata: {metadata}")
         
-        # CRITICAL FIX: Always get the answer, never return the question
-        matched_answer = None
+        # CRITICAL: Always get the answer, never return the question
+        final_answer = None
+        matched_question_text = None
         
         # If the matched document is a question, find its answer
         if metadata.get('type') == 'question':
+            matched_question_text = matched_document
             answer_id = metadata.get('answer_id')
-            print(f"   - This is a QUESTION, looking for answer with ID: {answer_id}")
+            
+            print(f"   - This is a QUESTION: '{matched_question_text[:50]}...'")
+            print(f"   - Looking for answer with ID: {answer_id}")
             
             if answer_id:
                 try:
-                    # Search for the answer by ID  
-                    answer_results = chroma_manager.get_collection_safe().get(ids=[answer_id])
-                    if answer_results and answer_results['documents']:
-                        matched_answer = answer_results['documents'][0]
-                        print(f"   - ✅ Found ANSWER by ID: {matched_answer[:100]}...")
+                    # Get the collection safely
+                    collection = chroma_manager.get_collection_safe()
+                    if collection:
+                        # Try to get the answer by ID
+                        answer_results = collection.get(ids=[answer_id])
+                        
+                        if answer_results and answer_results.get('documents') and len(answer_results['documents']) > 0:
+                            final_answer = answer_results['documents'][0]
+                            print(f"   - ✅ Found ANSWER: '{final_answer[:100]}...'")
+                        else:
+                            print(f"   - ❌ No answer found for ID: {answer_id}")
+                            final_answer = None
                     else:
-                        print(f"   - ❌ Answer ID {answer_id} not found in database")
-                        matched_answer = None
+                        print(f"   - ❌ Could not access collection")
+                        final_answer = None
+                        
                 except Exception as e:
                     print(f"   - ❌ Error retrieving answer: {str(e)}")
-                    matched_answer = None
+                    final_answer = None
             else:
-                print(f"   - ❌ No answer_id provided in question metadata")
-                matched_answer = None
+                print(f"   - ❌ No answer_id in question metadata")
+                final_answer = None
+                
         else:
-            # The matched document is already an answer
-            matched_answer = matched_document
-            print(f"   - ✅ Matched document is already an ANSWER")
+            # The matched document is already an answer (shouldn't happen with proper search)
+            print(f"   - ⚠️  Matched document appears to be an answer directly")
+            final_answer = matched_document
+            matched_question_text = "Direct answer match"
         
-        # CRITICAL: If we don't have a proper answer, don't reply
-        if not matched_answer or matched_answer.strip() == "":
+        # CRITICAL VALIDATION: Never return a question as an answer
+        if final_answer and matched_question_text:
+            # Check if the answer is the same as the question (data corruption check)
+            if final_answer.strip() == matched_question_text.strip():
+                print(f"🚫 EmbeddingAgent: Answer is identical to question - data corruption detected!")
+                print(f"   - Question: {matched_question_text}")
+                print(f"   - Answer: {final_answer}")
+                return {
+                    'action': 'skip',
+                    'response': None,
+                    'confidence': similarity_score,
+                    'matched_question': matched_question_text,
+                    'error': 'Answer identical to question'
+                }
+        
+        # CRITICAL: If no valid answer found, don't reply
+        if not final_answer or final_answer.strip() == "":
             print(f"🚫 EmbeddingAgent: No valid answer found - skipping reply")
-            print(f"   - Question: {matched_document}")
-            print(f"   - Answer: {matched_answer}")
+            print(f"   - Question: {matched_question_text}")
+            print(f"   - Answer: '{final_answer}'")
             return {
                 'action': 'skip',
                 'response': None,
                 'confidence': similarity_score,
-                'matched_question': matched_document
+                'matched_question': matched_question_text or matched_document,
+                'error': 'No valid answer found'
             }
         
-        # Additional check: Make sure answer is not the same as question (shouldn't happen but safety check)
-        if matched_answer.strip() == matched_document.strip():
-            print(f"🚫 EmbeddingAgent: Answer is same as question - this indicates a data issue")
+        # Check if answer is too short
+        if len(final_answer.strip()) < 3:
+            print(f"🚫 EmbeddingAgent: Answer too short - skipping reply")
+            print(f"   - Answer: '{final_answer}'")
             return {
                 'action': 'skip',
                 'response': None,
                 'confidence': similarity_score,
-                'matched_question': matched_document
+                'matched_question': matched_question_text or matched_document,
+                'error': 'Answer too short'
             }
         
-        # Check if the answer is too short (likely needs no reply)
-        if len(matched_answer.strip()) < 3:
-            print(f"🚫 EmbeddingAgent: Answer too short - no reply needed")
-            return {
-                'action': 'skip',
-                'response': None,
-                'confidence': similarity_score,
-                'matched_question': matched_document
-            }
+        print(f"📝 EmbeddingAgent: Valid answer found!")
+        print(f"   - Question: {matched_question_text[:50]}...")
+        print(f"   - Answer: {final_answer[:100]}...")
+        print(f"   - Answer Length: {len(final_answer)} characters")
         
-        print(f"📝 EmbeddingAgent: Final answer retrieved:")
-        print(f"   - Answer Length: {len(matched_answer)} characters")
-        print(f"   - Answer Preview: '{matched_answer[:100]}...'")
-        print(f"   - Full Answer: {matched_answer}")
-        
-        # For very high similarity, skip the ChatGPT evaluation
+        # For very high similarity, use answer directly
         if similarity_score >= self.high_similarity_threshold:
             print(f"✅ EmbeddingAgent: Very high similarity ({similarity_score:.4f}) - using answer directly")
             return {
                 'action': 'reply',
-                'response': matched_answer,
+                'response': final_answer,
                 'confidence': similarity_score,
-                'matched_question': matched_document
+                'matched_question': matched_question_text or matched_document
             }
         
         # Ask ChatGPT to evaluate if the response is appropriate
         evaluation_result = await self._evaluate_response_with_chatgpt(
-            user_message, matched_document, matched_answer, detected_user_language, conversation_history
+            user_message, matched_question_text or matched_document, final_answer, detected_user_language, conversation_history
         )
         
         print(f"🤖 EmbeddingAgent: ChatGPT evaluation: {evaluation_result}")
@@ -177,23 +200,23 @@ class EmbeddingAgent:
         if evaluation_result['action'] == 'reply':
             return {
                 'action': 'reply',
-                'response': evaluation_result.get('response', matched_answer),
+                'response': evaluation_result.get('response', final_answer),
                 'confidence': similarity_score,
-                'matched_question': matched_document
+                'matched_question': matched_question_text or matched_document
             }
         elif evaluation_result['action'] == 'skip':
             return {
                 'action': 'skip',
                 'response': None,
                 'confidence': similarity_score,
-                'matched_question': matched_document
+                'matched_question': matched_question_text or matched_document
             }
         else:
             return {
                 'action': 'continue_to_classification',
                 'response': None,
                 'confidence': similarity_score,
-                'matched_question': matched_document
+                'matched_question': matched_question_text or matched_document
             }
     
     async def _evaluate_response_with_chatgpt(self, user_message: str, matched_question: str, 
