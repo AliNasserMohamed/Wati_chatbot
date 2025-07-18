@@ -180,6 +180,25 @@ class EmbeddingAgent:
         print(f"   - Answer: {final_answer[:100]}...")
         print(f"   - Answer Length: {len(final_answer)} characters")
         
+        # CRITICAL: Check language matching BEFORE processing
+        user_language = language_handler.detect_language(user_message)
+        answer_language = language_handler.detect_language(final_answer)
+        
+        print(f"🌐 Language Check:")
+        print(f"   - User message language: {user_language}")
+        print(f"   - Answer language: {answer_language}")
+        
+        # If languages don't match, skip the response
+        if user_language != answer_language:
+            print(f"🚫 Language mismatch: user={user_language}, answer={answer_language} - skipping response")
+            return {
+                'action': 'skip',
+                'response': None,
+                'confidence': similarity_score,
+                'matched_question': matched_question_text or matched_document,
+                'error': f'Language mismatch: user={user_language}, answer={answer_language}'
+            }
+        
         # For very high similarity, use answer directly
         if similarity_score >= self.high_similarity_threshold:
             print(f"✅ EmbeddingAgent: Very high similarity ({similarity_score:.4f}) - using answer directly")
