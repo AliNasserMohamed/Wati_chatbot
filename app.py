@@ -198,24 +198,59 @@ async def webhook(request: Request, db=Depends(get_db)):
         message_type = data.get("type", "text")  # Can be text, audio, etc.
         wati_message_id = data.get("id")  # Extract Wati message ID
         
-        # 🚨 CRITICAL: Check if this is a message FROM the bot (prevent infinite loops)
+        # 🚨 CRITICAL: Check message type and ownership to prevent infinite loops
+        event_type = data.get("eventType", "")
         from_bot = data.get("fromBot", False)
         from_me = data.get("fromMe", False)
-        is_status_update = data.get("eventType") == "status"
+        is_owner = data.get("owner", False)
+        is_status_update = event_type == "status"
+        is_session_message_sent = event_type == "sessionMessageSent"
         
-        # Skip bot messages and status updates to prevent infinite loops
-        if from_bot or from_me or is_status_update:
+        # Handle bot/agent replies (sessionMessageSent) - save to database but don't process
+        if is_session_message_sent or is_owner or from_bot or from_me:
             message_journey_logger.add_step(
                 journey_id=journey_id,
                 step_type="message_filter",
-                description=f"Skipped: from_bot={from_bot}, from_me={from_me}, status_update={is_status_update}",
-                data={"from_bot": from_bot, "from_me": from_me, "is_status_update": is_status_update},
+                description=f"Bot/agent reply detected: event_type={event_type}, owner={is_owner}",
+                data={
+                    "event_type": event_type, 
+                    "is_owner": is_owner, 
+                    "from_bot": from_bot, 
+                    "from_me": from_me,
+                    "is_session_message_sent": is_session_message_sent
+                },
+                status="bot_reply"
+            )
+            
+            # Save bot reply to database but don't process through agents
+            try:
+                await save_bot_reply_to_database(data, journey_id)
+                message_journey_logger.complete_journey(journey_id, status="saved_bot_reply")
+                print(f"💾 Bot/agent reply saved to database - Not processing through agents")
+                print(f"   eventType: {event_type}, owner: {is_owner}, text: {data.get('text', '')[:50]}...")
+            except Exception as e:
+                message_journey_logger.log_error(
+                    journey_id=journey_id,
+                    error_type="bot_reply_save_error",
+                    error_message=str(e),
+                    step="save_bot_reply"
+                )
+                print(f"❌ Error saving bot reply: {str(e)}")
+            
+            return {"status": "success", "message": "Bot reply saved - not processed"}
+        
+        # Skip status updates
+        if is_status_update:
+            message_journey_logger.add_step(
+                journey_id=journey_id,
+                step_type="message_filter",
+                description="Status update - skipping",
+                data={"event_type": event_type},
                 status="skipped"
             )
-            message_journey_logger.complete_journey(journey_id, status="skipped_bot_message")
-            print(f"🤖 Bot message or status update detected - Skipping to prevent infinite loop")
-            print(f"   from_bot: {from_bot}, from_me: {from_me}, eventType: {data.get('eventType')}")
-            return {"status": "success", "message": "Bot message - not processed"}
+            message_journey_logger.complete_journey(journey_id, status="skipped_status_update")
+            print(f"📊 Status update detected - Skipping")
+            return {"status": "success", "message": "Status update - not processed"}
         
         # Check if this is a template reply from WATI (button reply, list reply, etc.)
         button_reply = data.get("buttonReply")
@@ -450,6 +485,86 @@ def has_links(text: str) -> bool:
             return True
     
     return False
+
+async def save_bot_reply_to_database(data, journey_id):
+    """Save bot/agent reply to database without processing through agents"""
+    from database.db_utils import SessionLocal
+    
+    db = SessionLocal()
+    try:
+        phone_number = data.get("waId")
+        message_text = data.get("text", "")
+        wati_message_id = data.get("id")
+        operator_name = data.get("operatorName", "Bot")
+        operator_email = data.get("operatorEmail", "")
+        
+        if not phone_number or not message_text:
+            print(f"⚠️ Missing phone_number or message_text for bot reply")
+            return
+        
+        # Get or create user
+        user = DatabaseManager.get_user_by_phone(db, phone_number)
+        if not user:
+            user = DatabaseManager.create_user(db, phone_number)
+        
+        # Get or create session
+        session = db.query(UserSession).filter_by(user_id=user.id).first()
+        if not session:
+            session = UserSession(
+                user_id=user.id,
+                session_id=str(uuid.uuid4()),
+                started_at=datetime.utcnow()
+            )
+            db.add(session)
+        
+        session.last_activity = datetime.utcnow()
+        
+        # Find the most recent user message to link this reply to
+        recent_message = DatabaseManager.get_most_recent_user_message(db, user.id)
+        
+        if recent_message:
+            # Check if we already have a reply for this message
+            existing_reply = db.query(BotReply).filter_by(message_id=recent_message.id).first()
+            
+            if not existing_reply:
+                # Create new bot reply record
+                bot_reply = DatabaseManager.create_bot_reply(
+                    db,
+                    message_id=recent_message.id,
+                    content=message_text,
+                    language="ar"  # Default to Arabic, could be improved with language detection
+                )
+                
+                # Note: operator info available but not stored in current schema
+                # operator_name: {operator_name}, operator_email: {operator_email}
+                
+                message_journey_logger.log_database_operation(
+                    journey_id=journey_id,
+                    operation="create_bot_reply",
+                    table="bot_replies",
+                    details={
+                        "reply_id": bot_reply.id,
+                        "message_id": recent_message.id,
+                        "operator": operator_name,
+                        "text_length": len(message_text)
+                    }
+                )
+                
+                print(f"💾 Bot reply saved: {operator_name} -> {phone_number}")
+                
+            else:
+                print(f"📝 Bot reply already exists for message {recent_message.id}")
+        else:
+            print(f"⚠️ No recent user message found to link bot reply to")
+        
+        db.commit()
+        
+    except Exception as e:
+        print(f"❌ Error saving bot reply to database: {str(e)}")
+        db.rollback()
+        raise e
+    finally:
+        db.close()
 
 async def process_message_async(data, phone_number, message_type, wati_message_id):
     """Process the message asynchronously after responding to Wati"""

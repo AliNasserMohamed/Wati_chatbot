@@ -114,6 +114,15 @@ class DatabaseManager:
         return reply
     
     @staticmethod
+    def get_most_recent_user_message(db: Session, user_id: int) -> Optional[UserMessage]:
+        """Get the most recent message from a user"""
+        return db.query(UserMessage).filter(
+            UserMessage.user_id == user_id
+        ).order_by(
+            UserMessage.timestamp.desc()
+        ).first()
+    
+    @staticmethod
     def get_user_message_history(db: Session, user_id: int, limit: int = 10) -> List[Dict[str, Any]]:
         """Get user conversation history formatted for LLM understanding"""
         # Get the last 'limit' messages from the user
