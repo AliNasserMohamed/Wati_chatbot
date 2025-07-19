@@ -168,7 +168,7 @@ async def webhook(request: Request, db=Depends(get_db)):
     
     try:
         data = await request.json()
-        
+        print(f"🔍 Received data: {data}")
         # Extract basic message information for logging
         phone_number = data.get("waId")
         message_text = data.get("text", "")
