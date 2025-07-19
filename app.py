@@ -200,23 +200,16 @@ async def webhook(request: Request, db=Depends(get_db)):
         
         # 🚨 CRITICAL: Check message type and ownership to prevent infinite loops
         event_type = data.get("eventType", "")
-        from_bot = data.get("fromBot", False)
-        from_me = data.get("fromMe", False)
-        is_owner = data.get("owner", False)
-        is_status_update = event_type == "status"
         is_session_message_sent = event_type == "sessionMessageSent"
         
         # Handle bot/agent replies (sessionMessageSent) - save to database but don't process
-        if is_session_message_sent or is_owner or from_bot or from_me:
+        if is_session_message_sent :
             message_journey_logger.add_step(
                 journey_id=journey_id,
                 step_type="message_filter",
                 description=f"Bot/agent reply detected: event_type={event_type}, owner={is_owner}",
                 data={
                     "event_type": event_type, 
-                    "is_owner": is_owner, 
-                    "from_bot": from_bot, 
-                    "from_me": from_me,
                     "is_session_message_sent": is_session_message_sent
                 },
                 status="bot_reply"
@@ -227,7 +220,7 @@ async def webhook(request: Request, db=Depends(get_db)):
                 await save_bot_reply_to_database(data, journey_id)
                 message_journey_logger.complete_journey(journey_id, status="saved_bot_reply")
                 print(f"💾 Bot/agent reply saved to database - Not processing through agents")
-                print(f"   eventType: {event_type}, owner: {is_owner}, text: {data.get('text', '')[:50]}...")
+                print(f"   eventType: {event_type}, ")
             except Exception as e:
                 message_journey_logger.log_error(
                     journey_id=journey_id,
@@ -238,19 +231,6 @@ async def webhook(request: Request, db=Depends(get_db)):
                 print(f"❌ Error saving bot reply: {str(e)}")
             
             return {"status": "success", "message": "Bot reply saved - not processed"}
-        
-        # Skip status updates
-        if is_status_update:
-            message_journey_logger.add_step(
-                journey_id=journey_id,
-                step_type="message_filter",
-                description="Status update - skipping",
-                data={"event_type": event_type},
-                status="skipped"
-            )
-            message_journey_logger.complete_journey(journey_id, status="skipped_status_update")
-            print(f"📊 Status update detected - Skipping")
-            return {"status": "success", "message": "Status update - not processed"}
         
         # Check if this is a template reply from WATI (button reply, list reply, etc.)
         button_reply = data.get("buttonReply")
@@ -1167,7 +1147,7 @@ Important notes:
         print(f"🔄 Async processing completed for message {wati_message_id}")
 
 async def send_whatsapp_message(phone_number: str, message: str):
-    return
+    
     """Send message through Wati API"""
     wati_api_key = os.getenv("WATI_API_KEY")
     
