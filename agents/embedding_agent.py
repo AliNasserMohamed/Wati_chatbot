@@ -289,6 +289,7 @@ class EmbeddingAgent:
 - رسالة العميل الحالية: "{user_message}"
 - السؤال المشابه من قاعدة البيانات (عن طريق نموذج دلالي): "{matched_question}"
 - الرد المحفوظ: "{matched_answer}"
+
 -المحادثة السابقة:
 {conversation_context}
 
