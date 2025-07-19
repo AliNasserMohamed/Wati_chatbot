@@ -233,15 +233,7 @@ class EmbeddingAgent:
                 'error': f'Language mismatch: user={user_language}, answer={answer_language}'
             }
         
-        # For very high similarity, use answer directly
-        if similarity_score >= self.high_similarity_threshold:
-            print(f"✅ EmbeddingAgent: Very high similarity ({similarity_score:.4f}) - using answer directly")
-            return {
-                'action': 'reply',
-                'response': final_answer,
-                'confidence': similarity_score,
-                'matched_question': matched_question_text or matched_document
-            }
+       
         
         # Ask ChatGPT to evaluate if the response is appropriate
         evaluation_result = await self._evaluate_response_with_chatgpt(
