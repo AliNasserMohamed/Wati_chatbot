@@ -4,6 +4,7 @@ import requests
 import json
 import logging
 import asyncio
+import time
 from typing import Dict, List, Any, Optional
 from openai import AsyncOpenAI
 import os
@@ -20,6 +21,14 @@ load_dotenv()
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Import message logger for detailed journey tracking
+try:
+    from utils.message_logger import message_journey_logger
+    LOGGING_AVAILABLE = True
+except ImportError:
+    LOGGING_AVAILABLE = False
+    logger.warning("Message journey logger not available - LLM logging disabled")
 
 class QueryAgent:
     """
@@ -292,7 +301,7 @@ class QueryAgent:
             logger.error(f"Error searching products: {str(e)}")
             return {"error": f"Failed to search products: {str(e)}"}
     
-    async def process_query(self, user_message: str, conversation_history: List[Dict] = None, user_language: str = 'ar') -> str:
+    async def process_query(self, user_message: str, conversation_history: List[Dict] = None, user_language: str = 'ar', journey_id: str = None) -> str:
         """
         Process user query using OpenAI with function calling capabilities
         Limited to maximum 3 function calls per query to prevent excessive API usage
@@ -428,6 +437,12 @@ Be helpful, understanding, and respond exactly like a friendly human employee wo
             while function_call_count < max_function_calls:
                 try:
                     # Make request to OpenAI with function calling
+                    api_start_time = time.time()
+                    
+                    # Log the LLM request
+                    if LOGGING_AVAILABLE and journey_id:
+                        prompt_text = "\n".join([f"{msg['role']}: {msg.get('content', 'Function call')}" for msg in messages[-3:]])  # Last 3 messages for context
+                        
                     response = await self.openai_client.chat.completions.create(
                         model="gpt-3.5-turbo",
                         messages=messages,
@@ -437,7 +452,28 @@ Be helpful, understanding, and respond exactly like a friendly human employee wo
                         max_tokens=800
                     )
                     
+                    api_duration = int((time.time() - api_start_time) * 1000)
                     message = response.choices[0].message
+                    
+                    # Log the LLM response
+                    if LOGGING_AVAILABLE and journey_id:
+                        function_calls_info = None
+                        if message.function_call:
+                            function_calls_info = [{
+                                "function_name": message.function_call.name,
+                                "arguments": message.function_call.arguments
+                            }]
+                        
+                        message_journey_logger.log_llm_interaction(
+                            journey_id=journey_id,
+                            llm_type="openai",
+                            prompt=prompt_text,
+                            response=message.content or f"Function call: {message.function_call.name}" if message.function_call else "",
+                            model="gpt-3.5-turbo",
+                            function_calls=function_calls_info,
+                            duration_ms=api_duration,
+                            tokens_used={"total_tokens": response.usage.total_tokens if response.usage else None}
+                        )
                     
                     # Check if model wants to call a function
                     if message.function_call:

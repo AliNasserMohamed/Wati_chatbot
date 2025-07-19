@@ -258,19 +258,20 @@ class ChromaManager:
                     processed_answer = self._preprocess_text(answer)
                     processed_question = self._preprocess_text(question)
                     
+                    # COMMENTED OUT: Do not embed answers - only embed questions
                     # Prepare answer metadata - force type="answer" based on column
-                    answer_metadata = {**metadata, "type": "answer"}
+                    # answer_metadata = {**metadata, "type": "answer"}
                     
-                    # Add answer to collection
-                    self.collection.add(
-                        documents=[processed_answer],
-                        metadatas=[answer_metadata],
-                        ids=[qa_id]
-                    )
+                    # Add answer to collection - COMMENTED OUT
+                    # self.collection.add(
+                    #     documents=[processed_answer],
+                    #     metadatas=[answer_metadata],
+                    #     ids=[qa_id]
+                    # )
                     
                     # Add question with reference to answer ID - force type="question" based on column
                     question_id = f"q_{qa_id}"
-                    question_metadata = {"answer_id": qa_id, "type": "question", **metadata}
+                    question_metadata = {"answer_id": qa_id, "type": "question", "answer_text": answer, **metadata}
                     
                     self.collection.add(
                         documents=[processed_question],
@@ -392,8 +393,10 @@ class ChromaManager:
                         for meta in all_data["metadatas"]:
                             if meta.get("type") == "question":
                                 questions_count += 1
-                            else:
-                                answers_count += 1
+                                # Count answers by checking if answer_text exists in metadata
+                                if meta.get("answer_text") and meta.get("answer_text").strip():
+                                    answers_count += 1
+                            # Note: We no longer embed answers separately, only questions
                             
                             if meta.get("detected_language") == "arabic":
                                 arabic_count += 1
@@ -482,6 +485,50 @@ class ChromaManager:
         except Exception as e:
             print(f"❌ Arabic embedding test failed: {str(e)}")
             return False
+
+    def delete_question_by_text(self, question_text: str) -> bool:
+        """
+        Delete a question from the vector database by matching the question text
+        
+        Args:
+            question_text: The question text to find and delete
+            
+        Returns:
+            bool: True if deleted successfully, False otherwise
+        """
+        with self._sync_lock():
+            try:
+                # Get all documents from the collection
+                all_data = self.collection.get(include=["documents", "metadatas"])
+                
+                if not all_data or not all_data.get("documents"):
+                    return False
+                
+                # Process the question text the same way as during embedding
+                processed_question_text = self._preprocess_text(question_text)
+                
+                # Search for the matching question
+                found_id = None
+                for i, doc in enumerate(all_data["documents"]):
+                    processed_doc = self._preprocess_text(doc)
+                    metadata = all_data["metadatas"][i]
+                    
+                    # Check if this is a question and matches our text
+                    if (metadata.get("type") == "question" and 
+                        processed_doc == processed_question_text):
+                        found_id = all_data["ids"][i]
+                        break
+                
+                if found_id:
+                    # Delete the question
+                    self.collection.delete(ids=[found_id])
+                    return True
+                else:
+                    return False
+                    
+            except Exception as e:
+                print(f"❌ Error deleting question from vector database: {str(e)}")
+                return False
 
     def populate_default_knowledge_sync(self) -> Dict[str, Any]:
         """

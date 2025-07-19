@@ -1,8 +1,17 @@
 import os
 import openai
+import time
 from typing import Optional, Dict, Any, Tuple
 from vectorstore.chroma_db import chroma_manager
 from utils.language_utils import language_handler
+
+# Import message journey logger for detailed logging
+try:
+    from utils.message_logger import message_journey_logger
+    LOGGING_AVAILABLE = True
+except ImportError:
+    LOGGING_AVAILABLE = False
+    print("⚠️ Message journey logger not available - detailed embedding logging disabled")
 
 class EmbeddingAgent:
     def __init__(self):
@@ -10,7 +19,7 @@ class EmbeddingAgent:
         self.similarity_threshold = 0.50  # Higher cosine similarity means better match
         self.high_similarity_threshold = 0.60  # Very high similarity threshold for direct answers
         
-    async def process_message(self, user_message: str, conversation_history: list = None, user_language: str = 'ar') -> Dict[str, Any]:
+    async def process_message(self, user_message: str, conversation_history: list = None, user_language: str = 'ar', journey_id: str = None) -> Dict[str, Any]:
         """
         Process incoming message by comparing to knowledge base using embeddings
         
@@ -41,6 +50,10 @@ class EmbeddingAgent:
         
         # Print detailed information about all search results
         print(f"📊 EmbeddingAgent: Found {len(search_results)} similar results:")
+        
+        # Detailed logging: capture all search results for journey logging
+        search_results_for_log = []
+        
         for i, result in enumerate(search_results, 1):
             similarity_score = result.get('similarity', result.get('distance', 0.0))
             document_preview = result['document'][:100] + "..." if len(result['document']) > 100 else result['document']
@@ -50,17 +63,41 @@ class EmbeddingAgent:
             print(f"   - Similarity Score: {similarity_score:.4f}")
             print(f"   - Document Type: {metadata.get('type', 'unknown')}")
             print(f"   - Content Preview: {document_preview}")
-            print(f"   - Answer ID: {metadata.get('answer_id', 'N/A')}")
-            print(f"   - Has Answer: {metadata.get('has_answer', 'N/A')}")
+            print(f"   - Has Answer Text: {bool(metadata.get('answer_text', '').strip())}")
             print(f"   - Full Metadata: {metadata}")
             print(f"   ---")
             
             # Additional debugging: Check if this is a question without an answer
             if metadata.get('type') == 'question':
-                if not metadata.get('answer_id'):
-                    print(f"   ⚠️  WARNING: Question without answer_id!")
+                answer_text = metadata.get('answer_text', '')
+                if not answer_text or not answer_text.strip():
+                    print(f"   ⚠️  WARNING: Question without answer text!")
                 elif metadata.get('has_answer') == False:
                     print(f"   ℹ️  Info: Question marked as having no answer")
+            
+            # Capture for detailed logging
+            search_results_for_log.append({
+                "rank": i,
+                "similarity_score": similarity_score,
+                "document": result['document'],
+                "document_type": metadata.get('type', 'unknown'),
+                "has_answer_text": bool(metadata.get('answer_text', '').strip()),
+                "has_answer": metadata.get('has_answer'),
+                "metadata": metadata
+            })
+        
+        # Log all search results to journey if logging is available
+        if LOGGING_AVAILABLE and journey_id:
+            message_journey_logger.add_step(
+                journey_id=journey_id,
+                step_type="embedding_search_results",
+                description=f"Found {len(search_results)} similar questions in knowledge base",
+                data={
+                    "search_results": search_results_for_log,
+                    "user_message": user_message,
+                    "top_similarity": search_results_for_log[0]["similarity_score"] if search_results_for_log else 0
+                }
+            )
         
         # Get the best match (highest similarity)
         best_match = search_results[0]
@@ -71,7 +108,7 @@ class EmbeddingAgent:
         print(f"   - Similarity: {similarity_score:.4f}")
         print(f"   - Type: {best_match.get('metadata', {}).get('type', 'unknown')}")
         print(f"   - Metadata: {best_match['metadata']}")
-        print(f"   - Answer ID: {best_match.get('metadata', {}).get('answer_id', 'N/A')}")
+        print(f"   - Has Answer Text: {bool(best_match.get('metadata', {}).get('answer_text', '').strip())}")
         
         # Check if similarity is good enough (higher is better)
         if similarity_score < self.similarity_threshold:
@@ -96,42 +133,39 @@ class EmbeddingAgent:
         final_answer = None
         matched_question_text = None
         
-        # If the matched document is a question, find its answer
+        # If the matched document is a question, get its answer from metadata
         if metadata.get('type') == 'question':
             matched_question_text = matched_document
-            answer_id = metadata.get('answer_id')
+            answer_text = metadata.get('answer_text', '')  # Get answer from metadata
             
             print(f"   - This is a QUESTION: '{matched_question_text[:50]}...'")
-            print(f"   - Looking for answer with ID: {answer_id}")
+            print(f"   - Answer from metadata: '{answer_text[:100] if answer_text else 'No answer'}...'")
             
-            if answer_id:
-                try:
-                    # Get the collection safely
-                    collection = chroma_manager.get_collection_safe()
-                    if collection:
-                        # Try to get the answer by ID
-                        answer_results = collection.get(ids=[answer_id])
-                        
-                        if answer_results and answer_results.get('documents') and len(answer_results['documents']) > 0:
-                            final_answer = answer_results['documents'][0]
-                            print(f"   - ✅ Found ANSWER: '{final_answer[:100]}...'")
-                        else:
-                            print(f"   - ❌ No answer found for ID: {answer_id}")
-                            final_answer = None
-                    else:
-                        print(f"   - ❌ Could not access collection")
-                        final_answer = None
-                        
-                except Exception as e:
-                    print(f"   - ❌ Error retrieving answer: {str(e)}")
-                    final_answer = None
+            if answer_text and answer_text.strip():
+                final_answer = answer_text.strip()
+                print(f"   - ✅ Found ANSWER in metadata: '{final_answer[:100]}...'")
+                
+                # Log the matched question-answer pair for journey tracking
+                if LOGGING_AVAILABLE and journey_id:
+                    message_journey_logger.add_step(
+                        journey_id=journey_id,
+                        step_type="embedding_qa_match",
+                        description="Successfully matched question with answer from knowledge base",
+                        data={
+                            "matched_question": matched_question_text,
+                            "matched_answer": final_answer,
+                            "similarity_score": similarity_score,
+                            "answer_source": "metadata",
+                            "question_metadata": metadata
+                        }
+                    )
             else:
-                print(f"   - ❌ No answer_id in question metadata")
+                print(f"   - ❌ No answer found in question metadata")
                 final_answer = None
                 
         else:
-            # The matched document is already an answer (shouldn't happen with proper search)
-            print(f"   - ⚠️  Matched document appears to be an answer directly")
+            # The matched document is already an answer (shouldn't happen with new approach)
+            print(f"   - ⚠️  Matched document appears to be an answer directly (unexpected with new approach)")
             final_answer = matched_document
             matched_question_text = "Direct answer match"
         
@@ -211,7 +245,7 @@ class EmbeddingAgent:
         
         # Ask ChatGPT to evaluate if the response is appropriate
         evaluation_result = await self._evaluate_response_with_chatgpt(
-            user_message, matched_question_text or matched_document, final_answer, detected_user_language, conversation_history
+            user_message, matched_question_text or matched_document, final_answer, detected_user_language, conversation_history, journey_id
         )
         
         print(f"🤖 EmbeddingAgent: ChatGPT evaluation: {evaluation_result}")
@@ -239,7 +273,7 @@ class EmbeddingAgent:
             }
     
     async def _evaluate_response_with_chatgpt(self, user_message: str, matched_question: str, 
-                                            matched_answer: str, language: str, conversation_history: list = None) -> Dict[str, Any]:
+                                            matched_answer: str, language: str, conversation_history: list = None, journey_id: str = None) -> Dict[str, Any]:
         """
         Ask ChatGPT to evaluate if the response is good and appropriate
         """
@@ -323,10 +357,9 @@ Choose only one: reply or skip or continue"""
         
         try:
             print(f"🤖 ChatGPT evaluation prompt: {evaluation_prompt}")
-            response = await self.openai_client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": """
+            
+            # Build the complete messages for the API call
+            system_content = """
                         You are an extremely strict evaluator for customer service response quality at Abar Water Delivery.
 
                         Your ONLY task: Determine if the customer message is PURELY a greeting or thanks with NO additional content.
@@ -355,14 +388,70 @@ Choose only one: reply or skip or continue"""
                         Final instruction:
                         Be extremely conservative — choose `reply` ONLY if you are 100% certain it's PURELY a greeting or thanks with NO other content.
                         
-                        """},
-                    {"role": "user", "content": evaluation_prompt}
-                ],
+                        """
+            
+            messages = [
+                {"role": "system", "content": system_content},
+                {"role": "user", "content": evaluation_prompt}
+            ]
+            
+            # Log the complete prompt before sending to LLM
+            if LOGGING_AVAILABLE and journey_id:
+                complete_prompt = f"SYSTEM: {system_content}\n\nUSER: {evaluation_prompt}"
+                message_journey_logger.add_step(
+                    journey_id=journey_id,
+                    step_type="embedding_llm_evaluation_prompt",
+                    description="Sending evaluation prompt to ChatGPT for embedding response validation",
+                    data={
+                        "complete_prompt": complete_prompt,
+                        "system_prompt": system_content,
+                        "user_prompt": evaluation_prompt,
+                        "user_message": user_message,
+                        "matched_question": matched_question,
+                        "matched_answer": matched_answer,
+                        "model": "gpt-4o-mini"
+                    }
+                )
+            
+            # Time the LLM call
+            llm_start_time = time.time()
+            
+            response = await self.openai_client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=messages,
                 max_tokens=20,
                 temperature=0.1
             )
             
+            llm_duration = int((time.time() - llm_start_time) * 1000)
             evaluation = response.choices[0].message.content.strip().lower()
+            
+            # Log the complete response from LLM
+            if LOGGING_AVAILABLE and journey_id:
+                message_journey_logger.log_llm_interaction(
+                    journey_id=journey_id,
+                    llm_type="openai",
+                    prompt=f"SYSTEM: {system_content}\n\nUSER: {evaluation_prompt}",
+                    response=evaluation,
+                    model="gpt-4o-mini",
+                    duration_ms=llm_duration,
+                    tokens_used={"total_tokens": response.usage.total_tokens if response.usage else None}
+                )
+                
+                message_journey_logger.add_step(
+                    journey_id=journey_id,
+                    step_type="embedding_llm_evaluation_result",
+                    description=f"ChatGPT evaluation completed: {evaluation}",
+                    data={
+                        "evaluation_result": evaluation,
+                        "raw_response": response.choices[0].message.content,
+                        "duration_ms": llm_duration,
+                        "tokens_used": response.usage.total_tokens if response.usage else None,
+                        "user_message": user_message,
+                        "matched_question": matched_question,
+                        "matched_answer": matched_answer
+                    }
+                )
             
             # Log the evaluation for debugging
             print(f"🤖 ChatGPT evaluation result: '{evaluation}'")
@@ -428,36 +517,21 @@ Choose only one: reply or skip or continue"""
                 print(f"   Question ID: {question_info['id']}")
                 print(f"   Question Metadata: {question_info['metadata']}")
                 
-                answer_id = question_info['metadata'].get('answer_id')
-                if answer_id:
-                    print(f"   Looking for answer with ID: {answer_id}")
+                answer_text = question_info['metadata'].get('answer_text', '')
+                if answer_text and answer_text.strip():
+                    print(f"   ✅ Found Answer in metadata: {answer_text[:100]}...")
                     
-                    # Try to find the answer
-                    answer_results = chroma_manager.get_collection_safe().get(ids=[answer_id])
-                    if answer_results and answer_results['documents']:
-                        answer = answer_results['documents'][0]
-                        answer_metadata = answer_results['metadatas'][0]
-                        print(f"   ✅ Found Answer: {answer[:100]}...")
-                        print(f"   Answer Metadata: {answer_metadata}")
-                        
-                        test_results.append({
-                            "question": question_info['doc'][:100],
-                            "answer": answer[:100],
-                            "status": "success"
-                        })
-                    else:
-                        print(f"   ❌ Answer not found for ID: {answer_id}")
-                        test_results.append({
-                            "question": question_info['doc'][:100],
-                            "answer": None,
-                            "status": "missing_answer"
-                        })
+                    test_results.append({
+                        "question": question_info['doc'][:100],
+                        "answer": answer_text[:100],
+                        "status": "success"
+                    })
                 else:
-                    print(f"   ❌ No answer_id in question metadata")
+                    print(f"   ❌ No answer found in metadata")
                     test_results.append({
                         "question": question_info['doc'][:100],
                         "answer": None,
-                        "status": "no_answer_id"
+                        "status": "no_answer_in_metadata"
                     })
             
             return {

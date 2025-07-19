@@ -45,6 +45,9 @@ from services.scheduler import scheduler
 # Import knowledge_manager
 from utils.knowledge_manager import knowledge_manager
 
+# Import message journey logger
+from utils.message_logger import message_journey_logger
+
 app = FastAPI(
     title="Abar Chatbot API",
     description="API for handling WhatsApp messages for Abar water delivery app",
@@ -159,8 +162,27 @@ async def verify_webhook(
 @app.post("/webhook")
 async def webhook(request: Request, db=Depends(get_db)):
     """Handle incoming WhatsApp messages from Wati webhook"""
+    # Start timing the webhook processing
+    webhook_start_time = time.time()
+    journey_id = None
+    
     try:
         data = await request.json()
+        
+        # Extract basic message information for logging
+        phone_number = data.get("waId")
+        message_text = data.get("text", "")
+        wati_message_id = data.get("id")
+        message_type = data.get("type", "text")
+        
+        # Start message journey logging
+        journey_id = message_journey_logger.start_journey(
+            phone_number=phone_number,
+            message_text=message_text,
+            wati_message_id=wati_message_id,
+            message_type=message_type,
+            webhook_data=data
+        )
         
         # Debug: Print webhook data to understand structure
         print(f"🔍 Webhook received from: {data.get('waId', 'Unknown')}")
@@ -183,6 +205,14 @@ async def webhook(request: Request, db=Depends(get_db)):
         
         # Skip bot messages and status updates to prevent infinite loops
         if from_bot or from_me or is_status_update:
+            message_journey_logger.add_step(
+                journey_id=journey_id,
+                step_type="message_filter",
+                description=f"Skipped: from_bot={from_bot}, from_me={from_me}, status_update={is_status_update}",
+                data={"from_bot": from_bot, "from_me": from_me, "is_status_update": is_status_update},
+                status="skipped"
+            )
+            message_journey_logger.complete_journey(journey_id, status="skipped_bot_message")
             print(f"🤖 Bot message or status update detected - Skipping to prevent infinite loop")
             print(f"   from_bot: {from_bot}, from_me: {from_me}, eventType: {data.get('eventType')}")
             return {"status": "success", "message": "Bot message - not processed"}
@@ -193,6 +223,18 @@ async def webhook(request: Request, db=Depends(get_db)):
         interactive_button_reply = data.get("interactiveButtonReply")
         
         if button_reply or list_reply or interactive_button_reply or message_type == "button":
+            message_journey_logger.add_step(
+                journey_id=journey_id,
+                step_type="message_filter",
+                description="Skipped: Template reply detected",
+                data={
+                    "button_reply": button_reply,
+                    "list_reply": list_reply,
+                    "interactive_button_reply": interactive_button_reply
+                },
+                status="skipped"
+            )
+            message_journey_logger.complete_journey(journey_id, status="skipped_template_reply")
             print(f"🔘 Template reply detected from WATI - Skipping processing")
             print(f"   Type: {message_type}")
             if button_reply:
@@ -206,6 +248,14 @@ async def webhook(request: Request, db=Depends(get_db)):
         
         # Early duplicate check with existing session
         if wati_message_id and DatabaseManager.check_message_already_processed(db, wati_message_id):
+            message_journey_logger.add_step(
+                journey_id=journey_id,
+                step_type="duplicate_check",
+                description=f"Duplicate message detected: {wati_message_id}",
+                data={"wati_message_id": wati_message_id},
+                status="skipped"
+            )
+            message_journey_logger.complete_journey(journey_id, status="skipped_duplicate")
             print(f"🔄 Duplicate message detected with ID: {wati_message_id}. Returning success immediately.")
             return {"status": "success", "message": "Already processed"}
         
@@ -233,12 +283,35 @@ async def webhook(request: Request, db=Depends(get_db)):
         # IMMEDIATE RESPONSE: Send quick response to Wati to prevent duplicate notifications
         immediate_response = {"status": "success", "message": "Processing"}
         
+        # Add journey_id to message data for tracking throughout processing
+        data['journey_id'] = journey_id
+        
+        # Log successful webhook validation
+        message_journey_logger.add_step(
+            journey_id=journey_id,
+            step_type="webhook_validation",
+            description="Message passed webhook validation",
+            data={"phone_number": phone_number, "message_type": message_type},
+            duration_ms=int((time.time() - webhook_start_time) * 1000)
+        )
+        
         # Add message to batch instead of processing immediately
         await add_message_to_batch(phone_number, data)
         
         return immediate_response
 
     except Exception as e:
+        # Log error in journey if journey_id exists
+        if journey_id:
+            message_journey_logger.log_error(
+                journey_id=journey_id,
+                error_type="webhook_error",
+                error_message=str(e),
+                step="webhook_processing",
+                exception=e
+            )
+            message_journey_logger.complete_journey(journey_id, status="failed")
+        
         print(f"[Webhook ERROR] {str(e)}")
         import traceback
         traceback.print_exc()
@@ -380,11 +453,33 @@ def has_links(text: str) -> bool:
 
 async def process_message_async(data, phone_number, message_type, wati_message_id):
     """Process the message asynchronously after responding to Wati"""
+    # Extract journey_id from data or create a new one if missing
+    journey_id = data.get('journey_id')
+    if not journey_id:
+        # Fallback: create journey if not provided (for backward compatibility)
+        journey_id = message_journey_logger.start_journey(
+            phone_number=phone_number,
+            message_text=data.get('text', ''),
+            wati_message_id=wati_message_id,
+            message_type=message_type,
+            webhook_data=data
+        )
+    
+    # Start timing the async processing
+    async_start_time = time.time()
+    
     # Create a new database session for async processing
     from database.db_utils import SessionLocal
     db = SessionLocal()
     
     try:
+        message_journey_logger.add_step(
+            journey_id=journey_id,
+            step_type="async_processing_start",
+            description=f"Started async processing for {wati_message_id}",
+            data={"phone_number": phone_number, "message_type": message_type}
+        )
+        
         print(f"🔄 Starting async processing for message {wati_message_id} from {phone_number}")
         
         # Check if this is a batch message
@@ -421,9 +516,16 @@ async def process_message_async(data, phone_number, message_type, wati_message_i
             print(f"🔒 Non-allowed user detected: {phone_number} - Limited to embedding agent replies only")
         
         # Get or create user session
+        db_start_time = time.time()
         user = DatabaseManager.get_user_by_phone(db, phone_number)
         if not user:
             user = DatabaseManager.create_user(db, phone_number)
+            message_journey_logger.log_database_operation(
+                journey_id=journey_id,
+                operation="create_user",
+                table="users",
+                details={"phone_number": phone_number, "user_id": user.id}
+            )
         
         session = db.query(UserSession).filter_by(user_id=user.id).first()
         if not session:
@@ -435,6 +537,15 @@ async def process_message_async(data, phone_number, message_type, wati_message_i
             db.add(session)
         
         session.last_activity = datetime.utcnow()
+        
+        # Log user and session setup
+        message_journey_logger.log_database_operation(
+            journey_id=journey_id,
+            operation="get_or_create_session",
+            table="user_sessions",
+            details={"user_id": user.id, "is_allowed_user": is_allowed_user},
+            duration_ms=int((time.time() - db_start_time) * 1000)
+        )
         
         # Handle different message types
         if message_type == "audio":
@@ -459,7 +570,17 @@ async def process_message_async(data, phone_number, message_type, wati_message_i
             return
 
         # ISSUE 2: Get enhanced conversation history FIRST (last 5 messages and their replies) 
+        history_start_time = time.time()
         conversation_history = DatabaseManager.get_user_message_history(db, user.id, limit=5)
+        
+        message_journey_logger.log_database_operation(
+            journey_id=journey_id,
+            operation="get_message_history",
+            table="user_messages",
+            details={"user_id": user.id, "history_count": len(conversation_history)},
+            duration_ms=int((time.time() - history_start_time) * 1000)
+        )
+        
         print(f"📚 Retrieved conversation history: {len(conversation_history)} messages")
         
         # Print the complete conversation history content
@@ -487,11 +608,25 @@ async def process_message_async(data, phone_number, message_type, wati_message_i
             print(f"🔤 No formatted conversation history")
 
         # Create user message record with Wati message ID
+        create_msg_start_time = time.time()
         user_message = DatabaseManager.create_message(
             db,
             user_id=user.id,
             content=message_text,
             wati_message_id=wati_message_id
+        )
+        
+        message_journey_logger.log_database_operation(
+            journey_id=journey_id,
+            operation="create_message",
+            table="user_messages",
+            details={
+                "message_id": user_message.id,
+                "user_id": user.id,
+                "message_length": len(message_text),
+                "wati_message_id": wati_message_id
+            },
+            duration_ms=int((time.time() - create_msg_start_time) * 1000)
         )
 
         # Check if we already replied to this mesFsage (prevent double replies)
@@ -506,10 +641,23 @@ async def process_message_async(data, phone_number, message_type, wati_message_i
         # Quick language detection for embedding agent
         temp_language = language_handler.detect_language(message_text)
         
+        embedding_start_time = time.time()
         embedding_result = await embedding_agent.process_message(
             user_message=message_text,
             conversation_history=conversation_history,
-            user_language=temp_language
+            user_language=temp_language,
+            journey_id=journey_id
+        )
+        
+        # Log embedding agent processing
+        message_journey_logger.log_embedding_agent(
+            journey_id=journey_id,
+            user_message=message_text,
+            action=embedding_result['action'],
+            confidence=embedding_result['confidence'],
+            matched_question=embedding_result.get('matched_question'),
+            response=embedding_result.get('response'),
+            duration_ms=int((time.time() - embedding_start_time) * 1000)
         )
         
         print(f"🎯 Embedding agent result: {embedding_result['action']} (confidence: {embedding_result['confidence']:.3f})")
@@ -534,21 +682,51 @@ async def process_message_async(data, phone_number, message_type, wati_message_i
             
         elif embedding_result['action'] == 'skip':
             # Message doesn't need a reply (emotions, ok, etc.)
+            message_journey_logger.add_step(
+                journey_id=journey_id,
+                step_type="embedding_skip",
+                description="Embedding agent determined no reply needed",
+                data={"reason": "no_reply_needed"}
+            )
+            message_journey_logger.complete_journey(journey_id, status="completed_no_reply")
             print(f"🚫 Embedding agent determined no reply needed")
             return
             
         else:
             # Continue to classification agent
+            message_journey_logger.add_step(
+                journey_id=journey_id,
+                step_type="embedding_continue",
+                description="Embedding agent passed to classification agent",
+                data={"action": "continue_to_classification"}
+            )
             print(f"🔄 Embedding agent passed to classification agent")
             
             # Check if user is allowed to access other agents
             if not is_allowed_user:
+                message_journey_logger.add_step(
+                    journey_id=journey_id,
+                    step_type="access_restriction",
+                    description="Non-allowed user restricted from other agents",
+                    data={"phone_number": phone_number, "is_allowed": False}
+                )
+                message_journey_logger.complete_journey(journey_id, status="completed_restricted")
                 print(f"🔒 Non-allowed user cannot access other agents - no response sent")
                 return
             
             # Classify message and detect language WITH conversation history
+            classification_start_time = time.time()
             classified_message_type, detected_language = await message_classifier.classify_message(
                 message_text, db, user_message, conversation_history
+            )
+            
+            # Log message classification
+            message_journey_logger.log_classification(
+                journey_id=journey_id,
+                message_text=message_text,
+                classified_type=str(classified_message_type),
+                detected_language=detected_language,
+                duration_ms=int((time.time() - classification_start_time) * 1000)
             )
             
             print(f"🧠 Message classified as: {classified_message_type} in language: {detected_language}")
@@ -564,6 +742,8 @@ async def process_message_async(data, phone_number, message_type, wati_message_i
             if classified_message_type == MessageType.GREETING:
                 # Send greetings directly to LLM for natural response
                 print(f"👋 Sending GREETING directly to LLM")
+                
+                greeting_start_time = time.time()
                 
                 # Build a simple greeting prompt
                 if detected_language == 'ar':
@@ -591,6 +771,16 @@ Important notes:
                 
                 response_text = await language_handler.process_with_openai(greeting_prompt)
                 
+                # Log LLM interaction for greeting
+                message_journey_logger.log_llm_interaction(
+                    journey_id=journey_id,
+                    llm_type="openai",
+                    prompt=greeting_prompt,
+                    response=response_text,
+                    model="gpt-3.5-turbo",
+                    duration_ms=int((time.time() - greeting_start_time) * 1000)
+                )
+                
             elif classified_message_type == MessageType.COMPLAINT:
                 # Handle complaints with default response
                 print(f"📝 Handling COMPLAINT with default response")
@@ -599,6 +789,8 @@ Important notes:
             elif classified_message_type == MessageType.THANKING:
                 # Send thanking directly to LLM for natural response
                 print(f"🙏 Sending THANKING directly to LLM")
+                
+                thanking_start_time = time.time()
                 
                 # Build a simple thanking response prompt
                 if detected_language == 'ar':
@@ -626,6 +818,16 @@ Important notes:
                 
                 response_text = await language_handler.process_with_openai(thanking_prompt)
                 
+                # Log LLM interaction for thanking
+                message_journey_logger.log_llm_interaction(
+                    journey_id=journey_id,
+                    llm_type="openai",
+                    prompt=thanking_prompt,
+                    response=response_text,
+                    model="gpt-3.5-turbo",
+                    duration_ms=int((time.time() - thanking_start_time) * 1000)
+                )
+                
             elif classified_message_type == MessageType.SUGGESTION:
                 # Handle suggestions with default response
                 print(f"💡 Handling SUGGESTION with default response")
@@ -634,41 +836,91 @@ Important notes:
             elif classified_message_type == MessageType.INQUIRY:
                 # Send inquiries to query agent
                 print(f"🔍 Sending INQUIRY to query agent")
+                inquiry_start_time = time.time()
                 response_text = await query_agent.process_query(
                     user_message=message_text,
                     conversation_history=conversation_history,
-                    user_language=detected_language
+                    user_language=detected_language,
+                    journey_id=journey_id
+                )
+                
+                message_journey_logger.log_agent_processing(
+                    journey_id=journey_id,
+                    agent_name="query_agent",
+                    action="process_inquiry",
+                    input_data={"message_type": "INQUIRY", "language": detected_language},
+                    output_data={"response_length": len(response_text) if response_text else 0},
+                    duration_ms=int((time.time() - inquiry_start_time) * 1000)
                 )
                 
             elif classified_message_type == MessageType.SERVICE_REQUEST:
                 # Send service requests to service agent
                 print(f"🛠️ Sending SERVICE_REQUEST to service agent")
+                service_start_time = time.time()
                 response_text = await service_request_agent.process_service_request(
                     user_message=message_text,
                     conversation_history=conversation_history,
                     user_language=detected_language
                 )
                 
+                message_journey_logger.log_agent_processing(
+                    journey_id=journey_id,
+                    agent_name="service_request_agent",
+                    action="process_service_request",
+                    input_data={"message_type": "SERVICE_REQUEST", "language": detected_language},
+                    output_data={"response_length": len(response_text) if response_text else 0},
+                    duration_ms=int((time.time() - service_start_time) * 1000)
+                )
+                
             elif classified_message_type == MessageType.TEMPLATE_REPLY:
                 # Send template replies to query agent for context-aware processing
                 print(f"🔘 Sending TEMPLATE_REPLY to query agent")
+                template_start_time = time.time()
                 response_text = await query_agent.process_query(
                     user_message=message_text,
                     conversation_history=conversation_history,
-                    user_language=detected_language
+                    user_language=detected_language,
+                    journey_id=journey_id
+                )
+                
+                message_journey_logger.log_agent_processing(
+                    journey_id=journey_id,
+                    agent_name="query_agent",
+                    action="process_template_reply",
+                    input_data={"message_type": "TEMPLATE_REPLY", "language": detected_language},
+                    output_data={"response_length": len(response_text) if response_text else 0},
+                    duration_ms=int((time.time() - template_start_time) * 1000)
                 )
                 
             else:
                 # Fallback for unclassified or OTHER messages - send to query agent
                 print(f"❓ Sending unclassified/OTHER message to query agent")
+                fallback_start_time = time.time()
                 response_text = await query_agent.process_query(
                     user_message=message_text,
                     conversation_history=conversation_history,
-                    user_language=detected_language
+                    user_language=detected_language,
+                    journey_id=journey_id
+                )
+                
+                message_journey_logger.log_agent_processing(
+                    journey_id=journey_id,
+                    agent_name="query_agent",
+                    action="process_fallback",
+                    input_data={"message_type": "OTHER/FALLBACK", "language": detected_language},
+                    output_data={"response_length": len(response_text) if response_text else 0},
+                    duration_ms=int((time.time() - fallback_start_time) * 1000)
                 )
         
         # Check if we have a response to send
         if not response_text:
+            message_journey_logger.add_step(
+                journey_id=journey_id,
+                step_type="response_check",
+                description="No response generated - skipping message sending",
+                status="skipped"
+            )
+            message_journey_logger.complete_journey(journey_id, status="completed_no_response")
             print(f"🔇 No response generated - skipping message sending")
             return
         
@@ -681,8 +933,21 @@ Important notes:
         user_type = "ALLOWED" if is_allowed_user else "RESTRICTED"
         print(f"📤 Sending response for {classified_message_type or 'UNKNOWN'} ({user_type} user) in {detected_language}: {response_text[:50]}...")
 
+        # Log the final response preparation
+        message_journey_logger.add_step(
+            journey_id=journey_id,
+            step_type="response_preparation",
+            description=f"Prepared final response for {classified_message_type}",
+            data={
+                "response_length": len(response_text),
+                "detected_language": detected_language,
+                "user_type": "ALLOWED" if is_allowed_user else "RESTRICTED"
+            }
+        )
+
         # Create bot reply record with language (prevent double replies)
-        DatabaseManager.create_bot_reply(
+        reply_save_start_time = time.time()
+        bot_reply = DatabaseManager.create_bot_reply(
             db,
             message_id=user_message.id,
             content=response_text,
@@ -691,26 +956,97 @@ Important notes:
 
         # Commit before sending message to ensure duplicate prevention works
         db.commit()
+        
+        message_journey_logger.log_database_operation(
+            journey_id=journey_id,
+            operation="create_bot_reply",
+            table="bot_replies",
+            details={
+                "reply_id": bot_reply.id,
+                "message_id": user_message.id,
+                "response_length": len(response_text),
+                "language": detected_language
+            },
+            duration_ms=int((time.time() - reply_save_start_time) * 1000)
+        )
+        
         print(f"💾 Message and reply saved to database")
 
         # Send response via WhatsApp with timeout
+        whatsapp_start_time = time.time()
         try:
             result = await asyncio.wait_for(
                 send_whatsapp_message(phone_number, response_text),
                 timeout=30  # 30 seconds timeout
             )
+            
+            # Log successful WhatsApp send
+            message_journey_logger.log_whatsapp_send(
+                journey_id=journey_id,
+                phone_number=phone_number,
+                message=response_text,
+                status="success",
+                response_data=result,
+                duration_ms=int((time.time() - whatsapp_start_time) * 1000)
+            )
+            
+            # Complete the journey successfully
+            message_journey_logger.complete_journey(journey_id, final_response=response_text, status="completed")
+            
             print(f"✅ Response sent to {phone_number}: {response_text[:100]}...")
         except asyncio.TimeoutError:
+            message_journey_logger.log_whatsapp_send(
+                journey_id=journey_id,
+                phone_number=phone_number,
+                message=response_text,
+                status="timeout",
+                error="WhatsApp message sending timed out",
+                duration_ms=int((time.time() - whatsapp_start_time) * 1000)
+            )
+            message_journey_logger.complete_journey(journey_id, final_response=response_text, status="completed_with_timeout")
             print(f"⏰ WhatsApp message sending timed out for {phone_number}")
         except Exception as e:
+            message_journey_logger.log_whatsapp_send(
+                journey_id=journey_id,
+                phone_number=phone_number,
+                message=response_text,
+                status="failed",
+                error=str(e),
+                duration_ms=int((time.time() - whatsapp_start_time) * 1000)
+            )
+            message_journey_logger.complete_journey(journey_id, final_response=response_text, status="completed_with_error")
             print(f"❌ Error sending WhatsApp message to {phone_number}: {str(e)}")
 
     except Exception as e:
+        # Log the error in the journey
+        message_journey_logger.log_error(
+            journey_id=journey_id,
+            error_type="async_processing_error",
+            error_message=str(e),
+            step="message_processing",
+            exception=e
+        )
+        message_journey_logger.complete_journey(journey_id, status="failed")
+        
         print(f"[Async Message Processing ERROR] {str(e)}")
         import traceback
         traceback.print_exc()
         db.rollback()
     finally:
+        # Log final processing completion
+        total_processing_time = int((time.time() - async_start_time) * 1000)
+        message_journey_logger.add_step(
+            journey_id=journey_id,
+            step_type="processing_complete",
+            description=f"Async processing completed for {wati_message_id}",
+            data={"total_processing_time_ms": total_processing_time},
+            duration_ms=total_processing_time
+        )
+        
+        # Clean up old journeys (only occasionally to avoid overhead)
+        if hash(journey_id) % 100 == 0:  # Run cleanup 1% of the time
+            message_journey_logger.cleanup_old_journeys()
+        
         # Always close the database session
         db.close()
         print(f"🔄 Async processing completed for message {wati_message_id}")
@@ -816,6 +1152,7 @@ async def send_message(request: Request, db=Depends(get_db)):
     """
     try:
         data = await request.json()
+        print(f"🔍 Received data: {data}")
         phone_number = data.get("phone_number")
         message = data.get("message")
         
@@ -1303,20 +1640,13 @@ async def update_knowledge(request: Request):
             if not success:
                 raise HTTPException(status_code=500, detail="Failed to update Q&A pair in Excel file")
         
-        # Also update in vector database if it exists
+        # Also update in vector database if it exists (only questions are embedded now)
         try:
             from vectorstore.chroma_db import chroma_manager
             
-            # Update the answer document
-            chroma_manager.get_collection_safe().update(
-                ids=[qa_id],
-                documents=[answer],
-                metadatas=[metadata]
-            )
-            
-            # Update the question document
+            # We no longer embed answers separately - only update the question document
             question_id = f"q_{qa_id}"
-            question_metadata = {"answer_id": qa_id, "type": "question", **metadata}
+            question_metadata = {"answer_id": qa_id, "type": "question", "answer_text": answer, **metadata}
             try:
                 chroma_manager.get_collection_safe().update(
                     ids=[question_id],
@@ -1342,40 +1672,115 @@ async def update_knowledge(request: Request):
         print(f"Error updating knowledge: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/knowledge/validate-delete/{qa_id}")
+async def validate_delete(qa_id: str):
+    """
+    Validate what would be deleted without actually deleting it
+    """
+    try:
+        if qa_id.startswith("excel_"):
+            excel_index = int(qa_id.replace("excel_", ""))
+            
+            from utils.excel_manager import csv_manager
+            all_qa_pairs = csv_manager.read_qa_pairs()
+            
+            # Validation checks
+            if excel_index < 0 or excel_index >= len(all_qa_pairs):
+                return {
+                    "status": "error",
+                    "message": f"Invalid index {excel_index}. Valid range: 0-{len(all_qa_pairs)-1}"
+                }
+            
+            # Get the item that would be deleted
+            target_item = all_qa_pairs[excel_index]
+            
+            # Get surrounding context
+            context = {
+                "target_index": excel_index,
+                "target_question": target_item.get('question', '')[:100],
+                "target_answer": target_item.get('answer', '')[:100],
+                "total_items": len(all_qa_pairs)
+            }
+            
+            # Add surrounding items for context
+            if excel_index > 0:
+                context["item_above"] = {
+                    "index": excel_index - 1,
+                    "question": all_qa_pairs[excel_index - 1].get('question', '')[:100]
+                }
+            
+            if excel_index + 1 < len(all_qa_pairs):
+                context["item_below"] = {
+                    "index": excel_index + 1,
+                    "question": all_qa_pairs[excel_index + 1].get('question', '')[:100]
+                }
+            
+            return {
+                "status": "success",
+                "message": "Validation successful",
+                "qa_id": qa_id,
+                "excel_index": excel_index,
+                "context": context
+            }
+        else:
+            return {
+                "status": "error", 
+                "message": "Invalid ID format - expected format: excel_{index}"
+            }
+            
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
 @app.delete("/knowledge/delete/{qa_id}")
 async def delete_knowledge(qa_id: str):
     """
-    Delete a Q&A pair by ID
+    Delete a Q&A pair by ID from Excel file, vector database, and dashboard
     """
     try:
         # Extract Excel index from ID
         if qa_id.startswith("excel_"):
             excel_index = int(qa_id.replace("excel_", ""))
             
-            # Delete from Excel file
+            # Get the question text before deleting (needed for vector DB cleanup)
             from utils.excel_manager import csv_manager
+            qa_pair = csv_manager.get_qa_pair_by_index(excel_index)
+            
+            if not qa_pair:
+                raise HTTPException(status_code=404, detail=f"Q&A pair not found at index {excel_index}")
+            
+            question_text = qa_pair.get('question', '')
+            
+            # Delete from Excel file
             success = csv_manager.delete_qa_pair(excel_index)
             
             if not success:
                 raise HTTPException(status_code=500, detail="Failed to delete Q&A pair from Excel file")
         
-        # Also delete from vector database if it exists
-        try:
-            from vectorstore.chroma_db import chroma_manager
-            
-            # Delete both answer and question documents
-            ids_to_delete = [qa_id, f"q_{qa_id}"]
-            chroma_manager.get_collection_safe().delete(ids=ids_to_delete)
-        except Exception as e:
-            print(f"Warning: Failed to delete from vector database: {str(e)}")
+            # Delete from vector database (only questions are embedded now)
+            try:
+                from vectorstore.chroma_db import chroma_manager
+                
+                if question_text:
+                    # Use the new method to delete by question text
+                    chroma_manager.delete_question_by_text(question_text)
+                        
+            except Exception as e:
+                print(f"⚠️ Failed to delete from vector database: {str(e)}")
+                # Continue execution - Excel deletion succeeded
+        
+        else:
+            raise HTTPException(status_code=400, detail="Invalid ID format - expected format: excel_{index}")
         
         return {
             "status": "success",
-            "message": "Q&A pair deleted successfully",
+            "message": "Q&A pair deleted successfully from Excel file and vector database",
             "id": qa_id
         }
+        
+    except HTTPException:
+        raise
     except Exception as e:
-        print(f"Error deleting knowledge: {str(e)}")
+        print(f"❌ Error deleting knowledge: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # User management endpoints

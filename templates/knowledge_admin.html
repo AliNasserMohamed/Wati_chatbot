@@ -1018,14 +1018,34 @@
             }
         }
 
-        // Delete Q&A
+        // Delete Q&A with validation
         async function deleteQA(id, index) {
-            if (!confirm('هل أنت متأكد من حذف هذا السؤال والجواب؟')) {
-                return;
-            }
-            
             try {
+                // Validate what would be deleted
                 showLoading(true);
+                
+                const validateResponse = await fetch(`/knowledge/validate-delete/${id}`);
+                const validation = await validateResponse.json();
+                
+                if (validation.status !== 'success') {
+                    showAlert(`خطأ في التحقق: ${validation.message}`, 'danger');
+                    return;
+                }
+                
+                // Show confirmation with the correct question
+                const context = validation.context;
+                let confirmMessage = `هل أنت متأكد من حذف هذا السؤال والجواب؟\n\n`;
+                confirmMessage += `السؤال: ${context.target_question}`;
+                
+                showLoading(false);
+                
+                if (!confirm(confirmMessage)) {
+                    return;
+                }
+                
+                // Proceed with actual deletion
+                showLoading(true);
+                
                 const response = await fetch(`/knowledge/delete/${id}`, {
                     method: 'DELETE'
                 });
@@ -1037,9 +1057,9 @@
                     const errorResult = await response.json();
                     throw new Error(errorResult.detail || 'فشل في حذف السؤال والجواب');
                 }
+                
             } catch (error) {
-                console.error('Error deleting Q&A:', error);
-                showAlert(`حدث خطأ أثناء حذف السؤال والجواب: ${error.message}`, 'danger');
+                showAlert(`حدث خطأ أثناء عملية الحذف: ${error.message}`, 'danger');
             } finally {
                 showLoading(false);
             }

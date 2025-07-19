@@ -346,36 +346,60 @@ class ExcelManager:
             print(f"❌ Error updating Q&A pair: {str(e)}")
             return False
     
+    def get_qa_pair_by_index(self, index: int) -> Dict[str, Any]:
+        """
+        Get a specific Q&A pair by index
+        
+        Args:
+            index: Index of the Q&A pair to retrieve
+        
+        Returns:
+            Dict with question, answer, and metadata, or None if not found
+        """
+        try:
+            qa_pairs = self.read_qa_pairs()
+            
+            if 0 <= index < len(qa_pairs):
+                return qa_pairs[index]
+            else:
+                print(f"❌ Index {index} out of range (0-{len(qa_pairs)-1})")
+                return None
+                
+        except Exception as e:
+            print(f"❌ Error getting Q&A pair by index: {str(e)}")
+            return None
+
     def delete_qa_pair(self, index: int) -> bool:
         """
         Delete a Q&A pair at a specific index
         
         Args:
-            index: Index of the Q&A pair to delete
+            index: Index of the Q&A pair to delete (0-based index in the data, excluding header row)
         
         Returns:
             bool: True if successful, False otherwise
         """
         try:
-            # Read existing data
+            # Read existing data (includes header row)
             df = pd.read_excel(self.excel_path, engine='openpyxl')
             
-            # Check if index is valid
+            # Check if index is valid for data rows (not including header)
             if index < 0 or index >= len(df):
-                print(f"❌ Invalid index: {index}")
+                print(f"❌ Invalid data index: {index}. Valid range: 0-{len(df)-1}")
                 return False
             
-            # Delete the row
-            df = df.drop(index=index).reset_index(drop=True)
+            # Delete the row at the specified index
+            # Note: pandas DataFrame index corresponds to data rows (header is already excluded)
+            df = df.drop(df.index[index]).reset_index(drop=True)
             
             # Write back to Excel
             df.to_excel(self.excel_path, index=False, engine='openpyxl')
             
-            print(f"✅ Successfully deleted Q&A pair at index {index}")
+            print(f"✅ Successfully deleted Q&A pair at data index {index}")
             return True
             
         except Exception as e:
-            print(f"❌ Error deleting Q&A pair: {str(e)}")
+            print(f"❌ Error deleting Q&A pair at index {index}: {str(e)}")
             return False
 
 # Create a global instance
