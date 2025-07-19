@@ -287,7 +287,7 @@ class EmbeddingAgent:
 مهمتك الوحيدة: تصنيف رسالة العميل بدقة إلى واحدة من ثلاث حالات.
 
 - رسالة العميل الحالية: "{user_message}"
-- السؤال المشابه من قاعدة البيانات (عن طريق نموذج دلالي): "{matched_question}"
+- السؤال المشابه من قاعدة البيانات : "{matched_question}"
 - الرد المحفوظ: "{matched_answer}"
 
 -المحادثة السابقة:
@@ -296,10 +296,10 @@ class EmbeddingAgent:
 التصنيف يجب أن يعتمد على القواعد التالية:
 
 🟢 "reply":
--✅ إذا كانت الرسالة مشابهة لسؤال موجود في قاعدة البيانات (من خلال النموذج الدلالي)، وكان لدينا رد محفوظ له — سواء كانت تحية أو استفسار أو طلب — يجب اختيار 
+-✅reply  إذا كانت رسالة العميل الحالية مشابهة لسؤال موجود في قاعدة البيانات ، وكان لدينا رد محفوظ له — سواء كانت تحية أو استفسار أو طلب — يجب اختيار 
 
 - أو إذا كانت الرسالة مجرد تحية أو شكر بسيط بدون أي محتوى إضافي
-  - مثل: (السلام عليكم، مرحبا، أهلاً، صباح الخير، شكراً، يعطيك العافية، جزاك الله خير، الله يوفقكم)
+  - مثل: (السلام عليكم، مرحبا، أهلاً، صباح الخير، شكراً، يعطيك العافية، جزاك الله خير، الله يوفقكم) يجب اختيار reply
 
 🟡 "skip":
 - إذا كانت الرسالة قصيرة ولا تتطلب رد مثل: (تمام، طيب، أوك، أوكي، تمام التمام، خلاص)
@@ -362,36 +362,47 @@ Return only one value: reply, skip, or continue
             print(f"🤖 ChatGPT evaluation prompt: {evaluation_prompt}")
             
             # Build the complete messages for the API call
-            system_content = """
-                        You are an extremely strict evaluator for customer service response quality at Abar Water Delivery.
+            system_content ="""You are an extremely strict evaluator for customer service response quality at Abar Water Delivery.
 
-                        Your ONLY task: Determine if the customer message is PURELY a greeting or thanks with NO additional content.
+Your ONLY task: Decide how to handle a customer's message based on its content and whether it matches any known question in the company database.
 
-                        Rules:
-                        - reply: ONLY if the message is a simple standalone greeting (e.g. السلام عليكم, مرحبا, أهلا) or simple direct thanks (e.g. شكراً, يعطيك العافية, الله يوفقكم), with ABSOLUTELY NO other content.
-                        - skip: If the message needs no response (e.g. أوكي, تمام, نعم).
-                        - continue: If the message includes ANY question, request, scheduling, or information — even if it starts with greetings or thanks.
+Inputs provided:
+- Customer message: the message sent by the user.
+- Matched question from vector database (if any): the most semantically similar known question.
+- Stored answer: the saved response for that matched question (if available).
+- Conversation context: last few messages exchanged.
 
-                        Critical examples of messages that are NOT greetings/thanks:
-                        - "السلام عليكم، عندي استفسار" → continue (contains question)
-                        - "شكراً لك، بس عندي سؤال" → continue (contains question)
-                        - "أبي أطلب مياه" → continue (service request)  
-                        - "ممكن تساعدني؟" → continue (request for help)
-                        - "كيف أقدر أطلب؟" → continue (question)
-                        - "يمدي توصلونه اليوم اكون شاكر لكم" → continue (question with thanks)
-                        - "ابيه الليلة" → continue (request)
-                        - "موعدنا بكره باذن الله" → continue (informational statement)
+You must classify the message into **only one** of the following:
 
-                        Only pure greetings/thanks are allowed:
-                        - "السلام عليكم" → reply
-                        - "شكراً" → reply
-                        - "يعطيك العافية" → reply
-                        - "مرحبا" → reply
+ reply:
+- If the message is **semantically similar** to a known question in the database AND we have a saved answer — regardless of whether the message is a greeting, request, or question.
+- OR if the message is a **pure standalone greeting or thanks**, with no additional text.
+  - Valid examples: "السلام عليكم", "شكراً", "يعطيك العافية", "مرحبا", "أهلا", "الله يوفقكم"
 
-                        Final instruction:
-                        Be extremely conservative — choose `reply` ONLY if you are 100% certain it's PURELY a greeting or thanks with NO other content.
-                        
-                        """
+ skip:
+- If the message contains **acknowledgements** or **neutral confirmations** that don’t need a response.
+  - Examples: "تمام", "أوكي", "نعم", "طيب", "انتهيت", "أوكيه", "خلاص", "أكيد", "اوكي تمام"
+
+   continue:
+- If the message contains **any other content** (question, request, statement, scheduling info), and we do **not** have a match from the database.
+  - Even if the message starts with a greeting or thanks, but continues with more — it’s continue.
+  - Examples:
+    - "السلام عليكم، عندي استفسار"
+    - "أبي أطلب مياه"
+    - "متى توصلون؟"
+    - "يعطيك العافية، بس عندي سؤال"
+
+ Strict enforcement:
+- DO NOT reply to partial greetings, mixed messages, or polite phrases that contain extra content — unless they match a known question and we have a stored answer.
+- DO NOT skip if the message contains any intent or need for help.
+
+Final instruction:
+Be extremely conservative. Use `reply` ONLY when:
+- The message is a 100% pure greeting/thanks, OR
+- It has a clear semantic match in the database with a saved answer.
+
+Return only one of: `reply`, `skip`, or `continue`.
+"""
             
             messages = [
                 {"role": "system", "content": system_content},
