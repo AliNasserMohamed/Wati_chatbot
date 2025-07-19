@@ -17,7 +17,6 @@ class EmbeddingAgent:
     def __init__(self):
         self.openai_client = openai.AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         self.similarity_threshold = 0.50  # Higher cosine similarity means better match
-        self.high_similarity_threshold = 0.60  # Very high similarity threshold for direct answers
         
     async def process_message(self, user_message: str, conversation_history: list = None, user_language: str = 'ar', journey_id: str = None) -> Dict[str, Any]:
         """
@@ -138,12 +137,12 @@ class EmbeddingAgent:
             matched_question_text = matched_document
             answer_text = metadata.get('answer_text', '')  # Get answer from metadata
             
-            print(f"   - This is a QUESTION: '{matched_question_text[:50]}...'")
-            print(f"   - Answer from metadata: '{answer_text[:100] if answer_text else 'No answer'}...'")
+            print(f"   - This is a QUESTION: '{matched_question_text}...'")
+            print(f"   - Answer from metadata: '{answer_text if answer_text else 'No answer'}...'")
             
             if answer_text and answer_text.strip():
                 final_answer = answer_text.strip()
-                print(f"   - ✅ Found ANSWER in metadata: '{final_answer[:100]}...'")
+                print(f"   - ✅ Found ANSWER in metadata: '{final_answer}...'")
                 
                 # Log the matched question-answer pair for journey tracking
                 if LOGGING_AVAILABLE and journey_id:
@@ -168,21 +167,7 @@ class EmbeddingAgent:
             print(f"   - ⚠️  Matched document appears to be an answer directly (unexpected with new approach)")
             final_answer = matched_document
             matched_question_text = "Direct answer match"
-        
-        # CRITICAL VALIDATION: Never return a question as an answer
-        if final_answer and matched_question_text:
-            # Check if the answer is the same as the question (data corruption check)
-            if final_answer.strip() == matched_question_text.strip():
-                print(f"🚫 EmbeddingAgent: Answer is identical to question - data corruption detected!")
-                print(f"   - Question: {matched_question_text}")
-                print(f"   - Answer: {final_answer}")
-                return {
-                    'action': 'skip',
-                    'response': None,
-                    'confidence': similarity_score,
-                    'matched_question': matched_question_text,
-                    'error': 'Answer identical to question'
-                }
+
         
         # CRITICAL: If no valid answer found, don't reply
         if not final_answer or final_answer.strip() == "":
@@ -198,7 +183,7 @@ class EmbeddingAgent:
             }
         
         # Check if answer is too short
-        if len(final_answer.strip()) < 3:
+        if len(final_answer.strip()) < 2:
             print(f"🚫 EmbeddingAgent: Answer too short - skipping reply")
             print(f"   - Answer: '{final_answer}'")
             return {
@@ -297,55 +282,78 @@ class EmbeddingAgent:
                     conversation_context += f"{i}. {role}: {msg.get('content', '')}\n"
         
         if language == 'ar':
-            evaluation_prompt = f"""أنت مقيم صارم جداً لجودة الردود في خدمة العملاء لشركة أبار لتوصيل المياه. 
+            evaluation_prompt = f"""أنت مقيم صارم جداً لجودة الردود في خدمة العملاء لشركة أبار لتوصيل المياه.
 
-مهمتك الوحيدة: تحديد إذا كانت رسالة العميل تحية أو شكر حقيقي فقط.
+مهمتك الوحيدة: تصنيف رسالة العميل بدقة إلى واحدة من ثلاث حالات.
 
 - رسالة العميل الحالية: "{user_message}"
-- السؤال المشابه من قاعدة البيانات: "{matched_question}"
+- السؤال المشابه من قاعدة البيانات (عن طريق نموذج دلالي): "{matched_question}"
 - الرد المحفوظ: "{matched_answer}"
 {conversation_context}
 
-قواعد صارمة:
-- "reply": فقط للتحيات الحقيقية البسيطة: (السلام عليكم، مرحبا، أهلا، مساء الخير، صباح الخير)
-- "reply": فقط للشكر المباشر البسيط: (شكراً، يعطيك العافية، الله يوفقكم، جزاك الله خير)
-- "skip": لأي رسالة أخرى مهما كانت مؤدبة أو تحتوي على تحية
+التصنيف يجب أن يعتمد على القواعد التالية:
 
-أمثلة للرسائل التي لا تُعتبر تحية أو شكر:
-- "السلام عليكم، عندي استفسار" → continue (يحتوي على سؤال)
-- "شكراً لك، بس عندي سؤال" → continue (يحتوي على سؤال)
-- "أبي أطلب مياه" → continue (طلب خدمة)
-- "ممكن تساعدني؟" → continue (طلب مساعدة)
-- "كيف أقدر أطلب؟" → continue (سؤال)
+🟢 "reply":
+- إذا كانت الرسالة مجرد تحية بسيطة أو شكر بسيط *بدون أي محتوى آخر*
+  - أمثلة: (السلام عليكم، مرحبا، أهلاً، صباح الخير، شكراً، يعطيك العافية، جزاك الله خير، الله يوفقكم)
+- أو إذا كانت رسالة العميل مشابهة لسؤال موجود في قاعدة البيانات (من خلال النموذج الدلالي)، *بغض النظر عن كونها تحية أو استفسار*، وكان لدينا رد محفوظ لها
 
-إذا كانت الرسالة تحتوي على أي شيء غير التحية أو الشكر فقط، اختر "continue".
+🟡 "skip":
+- إذا كانت الرسالة قصيرة ولا تتطلب رد مثل: (تمام، طيب، أوك، أوكي، تمام التمام، خلاص)
 
-اختر واحد فقط: reply أو skip أو continue"""
+🔴 "continue":
+- إذا لم تكن تحية أو شكر بسيط
+- ولم نجد لها تطابقًا واضحًا في قاعدة البيانات (أي لم تكن مشابهة لسؤال موجود لدينا)
+- أو كانت تحتوي على تحية أو شكر لكن مرفقة بسؤال أو طلب
+
+❗️ملحوظة:
+- إذا وُجد تطابق في قاعدة البيانات وكان هناك رد محفوظ، اختر "reply"
+- إذا كانت الرسالة فقط "شكراً" أو "السلام عليكم"، اختر "reply"
+- إذا كانت مثل "تمام" أو "أوك"، اختر "skip"
+- إذا كانت تحتوي على سؤال أو استفسار ولم نجد لها تطابقاً في قاعدة البيانات، اختر "continue"
+
+اخرج فقط واحدة من: reply أو skip أو continue
+"""
+
         else:
             evaluation_prompt = f"""You are a very strict response quality evaluator for Abar water delivery customer service.
 
-Your only task: Determine if the customer message is ONLY a greeting or thanks.
+Your task: Determine the appropriate action based on the customer message and whether it matches any known question in the database.
 
+Inputs:
 - Current customer message: "{user_message}"
 - Similar question from database: "{matched_question}"
 - Stored response: "{matched_answer}"
 {conversation_context}
 
-Strict rules:
-- "reply": Only for simple genuine greetings: (Hello, Hi, Good morning, Good evening, Peace be upon you)
-- "reply": Only for simple direct thanks: (Thank you, Thanks, God bless you, I appreciate it)
-- "skip": For any other message no matter how polite or containing greetings
+Rules:
 
-Examples of messages that are NOT greetings or thanks:
-- "Hello, I have a question" → continue (contains question)
-- "Thank you, but I need help" → continue (contains request)
-- "I want to order water" → continue (service request)
-- "Can you help me?" → continue (request for help)
-- "How can I order?" → continue (question)
+✅ "reply":
+- If the customer message is semantically similar to a known question in the database (even if it contains more than a greeting or thanks), reply using the stored answer.
+- OR if the message is **only** a simple genuine greeting or thanks, such as:
+    - Greetings: ("Hello", "Hi", "Peace be upon you", "Good morning", "Good evening")
+    - Thanks: ("Thanks", "Thank you", "God bless you", "Much appreciated")
 
-If the message contains anything other than ONLY greeting or thanks, choose "continue".
+🚫 "skip":
+- If the message is something like: ("ok", "okay", "fine", "great", "alright", "noted", "sure") — it does not require a reply.
 
-Choose only one: reply or skip or continue"""
+🔁 "continue":
+- If the message contains anything beyond a simple greeting or thanks and does not match any known question in the database.
+- Examples:
+    - "Hi, I have a question" → continue
+    - "Thank you, but I need help" → continue
+    - "How do I order?" → continue
+    - "Can I speak to someone?" → continue
+
+📌 Summary:
+- If there's a semantic match with a known question → **reply**
+- If it's ONLY a greeting or thanks → **reply**
+- If it's a short acknowledgment → **skip**
+- Everything else → **continue**
+
+Return only one value: reply, skip, or continue
+"""
+
         
         try:
             print(f"🤖 ChatGPT evaluation prompt: {evaluation_prompt}")
