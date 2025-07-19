@@ -207,7 +207,7 @@ async def webhook(request: Request, db=Depends(get_db)):
             message_journey_logger.add_step(
                 journey_id=journey_id,
                 step_type="message_filter",
-                description=f"Bot/agent reply detected: event_type={event_type}, owner={is_owner}",
+                description=f"Bot/agent reply detected: event_type={event_type}",
                 data={
                     "event_type": event_type, 
                     "is_session_message_sent": is_session_message_sent
