@@ -1052,6 +1052,7 @@ Important notes:
         print(f"🔄 Async processing completed for message {wati_message_id}")
 
 async def send_whatsapp_message(phone_number: str, message: str):
+    return
     """Send message through Wati API"""
     wati_api_key = os.getenv("WATI_API_KEY")
     
