@@ -833,6 +833,11 @@ async def process_message_async(data, phone_number, message_type, wati_message_i
             
             # Route message to appropriate handler based on classification
             response_text = None
+            #Should be removed after testing
+            if classified_message_type == MessageType.SERVICE_REQUEST:
+                classified_message_type = MessageType.INQUIRY
+                print(f"🔍 Converting SERVICE_REQUEST to INQUIRY")
+                print(f"🔍 Converting SERVICE_REQUEST to INQUIRY")
             
             if classified_message_type == MessageType.GREETING:
                 # Send greetings directly to LLM for natural response

@@ -307,29 +307,23 @@
                         </div>
                     </div>
                     <div class="row">
-                        <div class="col-md-3 mb-3">
-                            <label for="category" class="form-label">الفئة</label>
-                            <select class="form-select" id="category">
-                                <option value="عام">عام</option>
-                                <option value="الطلبات">الطلبات</option>
-                                <option value="التوصيل">التوصيل</option>
-                                <option value="الدفع">الدفع</option>
-                                <option value="الدعم الفني">الدعم الفني</option>
-                                <option value="المنتجات">المنتجات</option>
-                                <option value="العلامات التجارية">العلامات التجارية</option>
-                                <option value="أخرى">أخرى</option>
-                                <!-- English options for compatibility -->
-                                <option value="general">General</option>
-                                <option value="ordering">Ordering</option>
-                                <option value="delivery">Delivery</option>
-                                <option value="payment">Payment</option>
-                                <option value="support">Support</option>
-                                <option value="products">Products</option>
-                                <option value="brands">Brands</option>
-                                <option value="other">Other</option>
+                        <div class="col-md-6 mb-3">
+                            <label for="category" class="form-label">الفئة <span class="text-danger">*</span></label>
+                            <select class="form-select" id="category" required>
+                                <option value="">اختر الفئة</option>
+                                <option value="الشكر">الشكر</option>
+                                <option value="التحيات">التحيات</option>
+                                <option value="الشكاوي">الشكاوي</option>
+                                <option value="استفسارات عامة">استفسارات عامة</option>
+                                <option value="استفسارات الطلبات">استفسارات الطلبات</option>
+                                <option value="استفسارات التوصيل">استفسارات التوصيل</option>
+                                <option value="استفسارات الدفع">استفسارات الدفع</option>
+                                <option value="استفسارات الدعم الفني">استفسارات الدعم الفني</option>
+                                <option value="استفسارات المنتجات">استفسارات المنتجات</option>
+                                <option value="اخري">اخري</option>
                             </select>
                         </div>
-                        <div class="col-md-3 mb-3">
+                        <div class="col-md-6 mb-3">
                             <label for="source" class="form-label">المصدر</label>
                             <input type="text" class="form-control" id="source" value="admin" placeholder="مصدر السؤال">
                         </div>
@@ -369,26 +363,16 @@
                     <div class="col-md-4">
                         <select class="form-select" id="filterCategory">
                             <option value="">جميع الفئات</option>
-                            <!-- Arabic categories (from Excel) -->
-                            <option value="عام">عام</option>
-                            <option value="الطلبات">الطلبات</option>
-                            <option value="التوصيل">التوصيل</option>
-                            <option value="الدفع">الدفع</option>
-                            <option value="الدعم الفني">الدعم الفني</option>
-                            <option value="المنتجات">المنتجات</option>
-                            <option value="العلامات التجارية">العلامات التجارية</option>
-                            <option value="أخرى">أخرى</option>
-                            <!-- English categories (for compatibility) -->
-                            <option value="general">General</option>
-                            <option value="ordering">Ordering</option>
-                            <option value="delivery">Delivery</option>
-                            <option value="payment">Payment</option>
-                            <option value="support">Support</option>
-                            <option value="products">Products</option>
-                            <option value="brands">Brands</option>
-                            <option value="other">Other</option>
-                            <!-- Mixed categories that might exist -->
-                            <option value="test">Test</option>
+                            <option value="الشكر">الشكر</option>
+                            <option value="التحيات">التحيات</option>
+                            <option value="الشكاوي">الشكاوي</option>
+                            <option value="استفسارات عامة">استفسارات عامة</option>
+                            <option value="استفسارات الطلبات">استفسارات الطلبات</option>
+                            <option value="استفسارات التوصيل">استفسارات التوصيل</option>
+                            <option value="استفسارات الدفع">استفسارات الدفع</option>
+                            <option value="استفسارات الدعم الفني">استفسارات الدعم الفني</option>
+                            <option value="استفسارات المنتجات">استفسارات المنتجات</option>
+                            <option value="اخري">اخري</option>
                         </select>
                     </div>
                 </div>
@@ -817,25 +801,16 @@
                             <div class="col-md-6">
                                 <label class="form-label">الفئة</label>
                                 <select class="form-select" id="editCategory${index}">
-                                    <option value="عام" ${item.metadata?.category === 'عام' ? 'selected' : ''}>عام</option>
-                                    <option value="الطلبات" ${item.metadata?.category === 'الطلبات' ? 'selected' : ''}>الطلبات</option>
-                                    <option value="التوصيل" ${item.metadata?.category === 'التوصيل' ? 'selected' : ''}>التوصيل</option>
-                                    <option value="الدفع" ${item.metadata?.category === 'الدفع' ? 'selected' : ''}>الدفع</option>
-                                    <option value="الدعم الفني" ${item.metadata?.category === 'الدعم الفني' ? 'selected' : ''}>الدعم الفني</option>
-                                    <option value="المنتجات" ${item.metadata?.category === 'المنتجات' ? 'selected' : ''}>المنتجات</option>
-                                    <option value="العلامات التجارية" ${item.metadata?.category === 'العلامات التجارية' ? 'selected' : ''}>العلامات التجارية</option>
-                                    <option value="أخرى" ${item.metadata?.category === 'أخرى' ? 'selected' : ''}>أخرى</option>
-                                    <!-- English options for compatibility -->
-                                    <option value="general" ${item.metadata?.category === 'general' ? 'selected' : ''}>General</option>
-                                    <option value="ordering" ${item.metadata?.category === 'ordering' ? 'selected' : ''}>Ordering</option>
-                                    <option value="delivery" ${item.metadata?.category === 'delivery' ? 'selected' : ''}>Delivery</option>
-                                    <option value="payment" ${item.metadata?.category === 'payment' ? 'selected' : ''}>Payment</option>
-                                    <option value="support" ${item.metadata?.category === 'support' ? 'selected' : ''}>Support</option>
-                                    <option value="products" ${item.metadata?.category === 'products' ? 'selected' : ''}>Products</option>
-                                    <option value="brands" ${item.metadata?.category === 'brands' ? 'selected' : ''}>Brands</option>
-                                    <option value="other" ${item.metadata?.category === 'other' ? 'selected' : ''}>Other</option>
-                                    <!-- Handle any existing mixed categories -->
-                                    <option value="test" ${item.metadata?.category === 'test' ? 'selected' : ''}>Test</option>
+                                    <option value="الشكر" ${item.metadata?.category === 'الشكر' ? 'selected' : ''}>الشكر</option>
+                                    <option value="التحيات" ${item.metadata?.category === 'التحيات' ? 'selected' : ''}>التحيات</option>
+                                    <option value="الشكاوي" ${item.metadata?.category === 'الشكاوي' ? 'selected' : ''}>الشكاوي</option>
+                                    <option value="استفسارات عامة" ${item.metadata?.category === 'استفسارات عامة' ? 'selected' : ''}>استفسارات عامة</option>
+                                    <option value="استفسارات الطلبات" ${item.metadata?.category === 'استفسارات الطلبات' ? 'selected' : ''}>استفسارات الطلبات</option>
+                                    <option value="استفسارات التوصيل" ${item.metadata?.category === 'استفسارات التوصيل' ? 'selected' : ''}>استفسارات التوصيل</option>
+                                    <option value="استفسارات الدفع" ${item.metadata?.category === 'استفسارات الدفع' ? 'selected' : ''}>استفسارات الدفع</option>
+                                    <option value="استفسارات الدعم الفني" ${item.metadata?.category === 'استفسارات الدعم الفني' ? 'selected' : ''}>استفسارات الدعم الفني</option>
+                                    <option value="استفسارات المنتجات" ${item.metadata?.category === 'استفسارات المنتجات' ? 'selected' : ''}>استفسارات المنتجات</option>
+                                    <option value="اخري" ${item.metadata?.category === 'اخري' ? 'selected' : ''}>اخري</option>
                                 </select>
                             </div>
                             <div class="col-md-6">
@@ -1107,28 +1082,43 @@
         // Get category name in Arabic
         function getCategoryName(category) {
             const categories = {
-                // Arabic categories (primary)
-                'عام': 'عام',
-                'الطلبات': 'الطلبات',
-                'التوصيل': 'التوصيل',
-                'الدفع': 'الدفع',
-                'الدعم الفني': 'الدعم الفني',
-                'المنتجات': 'المنتجات',
-                'العلامات التجارية': 'العلامات التجارية',
-                'أخرى': 'أخرى',
-                // English categories (for compatibility)
-                'general': 'عام',
-                'ordering': 'الطلبات',
-                'delivery': 'التوصيل',
-                'payment': 'الدفع',
-                'support': 'الدعم الفني',
-                'products': 'المنتجات',
-                'brands': 'العلامات التجارية',
-                'other': 'أخرى',
+                // New Arabic categories (primary)
+                'الشكر': 'الشكر',
+                'التحيات': 'التحيات',
+                'الشكاوي': 'الشكاوي',
+                'استفسارات عامة': 'استفسارات عامة',
+                'استفسارات الطلبات': 'استفسارات الطلبات',
+                'استفسارات التوصيل': 'استفسارات التوصيل',
+                'استفسارات الدفع': 'استفسارات الدفع',
+                'استفسارات الدعم الفني': 'استفسارات الدعم الفني',
+                'استفسارات المنتجات': 'استفسارات المنتجات',
+                'اخري': 'اخري',
+                // Old Arabic categories mapping to new ones
+                'عام': 'استفسارات عامة',
+                'الطلبات': 'استفسارات الطلبات',
+                'التوصيل': 'استفسارات التوصيل',
+                'الدفع': 'استفسارات الدفع',
+                'الدعم الفني': 'استفسارات الدعم الفني',
+                'المنتجات': 'استفسارات المنتجات',
+                'العلامات التجارية': 'استفسارات المنتجات',
+                'أخرى': 'اخري',
+                // English categories mapping to Arabic
+                'general': 'استفسارات عامة',
+                'ordering': 'استفسارات الطلبات',
+                'delivery': 'استفسارات التوصيل',
+                'payment': 'استفسارات الدفع',
+                'support': 'استفسارات الدعم الفني',
+                'products': 'استفسارات المنتجات',
+                'brands': 'استفسارات المنتجات',
+                'other': 'اخري',
+                // Handle greeting and thanking
+                'greeting': 'التحيات',
+                'thanking': 'الشكر',
+                'complaint': 'الشكاوي',
                 // Mixed categories
-                'test': 'Test'
+                'test': 'اخري'
             };
-            return categories[category] || category;
+            return categories[category] || 'اخري';
         }
 
         // Show loading indicator
