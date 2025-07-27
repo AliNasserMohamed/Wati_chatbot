@@ -18,19 +18,14 @@ class DataScraperService:
     """Service to scrape data from external APIs and save to database with ID consistency"""
     
     def __init__(self):
-        self.base_url = "http://dev.gulfwells.sa/api/admin/ai"
+        self.base_url = "https://gulfwells.sa/api/admin/ai/"
         self.headers_ar = {
-            'ApiToken': '4e7f1b2c-3d5a-4b6c-9f7d-8e0f1b2c3d5a',
-            'AccessKey': '1234',
+            'AccessKey': '4e7f1b2c-3d5a-4b6c-9f7d-8e0f1b2c3d5a',
             'Lang': 'ar'
         }
         self.headers_en = {
-            'ApiToken': '4e7f1b2c-3d5a-4b6c-9f7d-8e0f1b2c3d5a',
-            'AccessKey': '1234',
+            'AccessKey': '4e7f1b2c-3d5a-4b6c-9f7d-8e0f1b2c3d5a',
             'Lang': 'en'
-        }
-        self.headers_no_token = {
-            'AccessKey': '1234'
         }
     
     async def fetch_cities_arabic(self) -> Dict[str, Any]:
@@ -95,7 +90,7 @@ class DataScraperService:
         
         async with aiohttp.ClientSession() as session:
             try:
-                async with session.get(url, headers=self.headers_no_token) as response:
+                async with session.get(url, headers=self.headers_ar) as response:
                     response.raise_for_status()
                     data = await response.json()
                     return data
