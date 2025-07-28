@@ -53,8 +53,59 @@ class QueryAgent:
             "get_brands_by_city": self.get_brands_by_city,
             "get_products_by_brand": self.get_products_by_brand,
             "search_cities": self.search_cities,
-            "search_products": self.search_products
+            "check_city_availability": self.check_city_availability
         }
+        
+        # Classification prompts for message relevance
+        self.classification_prompt_ar = """أنت مصنف رسائل ذكي لشركة توصيل المياه. مهمتك تحديد ما إذا كانت الرسالة متعلقة بخدمات الشركة أم لا.
+
+الرسائل المتعلقة بالخدمة تشمل فقط:
+✅ أسئلة عن المدن المتاحة للتوصيل
+✅ أسئلة عن العلامات التجارية للمياه
+✅ أسئلة عن المنتجات والأسعار
+✅ طلبات معرفة التوفر في مدينة معينة
+✅ أسئلة عن أحجام المياه والعبوات
+✅ الاستفسار عن خدمة التوصيل
+✅ أسئلة عن شركات المياه
+
+الرسائل غير المتعلقة بالخدمة تشمل:
+❌ التحيات العامة ("أهلاً", "مرحبا", "السلام عليكم", "صباح الخير", "مساء الخير")  
+❌ رسائل الشكر والامتنان ("شكراً", "جزاك الله خير", "مشكور", "الله يعطيك العافية")
+❌ المواضيع العامة غير المتعلقة بالمياه
+❌ الأسئلة الشخصية
+❌ طلبات المساعدة في مواضيع أخرى
+❌ الرسائل التي تحتوي على روابط
+
+تعليمات خاصة:
+- لا تعتبر التحيات والشكر متعلقة بالخدمة حتى لو كانت في سياق محادثة عن المياه
+- كن صارم في التصنيف - فقط الأسئلة المباشرة عن المدن والعلامات والمنتجات تعتبر متعلقة
+
+أجب بـ "relevant" إذا كانت الرسالة متعلقة بخدمات المياه، أو "not_relevant" إذا لم تكن متعلقة."""
+
+        self.classification_prompt_en = """You are a smart message classifier for a water delivery company. Your task is to determine if a message is related to the company's services or not.
+
+Service-related messages include ONLY:
+✅ Questions about available cities for delivery
+✅ Questions about water brands
+✅ Questions about products and prices
+✅ Requests to check availability in specific cities
+✅ Questions about water sizes and packaging
+✅ Inquiries about delivery service
+✅ Questions about water companies
+
+Non-service-related messages include:
+❌ General greetings ("hello", "hi", "good morning", "good evening", "how are you")
+❌ Thank you messages ("thanks", "thank you", "appreciate it", "much obliged")
+❌ General topics not related to water
+❌ Personal questions
+❌ Requests for help with other topics
+❌ Messages containing links or URLs
+
+Special instructions:
+- Do not consider greetings and thanks as service-related even if they appear in water-related conversations
+- Be strict in classification - only direct questions about cities, brands, and products count as relevant
+
+Reply with "relevant" if the message is related to water services, or "not_relevant" if it's not related."""
         
         # Function definitions for OpenAI function calling
         self.function_definitions = [
@@ -69,7 +120,7 @@ class QueryAgent:
             },
             {
                 "name": "get_city_id_by_name",
-                "description": "Get the internal city ID from a city name (Arabic or English). Use this as a helper function when you need to find a city ID before calling other functions that require city_id parameter. Essential for getting brands or products for a specific city.",
+                "description": "STEP 1 in workflow: Get the internal city ID from a city name (Arabic or English). This is the FIRST step in the mandatory workflow: City→Brands→Products→Response. Always start here when customer asks about brands or products.",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -83,7 +134,7 @@ class QueryAgent:
             },
             {
                 "name": "get_brands_by_city",
-                "description": "Get all water brands available in a specific city. Use this when user asks about brands in a particular city, what brands are available in their location, or water companies serving a city. You must call get_city_id_by_name first to get the city_id.",
+                "description": "STEP 2 in workflow: Get all water brands available in a specific city. ONLY use this AFTER getting the city in Step 1. This is the second step in the mandatory workflow: City→Brands→Products→Response. You must call get_city_id_by_name first to get the city_id.",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -97,13 +148,13 @@ class QueryAgent:
             },
             {
                 "name": "get_products_by_brand",
-                "description": "Get all water products offered by a specific brand. Use this when user asks about products from a specific brand, product prices, product sizes/packing, or available water products. Returns product_id, product_title, product_packing, and product_contract_price.",
+                "description": "STEP 3 in workflow: Get all water products offered by a specific brand. ONLY use this AFTER Steps 1 (get city) and 2 (show brands) are complete. This is the third step in the mandatory workflow: City→Brands→Products→Response. Customer must have selected a specific brand first.",
                 "parameters": {
                     "type": "object",
                     "properties": {
                         "brand_id": {
                             "type": "integer",
-                            "description": "Brand ID (get this from get_brands_by_city response)"
+                            "description": "Brand ID (get this from get_brands_by_city response after customer selects a brand)"
                         }
                     },
                     "required": ["brand_id"]
@@ -111,7 +162,7 @@ class QueryAgent:
             },
             {
                 "name": "search_cities",
-                "description": "Search for cities by name. Use this when user mentions a city name and you want to verify it exists or find similar city names.",
+                "description": "STEP 1 alternative: Search for cities by name when exact city name doesn't match. Use this as part of Step 1 in the workflow when get_city_id_by_name fails to find the city. This helps handle typos or find similar city names.",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -123,18 +174,28 @@ class QueryAgent:
                     "required": ["query"]
                 }
             },
+
             {
-                "name": "search_products",
-                "description": "Search for products by name or keyword. Use this when user asks about specific product types, sizes, or product names across all brands.",
+                "name": "check_city_availability",
+                "description": "Check if a product or brand is available in a specific city. Use this when user asks about product/brand availability in their city after you know both the city and the product/brand name.",
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "query": {
+                        "city_name": {
                             "type": "string",
-                            "description": "Search term for product name or keyword"
+                            "description": "Name of the city in Arabic or English"
+                        },
+                        "item_type": {
+                            "type": "string",
+                            "description": "Type of item being checked: 'brand' or 'product'",
+                            "enum": ["brand", "product"]
+                        },
+                        "item_name": {
+                            "type": "string",
+                            "description": "Name of the brand or product to check availability for"
                         }
                     },
-                    "required": ["query"]
+                    "required": ["city_name", "item_type", "item_name"]
                 }
             }
         ]
@@ -143,6 +204,67 @@ class QueryAgent:
         """Get database session"""
         from database.db_utils import SessionLocal
         return SessionLocal()
+    
+    def _extract_city_from_context(self, user_message: str, conversation_history: List[Dict] = None) -> Optional[Dict[str, Any]]:
+        """Extract city information from current message and conversation history"""
+        try:
+            db = self._get_db_session()
+            try:
+                all_cities = data_api.get_all_cities(db)
+                
+                # PRIORITY 1: Check current user message first
+                if user_message:
+                    current_content = user_message.lower()
+                    for city in all_cities:
+                        city_name_ar = city.get("name", "").lower()
+                        city_name_en = city.get("name_en", "").lower()
+                        
+                        if city_name_ar and city_name_ar in current_content:
+                            return {
+                                "city_id": city["id"],
+                                "city_name": city["name"],
+                                "city_name_en": city["name_en"],
+                                "found_in": "current_message"
+                            }
+                        elif city_name_en and city_name_en in current_content:
+                            return {
+                                "city_id": city["id"],
+                                "city_name": city["name"],
+                                "city_name_en": city["name_en"],
+                                "found_in": "current_message"
+                            }
+                
+                # PRIORITY 2: Check conversation history if no city in current message
+                if conversation_history:
+                    for message in reversed(conversation_history[-10:]):  # Check last 10 messages
+                        content = message.get("content", "").lower()
+                        
+                        # Check if any city name appears in the message
+                        for city in all_cities:
+                            city_name_ar = city.get("name", "").lower()
+                            city_name_en = city.get("name_en", "").lower()
+                            
+                            if city_name_ar and city_name_ar in content:
+                                return {
+                                    "city_id": city["id"],
+                                    "city_name": city["name"],
+                                    "city_name_en": city["name_en"],
+                                    "found_in": "conversation_history"
+                                }
+                            elif city_name_en and city_name_en in content:
+                                return {
+                                    "city_id": city["id"],
+                                    "city_name": city["name"],
+                                    "city_name_en": city["name_en"],
+                                    "found_in": "conversation_history"
+                                }
+                
+                return None
+            finally:
+                db.close()
+        except Exception as e:
+            logger.error(f"Error extracting city from context: {str(e)}")
+            return None
     
     def get_all_cities(self) -> Dict[str, Any]:
         """Get complete list of all cities we serve"""
@@ -279,48 +401,188 @@ class QueryAgent:
             logger.error(f"Error searching cities: {str(e)}")
             return {"error": f"Failed to search cities: {str(e)}"}
     
-    def search_products(self, query: str) -> Dict[str, Any]:
-        """Search products by name or keyword"""
+
+    def check_city_availability(self, city_name: str, item_type: str, item_name: str) -> Dict[str, Any]:
+        """Check if a brand or product is available in a specific city"""
         try:
             db = self._get_db_session()
             try:
-                products = data_api.search_products(db, query)
-                # Filter to return only product name, price, and amount
-                filtered_products = [
-                    {
-                        "product_title": product["product_title"],         # Product name
-                        "product_contract_price": product["product_contract_price"],  # Price
-                        "product_packing": product["product_packing"]      # Amount
+                # First get the city ID
+                city_result = self.get_city_id_by_name(city_name)
+                if not city_result.get("success"):
+                    return {
+                        "success": False,
+                        "error": f"لم أجد مدينة باسم '{city_name}'. يرجى التحقق من الاسم.",
+                        "item_type": item_type,
+                        "item_name": item_name
                     }
-                    for product in products
-                ]
-                return {"success": True, "data": filtered_products}
+                
+                city_id = city_result["city_id"]
+                
+                if item_type == "brand":
+                    # Check if brand exists in this city
+                    brands = data_api.get_brands_by_city(db, city_id)
+                    for brand in brands:
+                        if item_name.lower() in brand["title"].lower():
+                            return {
+                                "success": True,
+                                "available": True,
+                                "city_name": city_result["city_name"],
+                                "item_type": item_type,
+                                "item_name": item_name,
+                                "brand_info": {
+                                    "id": brand["id"],
+                                    "title": brand["title"]
+                                }
+                            }
+                    
+                    return {
+                        "success": True,
+                        "available": False,
+                        "city_name": city_result["city_name"],
+                        "item_type": item_type,
+                        "item_name": item_name,
+                        "message": f"للأسف، العلامة التجارية '{item_name}' غير متوفرة في {city_result['city_name']}"
+                    }
+                
+                elif item_type == "product":
+                    # Check if product exists in any brand in this city
+                    brands = data_api.get_brands_by_city(db, city_id)
+                    found_products = []
+                    
+                    for brand in brands:
+                        products = data_api.get_products_by_brand(db, brand["id"])
+                        for product in products:
+                            if item_name.lower() in product["product_title"].lower():
+                                found_products.append({
+                                    "brand_name": brand["title"],
+                                    "product_title": product["product_title"],
+                                    "product_contract_price": product["product_contract_price"],
+                                    "product_packing": product["product_packing"]
+                                })
+                    
+                    if found_products:
+                        return {
+                            "success": True,
+                            "available": True,
+                            "city_name": city_result["city_name"],
+                            "item_type": item_type,
+                            "item_name": item_name,
+                            "products": found_products
+                        }
+                    else:
+                        return {
+                            "success": True,
+                            "available": False,
+                            "city_name": city_result["city_name"],
+                            "item_type": item_type,
+                            "item_name": item_name,
+                            "message": f"للأسف، المنتج '{item_name}' غير متوفر في {city_result['city_name']}"
+                        }
+                
+                return {"success": False, "error": "نوع العنصر غير صحيح. يجب أن يكون 'brand' أو 'product'"}
+                
             finally:
                 db.close()
+                
         except Exception as e:
-            logger.error(f"Error searching products: {str(e)}")
-            return {"error": f"Failed to search products: {str(e)}"}
+            logger.error(f"Error checking availability for {item_name} in {city_name}: {str(e)}")
+            return {"error": f"حدث خطأ في التحقق من التوفر: {str(e)}"}
+    
+    async def _classify_message_relevance(self, user_message: str, conversation_history: List[Dict] = None, user_language: str = 'ar') -> bool:
+        """
+        Use AI to classify if a message is related to water delivery services
+        Returns True if relevant, False if not relevant
+        """
+        try:
+            # Quick check for links - auto-reject messages with URLs
+            import re
+            url_pattern = r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+'
+            if re.search(url_pattern, user_message):
+                logger.info(f"Message contains URL, marking as not relevant: {user_message[:50]}...")
+                return False
+            
+            # Prepare context from conversation history
+            context = ""
+            if conversation_history:
+                recent_messages = conversation_history[-3:]  # Last 3 messages for context
+                context = "\n".join([f"{msg.get('role', 'user')}: {msg.get('content', '')}" for msg in recent_messages])
+                context = f"\nRecent conversation context:\n{context}\n"
+            
+            # Choose classification prompt based on language
+            classification_prompt = self.classification_prompt_ar if user_language == 'ar' else self.classification_prompt_en
+            
+            # Prepare the full prompt
+            full_prompt = f"""{classification_prompt}
+{context}
+Current message to classify: "{user_message}"
+
+Classification:"""
+            
+            # Call OpenAI for classification
+            response = await self.openai_client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[
+                    {"role": "system", "content": classification_prompt},
+                    {"role": "user", "content": f"{context}\nCurrent message: {user_message}"}
+                ],
+                temperature=0.1,  # Low temperature for consistent classification
+                max_tokens=10  # Short response expected
+            )
+            
+            classification_result = response.choices[0].message.content.strip().lower()
+            
+            # Log the classification
+            logger.info(f"Message classification for '{user_message[:50]}...': {classification_result}")
+            
+            # Return True if relevant, False if not relevant
+            return "relevant" in classification_result
+            
+        except Exception as e:
+            logger.error(f"Error classifying message relevance: {str(e)}")
+            # On error, default to relevant to avoid blocking legitimate queries
+            return True
     
     async def process_query(self, user_message: str, conversation_history: List[Dict] = None, user_language: str = 'ar', journey_id: str = None) -> str:
         """
         Process user query using OpenAI with function calling capabilities
         Limited to maximum 3 function calls per query to prevent excessive API usage
         Enhanced with language detection and proper conversation history handling
-        ALL messages now go through the LLM - no fast replies or fallbacks
+        NOW INCLUDES: AI-based message relevance checking - only responds to water delivery related queries
         """
         print(f"Processing query: {user_message} (Language: {user_language})")
+        
+        # STEP 1: Check if message is relevant to water delivery services
+        print("🔍 Checking message relevance...")
+        is_relevant = await self._classify_message_relevance(user_message, conversation_history, user_language)
+        
+        if not is_relevant:
+            print(f"❌ Message not relevant to water delivery services: {user_message[:50]}...")
+            # Return None or empty string to indicate the agent should not reply
+            return ""
+        
+        print("✅ Message is relevant to water delivery services")
+        
         max_function_calls = 3
         function_call_count = 0
         
         try:
+            # Check if we already have city information from current message or conversation history
+            city_context = self._extract_city_from_context(user_message, conversation_history)
+            
             # Prepare conversation history
             messages = []
             
             # System message with instructions based on user language
+            city_info = ""
+            if city_context:
+                found_where = "current message" if city_context['found_in'] == "current_message" else "conversation history"
+                city_info = f"\n\nIMPORTANT CONTEXT: The customer is from {city_context['city_name_en']} ({city_context['city_name']}) - detected from {found_where}. You already know their city, so you can show products and brands for this city without asking again."
+            
             if user_language == 'en':
                 system_message = {
                     "role": "system",
-                    "content": """You are a friendly customer service employee at Abar Water Delivery Company in Saudi Arabia.
+                    "content": f"""You are a friendly customer service employee at Abar Water Delivery Company in Saudi Arabia.{city_info}
 
 Your job is to help customers with:
 1. Finding available cities for water delivery service
@@ -335,6 +597,31 @@ Communication Style:
 - Never use phrases like "AI response", "Assistant reply", or "I am an AI"
 - Respond as if you're a real person working for the company
 
+CRITICAL WORKFLOW - MANDATORY ORDER:
+🚨 ALWAYS follow this exact sequence: CITY → BRANDS → PRODUCTS → RESPONSE
+🚨 Step 1: Get the customer's city (use get_city_id_by_name or search_cities)
+🚨 Step 2: Show brands available in that city (use get_brands_by_city)
+🚨 Step 3: When customer selects a brand, show products from that brand (use get_products_by_brand)
+🚨 Step 4: Provide final response with complete information
+
+CITY DETECTION PRIORITY:
+1. Check if city is mentioned in current user message
+2. Check if city is available in conversation history context
+3. If NO city found in either - IMMEDIATELY ask for city before proceeding
+
+NEVER skip steps or show information out of order:
+❌ Don't show brands without knowing the city
+❌ Don't show products without knowing both city and brand
+❌ Don't use general product searches - always go through the city→brand→product flow
+❌ Don't make assumptions about city - always confirm first
+
+PROACTIVE CITY ASKING - When user asks about brands/products but no city is known:
+- "What brands are available?" → "Which city are you in? I'll show you all the brands we deliver there!"
+- "What are your prices?" → "Which city would you like delivery to? I'll show you the brands and their prices there."
+- "Do you have Aquafina?" → "Which city are you in? I'll check if Aquafina is available there and show you their products!"
+- "Show me water options" → "What city are you located in? I'll show you all brands and their products available there!"
+- "What products do you have?" → "Which city are you in? I'll show you all available products there!"
+
 Typo and Spelling Handling:
 - Customers often make typos in city names (e.g., "رياص" instead of "رياض")
 - When a city name doesn't match exactly, use search_cities function to find similar cities
@@ -347,31 +634,26 @@ IMPORTANT - Unsupported Cities:
 - Example: "I'm sorry, we don't deliver to [city name] for now."
 - Always be apologetic and helpful when explaining unsupported cities
 
-Friendly Communication:
-- "Which city are you in? I'll show you all the brands we deliver there!"
-- "What city would you like delivery to?"
-- "Which brand interests you in [city]?"
-- "Which products would you like to see from [brand]?"
-- If they mention a city that doesn't exist: "I couldn't find that city, but we deliver to [similar cities]. Which one is closest to you?"
-
 Important rules:
 - Always use available functions to get updated information
 - For city queries: try get_city_id_by_name first, if fails use search_cities
 - Be patient with typos and spelling variations
 - Respond in English since the customer is communicating in English
 - Keep responses helpful and conversational like a real person would
-
-Examples:
-- "What brands are available?" → "Which city are you in? I'll show you all the brands we deliver there!"
-- "Do you deliver to my area?" → "Which city are you located in? I'll check our delivery coverage for you!"
-- User writes "رياص" → "Did you mean Riyadh (الرياض)? We have great water delivery options there!"
+        - REMEMBER: No products or brands without city information!
+        - If you can't find the city in current message or conversation history, ask for it immediately!
 
 Be helpful, understanding, and respond exactly like a friendly human employee would."""
                 }
             else:
+                city_info_ar = ""
+                if city_context:
+                    found_where_ar = "الرسالة الحالية" if city_context['found_in'] == "current_message" else "تاريخ المحادثة"
+                    city_info_ar = f"\n\nسياق مهم: العميل من {city_context['city_name']} ({city_context['city_name_en']}) - تم اكتشافها من {found_where_ar}. أنت تعرف مدينتهم بالفعل، لذا يمكنك عرض المنتجات والعلامات التجارية لهذه المدينة بدون السؤال مرة أخرى."
+                
                 system_message = {
                     "role": "system",
-                    "content": """أنت موظف خدمة عملاء ودود في شركة أبار لتوصيل المياه في السعودية.
+                    "content": f"""أنت موظف خدمة عملاء ودود في شركة أبار لتوصيل المياه في السعودية.{city_info_ar}
 
 وظيفتك مساعدة العملاء في:
 1. إيجاد المدن المتاحة لخدمة توصيل المياه
@@ -386,17 +668,36 @@ Be helpful, understanding, and respond exactly like a friendly human employee wo
 - لا تستخدم أبداً عبارات مثل "رد الذكاء الاصطناعي" أو "رد المساعد" أو "أنا ذكاء اصطناعي"
 - رد كأنك شخص حقيقي يعمل في الشركة
 
+سير العمل الحاسم - الترتيب الإجباري:
+🚨 اتبع دائماً هذا التسلسل بالضبط: المدينة ← العلامات التجارية ← المنتجات ← الرد
+🚨 الخطوة 1: احصل على مدينة العميل (استخدم get_city_id_by_name أو search_cities)
+🚨 الخطوة 2: اعرض العلامات التجارية المتاحة في تلك المدينة (استخدم get_brands_by_city)
+🚨 الخطوة 3: عندما يختار العميل علامة تجارية، اعرض منتجات تلك العلامة (استخدم get_products_by_brand)
+🚨 الخطوة 4: قدم الرد النهائي مع المعلومات الكاملة
+
+أولوية اكتشاف المدينة:
+1. تحقق إذا كانت المدينة مذكورة في رسالة العميل الحالية
+2. تحقق إذا كانت المدينة متوفرة في سياق تاريخ المحادثة
+3. إذا لم تجد مدينة في أي منهما - اسأل فوراً عن المدينة قبل المتابعة
+
+لا تتجاوز أي خطوة أو تعرض معلومات خارج الترتيب:
+❌ لا تعرض العلامات التجارية بدون معرفة المدينة
+❌ لا تعرض المنتجات بدون معرفة المدينة والعلامة التجارية
+❌ لا تستخدم البحث العام للمنتجات - اتبع دائماً تدفق المدينة→العلامة→المنتج
+❌ لا تفترض المدينة - تأكد دائماً أولاً
+
+السؤال الاستباقي عن المدينة - عندما يسأل العميل عن العلامات/المنتجات بدون معرفة المدينة:
+- "ما هي العلامات التجارية المتاحة؟" → "في أي مدينة أنت؟ راح أعرض لك كل العلامات التجارية اللي نوصلها هناك!"
+- "ما هي أسعاركم؟" → "أي مدينة تريد التوصيل لها؟ راح أعرض لك العلامات التجارية وأسعارها هناك."
+- "هل عندكم أكوافينا؟" → "في أي مدينة أنت؟ راح أتأكد لك إذا أكوافينا متوفرة هناك وأعرض منتجاتها!"
+- "وريني خيارات المياه" → "في أي مدينة أنت؟ راح أعرض لك كل العلامات التجارية ومنتجاتها المتاحة هناك!"
+- "ما هي المنتجات عندكم؟" → "في أي مدينة أنت؟ راح أعرض لك كل المنتجات المتاحة هناك!"
+
 التعامل مع الأخطاء الإملائية:
 - العملاء غالباً يكتبون أسماء المدن بأخطاء إملائية (مثل "رياص" بدلاً من "رياض")
 - عندما لا يتطابق اسم المدينة تماماً، استخدم وظيفة search_cities للبحث عن مدن مشابهة
 - كن متفهماً ومساعداً مع الأخطاء الإملائية
 - إذا وجدت مدينة مشابهة، تأكد بطريقة طبيعية: "تقصد [اسم المدينة الصحيح]؟"
-
-التواصل الودود:
-- "في أي مدينة أنت؟ راح أعرض لك كل العلامات التجارية اللي نوصلها هناك!"
-- "أي مدينة تريد التوصيل لها؟"
-- "أي علامة تجارية تهمك في [المدينة]؟"
-- "أي منتجات تريد تشوف من [العلامة التجارية]؟"
 
 قواعد مهمة:
 - استخدم دائماً الوظائف المتاحة للحصول على معلومات حديثة
@@ -404,11 +705,8 @@ Be helpful, understanding, and respond exactly like a friendly human employee wo
 - كن صبور مع الأخطاء الإملائية والتنويعات
 - أجب باللغة العربية لأن العميل يتواصل بالعربية
 - خلي ردودك مفيدة وودودة مثل أي شخص حقيقي
-
-أمثلة:
-- "ما هي العلامات التجارية المتاحة؟" → "في أي مدينة أنت؟ راح أعرض لك كل العلامات التجارية اللي نوصلها هناك!"
-- "هل توصلون لمنطقتي؟" → "في أي مدينة أنت؟ راح أتأكد لك من التغطية!"
-- العميل يكتب "رياص" → "تقصد الرياض؟ عندنا خيارات ممتازة لتوصيل المياه هناك!"
+        - تذكر: لا منتجات ولا علامات تجارية بدون معلومات المدينة!
+        - إذا لم تجد المدينة في الرسالة الحالية أو تاريخ المحادثة، اسأل عنها فوراً!
 
 كن مساعد ومتفهم ورد تماماً مثل موظف ودود حقيقي.
 
