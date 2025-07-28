@@ -298,8 +298,9 @@ class EmbeddingAgent:
 🟢 "reply":
 -✅reply  إذا كانت رسالة العميل الحالية مشابهة لسؤال موجود في قاعدة البيانات ، وكان لدينا رد محفوظ له — سواء كانت تحية أو استفسار أو طلب — يجب اختيار 
 
-- أو إذا كانت الرسالة مجرد تحية أو شكر بسيط بدون أي محتوى إضافي
-  - مثل: (السلام عليكم، مرحبا، أهلاً، صباح الخير، شكراً، يعطيك العافية، جزاك الله خير، الله يوفقكم) يجب اختيار reply
+- أو إذا كانت الرسالة مجرد تحية أو شكر بسيط بدون أي محتوى إضافي (مع أو بدون علامات ترقيم مثل النقاط أو المسافات)
+  - مثل: (السلام عليكم، مرحبا، أهلاً، هلا، هلا وغلا، صباح الخير، مساء الخير، شكراً، يعطيك العافية، جزاك الله خير، الله يوفقكم، شكرا لك، مشكور)
+  - أو نفس التحيات مع علامات ترقيم مثل: (هلا...، مرحبا.، السلام عليكم!!، شكرا...) يجب اختيار reply
 
 🟡 "skip":
 - إذا كانت الرسالة قصيرة ولا تتطلب رد مثل: (تمام، طيب، أوك، أوكي، تمام التمام، خلاص)
@@ -474,17 +475,24 @@ Return only one of: `reply`, `skip`, or `continue`.
             
             # Log the evaluation for debugging
             print(f"🤖 ChatGPT evaluation result: '{evaluation}'")
+            print(f"🤖 Raw ChatGPT response: '{response.choices[0].message.content}'")
+            print(f"🤖 User message: '{user_message}'")
+            print(f"🤖 Matched question: '{matched_question}'")
+            print(f"🤖 Matched answer: '{matched_answer[:100]}...'")
             
             # Map the response to our action format
             if 'reply' in evaluation:
+                print(f"✅ EmbeddingAgent: ChatGPT says REPLY - will send response")
                 return {'action': 'reply'}
             elif 'skip' in evaluation:
+                print(f"🚫 EmbeddingAgent: ChatGPT says SKIP - no response will be sent")
                 return {'action': 'skip'}
             elif 'continue' in evaluation:
+                print(f"🔄 EmbeddingAgent: ChatGPT says CONTINUE - passing to classification agent")
                 return {'action': 'continue'}
             else:
                 # Default to continue if we can't parse the response
-                print(f"⚠️ Could not parse evaluation result, defaulting to continue")
+                print(f"⚠️ Could not parse evaluation result '{evaluation}', defaulting to continue")
                 return {'action': 'continue'}
                 
         except Exception as e:

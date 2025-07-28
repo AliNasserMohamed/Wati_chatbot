@@ -421,7 +421,8 @@ class ThreadSafeMessageBatcher:
             await self.process_user_batch(phone_number)
         except asyncio.CancelledError:
             print(f"🔄 Batch timer cancelled for {phone_number}")
-            raise  # Re-raise to let caller handle it
+            # Don't re-raise - timer cancellation is expected and should not interrupt processing
+            return
         except Exception as e:
             print(f"❌ Error in delayed batch processing for {phone_number}: {e}")
             # Still try to process the batch to avoid message loss
@@ -444,6 +445,14 @@ class ThreadSafeMessageBatcher:
             timer_task = self._timers.get(phone_number)
             if timer_task:
                 timer_task.cancel()
+                # Properly handle the cancelled timer to prevent CancelledError from propagating
+                try:
+                    await timer_task
+                except asyncio.CancelledError:
+                    # Expected when cancelling timer - ignore this error
+                    pass
+                except Exception as e:
+                    print(f"⚠️ Unexpected error while cancelling timer for {phone_number}: {e}")
                 del self._timers[phone_number]
             
             # Combine all messages into one conversation
@@ -831,6 +840,7 @@ async def process_message_async(data, phone_number, message_type, wati_message_i
         )
         
         print(f"🎯 Embedding agent result: {embedding_result['action']} (confidence: {embedding_result['confidence']:.3f})")
+        print(f"🔍 Full embedding result: {embedding_result}")
         
         if embedding_result['action'] == 'reply':
             # Found a good match in knowledge base - use it directly
