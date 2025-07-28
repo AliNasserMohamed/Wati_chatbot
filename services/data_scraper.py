@@ -681,23 +681,36 @@ class DataScraperService:
                         
                         if product_id and product_title:
                             try:
-                                # Create product with external ID as primary key
-                                product = Product(
-                                    id=product_id,  # Use external ID as primary key
-                                    external_id=product_id,  # Keep for compatibility
-                                    brand_id=brand.id,  # Use brand's ID (which is also external ID)
-                                    title=product_title,
-                                    packing=product_packing,
-                                    contract_price=float(product_price) if product_price else 0.0
-                                )
+                                # Check if product already exists for this brand
+                                existing_product = db.query(Product).filter(
+                                    Product.external_id == product_id,
+                                    Product.brand_id == brand.id
+                                ).first()
                                 
-                                db.add(product)
+                                if existing_product:
+                                    # Update existing product
+                                    existing_product.title = product_title
+                                    existing_product.packing = product_packing
+                                    existing_product.contract_price = float(product_price) if product_price else 0.0
+                                    logger.info(f"🔄 Updated product: external_id={product_id}, {product_title}")
+                                else:
+                                    # Create new product (let id auto-increment)
+                                    product = Product(
+                                        external_id=product_id,  # Store external ID for reference
+                                        brand_id=brand.id,  # Use brand's ID (which is also external ID)
+                                        title=product_title,
+                                        packing=product_packing,
+                                        contract_price=float(product_price) if product_price else 0.0
+                                    )
+                                    
+                                    db.add(product)
+                                    logger.info(f"✅ Created product: external_id={product_id}, {product_title}")
+                                
                                 db.commit()  # Commit each product individually
                                 processed_count += 1
-                                logger.info(f"✅ Created product: ID={product_id}, {product_title}")
                             
                             except Exception as product_error:
-                                logger.warning(f"⚠️ Failed to create product ID={product_id}: {str(product_error)}")
+                                logger.warning(f"⚠️ Failed to create/update product external_id={product_id}: {str(product_error)}")
                                 db.rollback()
                                 skipped_count += 1
                                 continue

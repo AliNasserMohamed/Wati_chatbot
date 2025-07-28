@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, create_engine, Enum, Float, Table
+from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, create_engine, Enum, Float, Table, UniqueConstraint
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, sessionmaker
 import datetime
@@ -144,7 +144,7 @@ class Product(Base):
     __tablename__ = "products"
     
     id = Column(Integer, primary_key=True, autoincrement=True)
-    external_id = Column(Integer, unique=True, nullable=False)  # product_id from external API
+    external_id = Column(Integer, nullable=False)  # product_id from external API (removed unique constraint)
     brand_id = Column(Integer, ForeignKey("brands.id"), nullable=False)
     title = Column(String(200), nullable=False)
     title_en = Column(String(200), nullable=True)
@@ -164,6 +164,9 @@ class Product(Base):
     
     # Relationship
     brand = relationship("Brand", back_populates="products")
+    
+    # Composite unique constraint to allow same product in different brands
+    __table_args__ = (UniqueConstraint('external_id', 'brand_id', name='uq_product_external_brand'),)
 
 # Sync log to track data updates
 class DataSyncLog(Base):
