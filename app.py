@@ -162,14 +162,85 @@ async def verify_webhook(
 @app.post("/webhook")
 async def webhook(request: Request, db=Depends(get_db)):
     """Handle incoming WhatsApp messages from Wati webhook"""
-    # Start timing the webhook processing
+    # Start timing and update stats
     webhook_start_time = time.time()
+    
+    # Track concurrent requests
+    with webhook_stats_lock:
+        webhook_stats["total_requests"] += 1
+        webhook_stats["concurrent_requests"] += 1
+        webhook_stats["max_concurrent"] = max(
+            webhook_stats["max_concurrent"],
+            webhook_stats["concurrent_requests"]
+        )
+    
     journey_id = None
     
     try:
-        data = await request.json()
-        print(f"🔍 Received data: {data}")
-        # Extract basic message information for logging
+        # STEP 1: Read request data as quickly as possible
+        try:
+            data = await asyncio.wait_for(request.json(), timeout=5.0)
+        except asyncio.TimeoutError:
+            print("⏰ Webhook JSON read timeout")
+            update_webhook_stats(webhook_start_time, error=True)
+            return {"status": "error", "message": "Request timeout"}
+        except Exception as e:
+            print(f"❌ Error reading webhook JSON: {e}")
+            update_webhook_stats(webhook_start_time, error=True)
+            return {"status": "error", "message": "Invalid JSON"}
+        
+        # STEP 2: Quick data extraction and validation
+        phone_number = data.get("waId")
+        wati_message_id = data.get("id")
+        message_type = data.get("type", "text")
+        event_type = data.get("eventType", "")
+        
+        # STEP 3: IMMEDIATE RESPONSE - Respond to Wati FIRST before any processing
+        immediate_response = {"status": "success", "message": "Processing"}
+        
+        # STEP 4: Quick validation checks (only essential ones)
+        if not phone_number or not data.get("text"):
+            print(f"⚠️ Invalid message data: missing phone_number or text")
+            update_webhook_stats(webhook_start_time)
+            return immediate_response
+        
+        # Skip bot messages immediately
+        if data.get("fromBot", False) or data.get("fromMe", False) or event_type == "sessionMessageSent":
+            print(f"🔄 Skipping bot/self message from {phone_number}")
+            update_webhook_stats(webhook_start_time)
+            return immediate_response
+        
+        # STEP 5: Start background processing (don't await - let it run async)
+        asyncio.create_task(process_webhook_background(data, webhook_start_time))
+        
+        # Update successful webhook stats
+        update_webhook_stats(webhook_start_time)
+        
+        # STEP 6: Return response immediately (webhook completes fast)
+        return immediate_response
+
+    except Exception as e:
+        print(f"[Webhook ERROR] {str(e)}")
+        import traceback
+        traceback.print_exc()
+        update_webhook_stats(webhook_start_time, error=True)
+        # Always return success to prevent Wati from retrying
+        return {"status": "success", "message": "Error handled"}
+    finally:
+        # Decrement concurrent counter
+        with webhook_stats_lock:
+            webhook_stats["concurrent_requests"] -= 1
+
+async def process_webhook_background(data: dict, webhook_start_time: float):
+    """Background processing of webhook data to prevent blocking"""
+    journey_id = None
+    
+    # Track background task
+    with webhook_stats_lock:
+        webhook_stats["background_tasks"] += 1
+    
+    try:
+        # Extract data
         phone_number = data.get("waId")
         message_text = data.get("text", "")
         wati_message_id = data.get("id")
@@ -184,165 +255,125 @@ async def webhook(request: Request, db=Depends(get_db)):
             webhook_data=data
         )
         
-        # Debug: Print webhook data to understand structure
-        print(f"🔍 Webhook received from: {data.get('waId', 'Unknown')}")
-        print(f"   Message ID: {data.get('id', 'None')}")
-        print(f"   Type: {data.get('type', 'Unknown')}")
-        print(f"   Event Type: {data.get('eventType', 'None')}")
-        print(f"   From Bot: {data.get('fromBot', False)}")
-        print(f"   From Me: {data.get('fromMe', False)}")
-        print(f"   Text: {data.get('text', 'N/A')[:100]}...")
+        # Debug logging
+        print(f"🔍 Background processing webhook from: {phone_number}")
+        print(f"   Message ID: {wati_message_id}")
+        print(f"   Type: {message_type}")
+        print(f"   Text: {message_text}...")
         
-        # Extract message data
-        phone_number = data.get("waId")
-        message_type = data.get("type", "text")  # Can be text, audio, etc.
-        wati_message_id = data.get("id")  # Extract Wati message ID
-        
-        # 🚨 CRITICAL: Check message type and ownership to prevent infinite loops
-        event_type = data.get("eventType", "")
-        is_session_message_sent = event_type == "sessionMessageSent"
-        
-        # Handle bot/agent replies (sessionMessageSent) - save to database but don't process
-        if is_session_message_sent :
-            message_journey_logger.add_step(
-                journey_id=journey_id,
-                step_type="message_filter",
-                description=f"Bot/agent reply detected: event_type={event_type}",
-                data={
-                    "event_type": event_type, 
-                    "is_session_message_sent": is_session_message_sent
-                },
-                status="bot_reply"
-            )
+        # Check for duplicates
+        db = next(get_db())
+        try:
+            if wati_message_id and DatabaseManager.check_message_already_processed(db, wati_message_id):
+                print(f"🔄 Duplicate message detected with ID: {wati_message_id}. Skipping.")
+                return
             
-            # Save bot reply to database but don't process through agents
-            try:
-                await save_bot_reply_to_database(data, journey_id)
-                message_journey_logger.complete_journey(journey_id, status="saved_bot_reply")
-                print(f"💾 Bot/agent reply saved to database - Not processing through agents")
-                print(f"   eventType: {event_type}, ")
-            except Exception as e:
-                message_journey_logger.log_error(
-                    journey_id=journey_id,
-                    error_type="bot_reply_save_error",
-                    error_message=str(e),
-                    step="save_bot_reply"
-                )
-                print(f"❌ Error saving bot reply: {str(e)}")
-            
-            return {"status": "success", "message": "Bot reply saved - not processed"}
-        
-        # Check if this is a template reply from WATI (button reply, list reply, etc.)
-        button_reply = data.get("buttonReply")
-        list_reply = data.get("listReply") 
-        interactive_button_reply = data.get("interactiveButtonReply")
-        
-        if button_reply or list_reply or interactive_button_reply or message_type == "button":
-            message_journey_logger.add_step(
-                journey_id=journey_id,
-                step_type="message_filter",
-                description="Skipped: Template reply detected",
-                data={
-                    "button_reply": button_reply,
-                    "list_reply": list_reply,
-                    "interactive_button_reply": interactive_button_reply
-                },
-                status="skipped"
-            )
-            message_journey_logger.complete_journey(journey_id, status="skipped_template_reply")
-            print(f"🔘 Template reply detected from WATI - Skipping processing")
-            print(f"   Type: {message_type}")
-            if button_reply:
-                print(f"   Button Reply: {button_reply.get('text', 'N/A')}")
-            if list_reply:
-                print(f"   List Reply: {list_reply}")
-            if interactive_button_reply:
-                print(f"   Interactive Button Reply: {interactive_button_reply}")
-            
-            return {"status": "success", "message": "Template reply - not processed"}
-        
-        # Early duplicate check with existing session
-        if wati_message_id and DatabaseManager.check_message_already_processed(db, wati_message_id):
-            message_journey_logger.add_step(
-                journey_id=journey_id,
-                step_type="duplicate_check",
-                description=f"Duplicate message detected: {wati_message_id}",
-                data={"wati_message_id": wati_message_id},
-                status="skipped"
-            )
-            message_journey_logger.complete_journey(journey_id, status="skipped_duplicate")
-            print(f"🔄 Duplicate message detected with ID: {wati_message_id}. Returning success immediately.")
-            return {"status": "success", "message": "Already processed"}
-        
-        # Additional check: Skip if the same message was processed recently (time-based)
-        if wati_message_id:
+            # Additional time-based duplicate check
             current_time = time.time()
-            if wati_message_id in processed_messages:
-                last_processed_time = processed_messages[wati_message_id]
-                if current_time - last_processed_time < 30:  # 30 seconds cooldown
-                    print(f"🔄 Message {wati_message_id} processed recently. Skipping to prevent spam.")
-                    return {"status": "success", "message": "Recently processed"}
+            if wati_message_id:
+                if wati_message_id in processed_messages:
+                    last_processed_time = processed_messages[wati_message_id]
+                    if current_time - last_processed_time < 30:
+                        print(f"🔄 Message {wati_message_id} processed recently. Skipping.")
+                        return
+                
+                # Track this message
+                processed_messages[wati_message_id] = current_time
+                
+                # Clean up old entries
+                if len(processed_messages) > 1000:
+                    old_messages = sorted(processed_messages.items(), key=lambda x: x[1])
+                    for msg_id, _ in old_messages[:500]:
+                        del processed_messages[msg_id]
             
-            # Track this message
-            processed_messages[wati_message_id] = current_time
+            # Log the incoming message
+            print(f"📱 New message from {phone_number}: {data.get('text', 'N/A')[:50]}...")
             
-            # Clean up old entries (keep only last 1000 messages)
-            if len(processed_messages) > 1000:
-                old_messages = sorted(processed_messages.items(), key=lambda x: x[1])
-                for msg_id, _ in old_messages[:500]:  # Remove oldest 500
-                    del processed_messages[msg_id]
-        
-        # Log the incoming message for debugging
-        print(f"📱 New message from {phone_number}: {data.get('text', 'N/A')[:50]}...")
-        
-        # IMMEDIATE RESPONSE: Send quick response to Wati to prevent duplicate notifications
-        immediate_response = {"status": "success", "message": "Processing"}
-        
-        # Add journey_id to message data for tracking throughout processing
-        data['journey_id'] = journey_id
-        
-        # Log successful webhook validation
-        message_journey_logger.add_step(
-            journey_id=journey_id,
-            step_type="webhook_validation",
-            description="Message passed webhook validation",
-            data={"phone_number": phone_number, "message_type": message_type},
-            duration_ms=int((time.time() - webhook_start_time) * 1000)
-        )
-        
-        # Add message to batch instead of processing immediately
-        await add_message_to_batch(phone_number, data)
-        
-        return immediate_response
-
+            # Add journey_id to message data
+            data['journey_id'] = journey_id
+            
+            # Log successful webhook validation
+            message_journey_logger.add_step(
+                journey_id=journey_id,
+                step_type="webhook_validation",  
+                description="Message passed webhook validation",
+                data={"phone_number": phone_number, "message_type": message_type},
+                duration_ms=int((time.time() - webhook_start_time) * 1000)
+            )
+            
+            # Add message to batch (this is now in background, won't block webhook)
+            await add_message_to_batch(phone_number, data)
+            
+        finally:
+            db.close()
+            
     except Exception as e:
-        # Log error in journey if journey_id exists
+        # Log error in journey if available
         if journey_id:
             message_journey_logger.log_error(
                 journey_id=journey_id,
-                error_type="webhook_error",
+                error_type="background_processing_error",
                 error_message=str(e),
-                step="webhook_processing",
+                step="background_processing",
                 exception=e
             )
             message_journey_logger.complete_journey(journey_id, status="failed")
         
-        print(f"[Webhook ERROR] {str(e)}")
+        print(f"[Background Processing ERROR] {str(e)}")
         import traceback
         traceback.print_exc()
-        # Return success even on error to prevent Wati from retrying
-        return {"status": "error", "message": "Internal error occurred", "error": str(e)}
+    finally:
+        # Decrement background task counter
+        with webhook_stats_lock:
+            webhook_stats["background_tasks"] -= 1
 
 # Replace the global dictionaries with thread-safe alternatives
 class ThreadSafeMessageBatcher:
     def __init__(self):
         self._batches: Dict[str, List[Dict]] = {}
         self._timers: Dict[str, asyncio.Task] = {}
-        self._locks: Dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
+        self._locks: Dict[str, asyncio.Lock] = {}  # Changed from defaultdict to regular dict
+        self._last_cleanup = time.time()
+    
+    def _get_lock(self, phone_number: str) -> asyncio.Lock:
+        """Get or create a lock for the given phone number"""
+        if phone_number not in self._locks:
+            self._locks[phone_number] = asyncio.Lock()
+        return self._locks[phone_number]
+    
+    async def _cleanup_old_data(self):
+        """Clean up old locks and empty batches to prevent memory leaks"""
+        current_time = time.time()
+        
+        # Only run cleanup every 5 minutes
+        if current_time - self._last_cleanup < 300:
+            return
+            
+        self._last_cleanup = current_time
+        phone_numbers_to_clean = []
+        
+        # Find phone numbers with no active batches or timers
+        for phone_number in list(self._locks.keys()):
+            has_batch = phone_number in self._batches and self._batches[phone_number]
+            has_timer = phone_number in self._timers and not self._timers[phone_number].done()
+            
+            if not has_batch and not has_timer:
+                phone_numbers_to_clean.append(phone_number)
+        
+        # Clean up old locks (keep only last 100 to prevent unlimited growth)
+        if len(phone_numbers_to_clean) > 100:
+            for phone_number in phone_numbers_to_clean[:-100]:
+                if phone_number in self._locks:
+                    del self._locks[phone_number]
+                    print(f"🧹 Cleaned up old lock for {phone_number}")
     
     async def add_message_to_batch(self, phone_number: str, message_data: dict):
-        """Add a message to user's batch with proper locking"""
-        async with self._locks[phone_number]:
+        """Add a message to user's batch with proper locking - optimized for concurrency"""
+        # Periodic cleanup (only every 10 calls to reduce overhead)
+        if hash(phone_number) % 10 == 0:  # Run cleanup 10% of the time
+            asyncio.create_task(self._cleanup_old_data())  # Run in background
+        
+        async with self._get_lock(phone_number):
             current_time = time.time()
             
             # Initialize batch for new user
@@ -356,33 +387,53 @@ class ThreadSafeMessageBatcher:
                 'text': message_data.get('text', '')
             })
             
-            # Cancel existing timer if any
-            if phone_number in self._timers:
-                self._timers[phone_number].cancel()
+            # Cancel existing timer if any (more efficient)
+            existing_timer = self._timers.get(phone_number)
+            if existing_timer and not existing_timer.done():
+                existing_timer.cancel()
+                # Don't await - let it cancel in background
             
             # Set new timer to process batch after 3 seconds of inactivity
-            self._timers[phone_number] = asyncio.create_task(
-                self._process_batch_delayed(phone_number)
-            )
-            print(f"📦 Added message to batch for {phone_number}. Batch size: {len(self._batches[phone_number])}")
+            try:
+                self._timers[phone_number] = asyncio.create_task(
+                    self._process_batch_delayed(phone_number)
+                )
+                print(f"📦 Added message to batch for {phone_number}. Batch size: {len(self._batches[phone_number])}")
+            except Exception as e:
+                print(f"❌ Error creating batch timer for {phone_number}: {e}")
+                # If timer creation fails, process immediately to prevent message loss
+                asyncio.create_task(self.process_user_batch(phone_number))  # Don't block
     
     async def _process_batch_delayed(self, phone_number: str):
         """Process batch after delay"""
-        await asyncio.sleep(3)  # Wait 3 seconds for more messages
-        await self.process_user_batch(phone_number)
+        try:
+            await asyncio.sleep(3)  # Wait 3 seconds for more messages
+            await self.process_user_batch(phone_number)
+        except asyncio.CancelledError:
+            print(f"🔄 Batch timer cancelled for {phone_number}")
+            raise  # Re-raise to let caller handle it
+        except Exception as e:
+            print(f"❌ Error in delayed batch processing for {phone_number}: {e}")
+            # Still try to process the batch to avoid message loss
+            try:
+                await self.process_user_batch(phone_number)
+            except Exception as inner_e:
+                print(f"❌ Failed to process batch after error for {phone_number}: {inner_e}")
     
     async def process_user_batch(self, phone_number: str):
         """Process all messages in user's batch as one conversation"""
-        async with self._locks[phone_number]:
+        async with self._get_lock(phone_number):
             if phone_number not in self._batches or not self._batches[phone_number]:
                 return
             
             batch = self._batches[phone_number]
             print(f"🔄 Processing batch of {len(batch)} messages for {phone_number}")
             
-            # Clear the batch and timer
+            # Clear the batch and timer first to prevent race conditions
             self._batches[phone_number] = []
-            if phone_number in self._timers:
+            timer_task = self._timers.get(phone_number)
+            if timer_task:
+                timer_task.cancel()
                 del self._timers[phone_number]
             
             # Combine all messages into one conversation
@@ -401,29 +452,43 @@ class ThreadSafeMessageBatcher:
                 combined_text = "\n".join([f"رسالة {i+1}: {msg}" for i, msg in enumerate(combined_messages)])
             
             # Use the first message data as base
-            first_message_data = batch[0]['data']
+            first_message_data = batch[0]['data'].copy()  # Create a copy to avoid mutations
             first_message_data['text'] = combined_text
             first_message_data['is_batch'] = True
             first_message_data['batch_size'] = len(batch)
             first_message_data['batch_message_ids'] = wati_message_ids
             
-                    # Process the combined message with timeout
-        try:
-            await asyncio.wait_for(
-                process_message_async(
-                    first_message_data, 
-                    phone_number, 
-                    first_message_data.get('type', 'text'),
-                    f"batch_{phone_number}_{int(time.time())}"
-                ),
-                timeout=120  # 2 minutes timeout
-            )
-        except asyncio.TimeoutError:
-            print(f"⏰ Message processing timed out for {phone_number}")
-        except Exception as e:
-            print(f"❌ Error processing message for {phone_number}: {str(e)}")
-            import traceback
-            traceback.print_exc()
+            # Process the combined message with timeout - INSIDE the lock context
+            try:
+                await asyncio.wait_for(
+                    process_message_async(
+                        first_message_data, 
+                        phone_number, 
+                        first_message_data.get('type', 'text'),
+                        f"batch_{phone_number}_{int(time.time())}"
+                    ),
+                    timeout=120  # 2 minutes timeout
+                )
+                print(f"✅ Successfully processed batch of {len(batch)} messages for {phone_number}")
+            except asyncio.TimeoutError:
+                print(f"⏰ Batch processing timed out for {phone_number} (batch size: {len(batch)})")
+            except Exception as e:
+                print(f"❌ Error processing batch for {phone_number} (batch size: {len(batch)}): {str(e)}")
+                import traceback
+                traceback.print_exc()
+
+    async def get_stats(self) -> Dict[str, int]:
+        """Get statistics about the current batching state"""
+        active_batches = len([batch for batch in self._batches.values() if batch])
+        active_timers = len([timer for timer in self._timers.values() if not timer.done()])
+        total_locks = len(self._locks)
+        
+        return {
+            "active_batches": active_batches,
+            "active_timers": active_timers,
+            "total_locks": total_locks,
+            "total_users": len(self._batches)
+        }
 
 # Create thread-safe instance
 message_batcher = ThreadSafeMessageBatcher()
@@ -2017,6 +2082,61 @@ async def startup_event():
     
     # You can uncomment this to populate the knowledge base on startup
     # knowledge_manager.populate_abar_knowledge()
+
+# Add webhook performance monitoring
+webhook_stats = {
+    "total_requests": 0,
+    "concurrent_requests": 0,
+    "max_concurrent": 0,
+    "avg_response_time": 0,
+    "errors": 0,
+    "background_tasks": 0,
+    "last_reset": time.time()
+}
+
+import threading
+webhook_stats_lock = threading.Lock()
+
+def update_webhook_stats(start_time: float = None, error: bool = False):
+    """Update webhook performance statistics"""
+    with webhook_stats_lock:
+        if start_time:
+            duration = time.time() - start_time
+            webhook_stats["avg_response_time"] = (
+                webhook_stats["avg_response_time"] * 0.9 + duration * 0.1
+            )
+        if error:
+            webhook_stats["errors"] += 1
+
+@app.get("/webhook/stats")
+async def get_webhook_stats():
+    """Get webhook and batching performance statistics"""
+    with webhook_stats_lock:
+        current_stats = webhook_stats.copy()
+    
+    # Get batching stats
+    batch_stats = await message_batcher.get_stats()
+    
+    return {
+        "webhook": current_stats,
+        "batching": batch_stats,
+        "timestamp": time.time()
+    }
+
+@app.post("/webhook/reset-stats")
+async def reset_webhook_stats():
+    """Reset webhook statistics"""
+    with webhook_stats_lock:
+        webhook_stats.update({
+            "total_requests": 0,
+            "concurrent_requests": 0, 
+            "max_concurrent": 0,
+            "avg_response_time": 0,
+            "errors": 0,
+            "background_tasks": 0,
+            "last_reset": time.time()
+        })
+    return {"status": "success", "message": "Stats reset"}
 
 if __name__ == "__main__":
     print("Starting Abar Chatbot API...")
