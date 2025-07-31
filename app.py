@@ -673,7 +673,9 @@ async def process_message_async(data, phone_number, message_type, wati_message_i
             print(f"🔄 Duplicate message detected during async processing with ID: {wati_message_id}. Skipping.")
             return
         
-        # TESTING LOGIC: Determine user type
+        # SELECTIVE ACCESS LOGIC: Determine user permissions
+        # All users can access INQUIRY and SERVICE_REQUEST categories (query agent)
+        # Other categories are restricted to allowed users only
         allowed_numbers = [
             "201142765209",
             "966138686475",  # 966 13 868 6475 (spaces removed)
@@ -685,14 +687,14 @@ async def process_message_async(data, phone_number, message_type, wati_message_i
         # Normalize phone number by removing spaces and special characters
         normalized_phone = "".join(char for char in str(phone_number) if char.isdigit())
         
-        # Check if user is allowed to access full bot functionality
+        # Check if user is in allowed list (for full access to all categories)
         is_allowed_user = normalized_phone in allowed_numbers
         is_test_user = normalized_phone in allowed_numbers  # For now, all allowed users are test users
         
         if is_allowed_user:
             print(f"✅ Allowed user detected: {phone_number} - Full functionality enabled")
         else:
-            print(f"🔒 Non-allowed user detected: {phone_number} - Limited to embedding agent replies only")
+            print(f"🔒 Regular user detected: {phone_number} - Access to INQUIRY and SERVICE_REQUEST categories only")
         
         # Get or create user session
         db_start_time = time.time()
@@ -882,17 +884,8 @@ async def process_message_async(data, phone_number, message_type, wati_message_i
             )
             print(f"🔄 Embedding agent passed to classification agent")
             
-            # Check if user is allowed to access other agents
-            if not is_allowed_user:
-                message_journey_logger.add_step(
-                    journey_id=journey_id,
-                    step_type="access_restriction",
-                    description="Non-allowed user restricted from other agents",
-                    data={"phone_number": phone_number, "is_allowed": False}
-                )
-                message_journey_logger.complete_journey(journey_id, status="completed_restricted")
-                print(f"🔒 Non-allowed user cannot access other agents - no response sent")
-                return
+            # Proceed to classification - selective access will be checked after classification
+            print(f"🔄 Proceeding to classification for user: {phone_number}")
             
             # Classify message and detect language WITH conversation history
             classification_start_time = time.time()
@@ -910,6 +903,32 @@ async def process_message_async(data, phone_number, message_type, wati_message_i
             )
             
             print(f"🧠 Message classified as: {classified_message_type} in language: {detected_language}")
+            
+            # SELECTIVE ACCESS CHECK: Allow INQUIRY and SERVICE_REQUEST for all users
+            # Other categories only for allowed users
+            if not is_allowed_user:
+                # Check if regular user is trying to access restricted categories
+                restricted_categories = [
+                    MessageType.GREETING, 
+                    MessageType.THANKING, 
+                    MessageType.COMPLAINT, 
+                    MessageType.SUGGESTION,
+                    MessageType.TEMPLATE_REPLY,
+                    MessageType.OTHERS
+                ]
+                
+                if classified_message_type in restricted_categories:
+                    message_journey_logger.add_step(
+                        journey_id=journey_id,
+                        step_type="access_restriction",
+                        description=f"Regular user restricted from {classified_message_type} category",
+                        data={"phone_number": phone_number, "classified_type": str(classified_message_type), "is_allowed": False}
+                    )
+                    message_journey_logger.complete_journey(journey_id, status="completed_restricted")
+                    print(f"🔒 Regular user cannot access {classified_message_type} category - no response sent")
+                    return
+                else:
+                    print(f"✅ Regular user has access to {classified_message_type} category")
             
             # Store the detected language in session context
             context = json.loads(session.context) if session.context else {}
@@ -1115,7 +1134,7 @@ Important notes:
         elif response_text and response_text.startswith("bot:"):
             response_text = response_text[4:]  # Remove "bot:" prefix
         
-        user_type = "ALLOWED" if is_allowed_user else "RESTRICTED"
+        user_type = "ALLOWED" if is_allowed_user else "REGULAR"
         print(f"📤 Sending response for {classified_message_type or 'UNKNOWN'} ({user_type} user) in {detected_language}: {response_text[:50]}...")
 
         # Log the final response preparation
@@ -1126,7 +1145,7 @@ Important notes:
             data={
                 "response_length": len(response_text),
                 "detected_language": detected_language,
-                "user_type": "ALLOWED" if is_allowed_user else "RESTRICTED"
+                "user_type": "ALLOWED" if is_allowed_user else "REGULAR"
             }
         )
 
