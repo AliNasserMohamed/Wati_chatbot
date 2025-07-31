@@ -52,8 +52,11 @@ class QueryAgent:
             "get_city_id_by_name": self.get_city_id_by_name,
             "get_brands_by_city": self.get_brands_by_city,
             "get_products_by_brand": self.get_products_by_brand,
+            "get_products_by_brand_and_city": self.get_products_by_brand_and_city,
             "search_cities": self.search_cities,
-            "check_city_availability": self.check_city_availability
+            "check_city_availability": self.check_city_availability,
+            "calculate_total_price": self.calculate_total_price,
+            "find_brand_in_city": self.find_brand_in_city
         }
         
         # Classification prompts for message relevance
@@ -197,6 +200,64 @@ Reply with "relevant" if the message is related to water services, or "not_relev
                     },
                     "required": ["city_name", "item_type", "item_name"]
                 }
+            },
+            {
+                "name": "find_brand_in_city",
+                "description": "Find if a specific brand exists in a known city and get its products. Use this when customer mentions ONLY a brand name and you already know their city from context.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "brand_name": {
+                            "type": "string",
+                            "description": "Name of the brand the customer mentioned (e.g., 'أكوافينا', 'نوفا', 'الهدا')"
+                        },
+                        "city_id": {
+                            "type": "integer",
+                            "description": "ID of the city where to search for the brand (must be known from context)"
+                        }
+                    },
+                    "required": ["brand_name", "city_id"]
+                }
+            },
+            {
+                "name": "get_products_by_brand_and_city",
+                "description": "Get all products from a specific brand in a specific city. Use this when you know both the brand name and city.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "brand_name": {
+                            "type": "string",
+                            "description": "Name of the brand to search for"
+                        },
+                        "city_name": {
+                            "type": "string", 
+                            "description": "Name of the city in Arabic or English"
+                        }
+                    },
+                    "required": ["brand_name", "city_name"]
+                }
+            },
+            {
+                "name": "calculate_total_price",
+                "description": "Calculate total price when customer asks about cost for specific quantities (e.g., '5 bottles', '10 units'). Use this when customer specifies quantity and you have product price information.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "unit_price": {
+                            "type": "number",
+                            "description": "Price per single unit/bottle in SAR"
+                        },
+                        "quantity": {
+                            "type": "integer", 
+                            "description": "Number of units customer wants"
+                        },
+                        "product_name": {
+                            "type": "string",
+                            "description": "Name of the product being calculated"
+                        }
+                    },
+                    "required": ["unit_price", "quantity", "product_name"]
+                }
             }
         ]
     
@@ -264,6 +325,83 @@ Reply with "relevant" if the message is related to water services, or "not_relev
                 db.close()
         except Exception as e:
             logger.error(f"Error extracting city from context: {str(e)}")
+            return None
+    
+    def _extract_brand_from_message(self, user_message: str) -> Optional[str]:
+        """Extract brand name from user message if mentioned"""
+        try:
+            db = self._get_db_session()
+            try:
+                # Get all brands to check against
+                all_brands = data_api.get_all_brands(db)
+                
+                message_lower = user_message.lower()
+                
+                # Check if any brand name appears in the message
+                for brand in all_brands:
+                    brand_title = brand.get("title", "").lower()
+                    if brand_title and brand_title in message_lower:
+                        return brand["title"]  # Return original case brand name
+                
+                # Check for common Arabic brand name variations
+                brand_mappings = {
+                    "اكوافينا": "أكوافينا",
+                    "نوفا": "نوفا", 
+                    "الهدا": "الهدا",
+                    "نستله": "نستلة",
+                    "هنا": "هنا",
+                    "اروى": "أروى",
+                    "بيرين": "بيريه"
+                }
+                
+                for variation, correct_name in brand_mappings.items():
+                    if variation in message_lower:
+                        return correct_name
+                
+                return None
+                
+            finally:
+                db.close()
+                
+        except Exception as e:
+            logger.error(f"Error extracting brand from message: {str(e)}")
+            return None
+    
+    def _extract_quantity_from_message(self, user_message: str) -> Optional[Dict[str, Any]]:
+        """Extract quantity information from user message"""
+        try:
+            import re
+            
+            # Patterns to match quantities in Arabic and English
+            quantity_patterns = [
+                r'(\d+)\s*(?:قنينة|قناني|عبوة|عبوات|وحدة|وحدات|كيس|أكياس)',  # Arabic
+                r'(\d+)\s*(?:bottles?|units?|pieces?|packs?|bags?)',  # English
+                r'(?:كم\s*سعر|كم\s*يكلف|كم\s*ثمن)\s*(\d+)',  # "How much for X" patterns
+                r'(?:أريد|عايز|أبي|ابغي|أشتري)\s*(\d+)',  # "I want X" patterns
+                r'(\d+)\s*×',  # Multiplication sign
+                r'(\d+)\s*من',  # "X from" pattern
+            ]
+            
+            message_lower = user_message.lower()
+            
+            for pattern in quantity_patterns:
+                match = re.search(pattern, message_lower)
+                if match:
+                    try:
+                        quantity = int(match.group(1))
+                        if quantity > 0 and quantity <= 1000:  # Reasonable quantity limits
+                            return {
+                                "quantity": quantity,
+                                "original_text": match.group(0),
+                                "pattern_matched": pattern
+                            }
+                    except ValueError:
+                        continue
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"Error extracting quantity from message: {str(e)}")
             return None
     
     def get_all_cities(self) -> Dict[str, Any]:
@@ -489,6 +627,133 @@ Reply with "relevant" if the message is related to water services, or "not_relev
             logger.error(f"Error checking availability for {item_name} in {city_name}: {str(e)}")
             return {"error": f"حدث خطأ في التحقق من التوفر: {str(e)}"}
     
+    def find_brand_in_city(self, brand_name: str, city_id: int) -> Dict[str, Any]:
+        """Find if a specific brand exists in a city and return its products"""
+        try:
+            db = self._get_db_session()
+            try:
+                # Get all brands in the city
+                brands = data_api.get_brands_by_city(db, city_id)
+                
+                # Find the brand by name (case insensitive search)
+                found_brand = None
+                for brand in brands:
+                    if brand_name.lower() in brand["title"].lower() or brand["title"].lower() in brand_name.lower():
+                        found_brand = brand
+                        break
+                
+                if not found_brand:
+                    # Get city info for error message
+                    city_result = self.get_city_id_by_name(str(city_id))
+                    city_name = city_result.get("city_name", "المدينة المحددة")
+                    
+                    return {
+                        "success": False,
+                        "brand_found": False,
+                        "brand_name": brand_name,
+                        "city_id": city_id,
+                        "message": f"للأسف، العلامة التجارية '{brand_name}' غير متوفرة في {city_name}",
+                        "available_brands": [{"id": b["id"], "title": b["title"]} for b in brands[:5]]  # Show first 5 brands as alternatives
+                    }
+                
+                # Get products for the found brand
+                products = data_api.get_products_by_brand(db, found_brand["id"])
+                
+                # Filter products to show only essential information
+                filtered_products = [
+                    {
+                        "product_title": product["product_title"],
+                        "product_contract_price": product["product_contract_price"],
+                        "product_packing": product["product_packing"]
+                    }
+                    for product in products
+                ]
+                
+                return {
+                    "success": True,
+                    "brand_found": True,
+                    "brand_info": {
+                        "id": found_brand["id"],
+                        "title": found_brand["title"]
+                    },
+                    "city_id": city_id,
+                    "products": filtered_products,
+                    "product_count": len(filtered_products)
+                }
+                
+            finally:
+                db.close()
+                
+        except Exception as e:
+            logger.error(f"Error finding brand {brand_name} in city {city_id}: {str(e)}")
+            return {"error": f"حدث خطأ في البحث عن العلامة التجارية: {str(e)}"}
+    
+    def get_products_by_brand_and_city(self, brand_name: str, city_name: str) -> Dict[str, Any]:
+        """Get products from a specific brand in a specific city"""
+        try:
+            # First get city ID
+            city_result = self.get_city_id_by_name(city_name)
+            if not city_result.get("success"):
+                return city_result  # Return the error from city lookup
+            
+            city_id = city_result["city_id"]
+            
+            # Use find_brand_in_city to get the products
+            result = self.find_brand_in_city(brand_name, city_id)
+            
+            # Add city information to the result
+            if result.get("success"):
+                result["city_info"] = {
+                    "city_id": city_id,
+                    "city_name": city_result["city_name"],
+                    "city_name_en": city_result["city_name_en"]
+                }
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"Error getting products for brand {brand_name} in city {city_name}: {str(e)}")
+            return {"error": f"حدث خطأ في البحث عن منتجات العلامة التجارية: {str(e)}"}
+    
+    def calculate_total_price(self, unit_price: float, quantity: int, product_name: str) -> Dict[str, Any]:
+        """Calculate total price for specific quantity of a product"""
+        try:
+            if unit_price <= 0:
+                return {
+                    "success": False,
+                    "error": "سعر الوحدة يجب أن يكون أكثر من صفر"
+                }
+            
+            if quantity <= 0:
+                return {
+                    "success": False,
+                    "error": "الكمية يجب أن تكون أكثر من صفر"
+                }
+            
+            total_price = unit_price * quantity
+            
+            # Format numbers to be user-friendly
+            unit_price_formatted = f"{unit_price:.2f}".rstrip('0').rstrip('.')
+            total_price_formatted = f"{total_price:.2f}".rstrip('0').rstrip('.')
+            
+            return {
+                "success": True,
+                "product_name": product_name,
+                "unit_price": unit_price,
+                "quantity": quantity,
+                "total_price": total_price,
+                "calculation_details": {
+                    "unit_price_formatted": unit_price_formatted,
+                    "total_price_formatted": total_price_formatted,
+                    "currency": "ريال سعودي"
+                },
+                "summary": f"{product_name}: {quantity} وحدة × {unit_price_formatted} ريال = {total_price_formatted} ريال سعودي"
+            }
+            
+        except Exception as e:
+            logger.error(f"Error calculating total price: {str(e)}")
+            return {"error": f"حدث خطأ في حساب السعر الإجمالي: {str(e)}"}
+    
     async def _classify_message_relevance(self, user_message: str, conversation_history: List[Dict] = None, user_language: str = 'ar') -> bool:
         """
         Use AI to classify if a message is related to water delivery services
@@ -570,19 +835,44 @@ Classification:"""
             # Check if we already have city information from current message or conversation history
             city_context = self._extract_city_from_context(user_message, conversation_history)
             
+            # Extract brand and quantity information for enhanced processing
+            brand_mentioned = self._extract_brand_from_message(user_message)
+            quantity_info = self._extract_quantity_from_message(user_message)
+            
+            # Log detection results
+            if brand_mentioned:
+                print(f"🏷️ Brand detected in message: {brand_mentioned}")
+            if quantity_info:
+                print(f"💰 Quantity detected: {quantity_info['quantity']} units")
+            if city_context:
+                print(f"📍 City detected: {city_context['city_name']} (from {city_context['found_in']})")
+            
             # Prepare conversation history
             messages = []
             
             # System message with instructions based on user language
             city_info = ""
+            brand_info = ""
+            quantity_info_text = ""
+            
             if city_context:
                 found_where = "current message" if city_context['found_in'] == "current_message" else "conversation history"
                 city_info = f"\n\nIMPORTANT CONTEXT: The customer is from {city_context['city_name_en']} ({city_context['city_name']}) - detected from {found_where}. You already know their city, so you can show products and brands for this city without asking again."
             
+            if brand_mentioned:
+                brand_info = f"\n\nBRAND CONTEXT: The customer mentioned '{brand_mentioned}' in their message. "
+                if city_context:
+                    brand_info += f"Since you know their city ({city_context['city_name']}), use find_brand_in_city to show {brand_mentioned} products available there."
+                else:
+                    brand_info += "You need to ask for their city first to show products from this brand."
+            
+            if quantity_info:
+                quantity_info_text = f"\n\nQUANTITY CONTEXT: The customer asked about {quantity_info['quantity']} units. When you get product pricing, use calculate_total_price to show the total cost for this quantity."
+            
             if user_language == 'en':
                 system_message = {
                     "role": "system",
-                    "content": f"""You are a friendly customer service employee at Abar Water Delivery Company in Saudi Arabia.{city_info}
+                    "content": f"""You are a friendly customer service employee at Abar Water Delivery Company in Saudi Arabia.{city_info}{brand_info}{quantity_info_text}
 
 Your job is to help customers with:
 1. Finding available cities for water delivery service
@@ -590,6 +880,8 @@ Your job is to help customers with:
 3. Displaying water products and their prices from each brand
 4. Answering questions naturally and helpfully
 5. Asking friendly questions when you need more information
+6. Calculating total prices when specific quantities are requested
+7. Handling specific brand name requests
 
 Communication Style:
 - Talk like a real human customer service representative
@@ -603,6 +895,19 @@ CRITICAL WORKFLOW - MANDATORY ORDER:
 🚨 Step 2: Show brands available in that city (use get_brands_by_city)
 🚨 Step 3: When customer selects a brand, show products from that brand (use get_products_by_brand)
 🚨 Step 4: Provide final response with complete information
+
+✨ NEW SPECIAL CASES:
+
+🏷️ Brand Name Only Requests:
+- When customer mentions ONLY a brand name (like "Aquafina" or "Nova" or "Al-Hada"):
+  - If you know their city from context: use find_brand_in_city to show products from that brand in their city
+  - If you don't know the city: ask "Which city are you in? I'll show you [brand name] products available there!"
+
+💰 Quantity and Price Calculations:
+- When customer asks about price for specific quantities (like "How much for 5 bottles of Aquafina?"):
+  - Get the unit price first
+  - Use calculate_total_price to compute total cost
+  - Show breakdown: "Unit price × Quantity = Total price"
 
 CITY DETECTION PRIORITY:
 1. Check if city is mentioned in current user message
@@ -621,9 +926,15 @@ PROACTIVE CITY ASKING - When user asks about brands/products but no city is know
 - "Do you have Aquafina?" → "Which city are you in? I'll check if Aquafina is available there and show you their products!"
 - "Show me water options" → "What city are you located in? I'll show you all brands and their products available there!"
 - "What products do you have?" → "Which city are you in? I'll show you all available products there!"
+- "Aquafina" (just brand name) → "Which city are you in? I'll show you Aquafina products available there!"
+
+Examples for Quantity Requests:
+- "How much for 5 Nova bottles?" → Get Nova bottle price, then calculate 5 × price
+- "I want 10 units of Al-Hada, how much?" → Get Al-Hada unit price, then calculate 10 × price
+- "If I buy 3 large Aquafina bottles?" → Get large Aquafina price, then calculate 3 × price
 
 Typo and Spelling Handling:
-- Customers often make typos in city names (e.g., "رياص" instead of "رياض")
+- Customers often make typos in city names (e.g., "Riyadh" variations)
 - When a city name doesn't match exactly, use search_cities function to find similar cities
 - Be understanding and helpful with spelling mistakes
 - If you find a similar city, confirm naturally: "Did you mean [correct city name]?"
@@ -647,13 +958,26 @@ Be helpful, understanding, and respond exactly like a friendly human employee wo
                 }
             else:
                 city_info_ar = ""
+                brand_info_ar = ""
+                quantity_info_ar = ""
+                
                 if city_context:
                     found_where_ar = "الرسالة الحالية" if city_context['found_in'] == "current_message" else "تاريخ المحادثة"
                     city_info_ar = f"\n\nسياق مهم: العميل من {city_context['city_name']} ({city_context['city_name_en']}) - تم اكتشافها من {found_where_ar}. أنت تعرف مدينتهم بالفعل، لذا يمكنك عرض المنتجات والعلامات التجارية لهذه المدينة بدون السؤال مرة أخرى."
                 
+                if brand_mentioned:
+                    brand_info_ar = f"\n\nسياق العلامة التجارية: العميل ذكر '{brand_mentioned}' في رسالته. "
+                    if city_context:
+                        brand_info_ar += f"بما أنك تعرف مدينتهم ({city_context['city_name']})، استخدم find_brand_in_city لعرض منتجات {brand_mentioned} المتاحة هناك."
+                    else:
+                        brand_info_ar += "تحتاج لتسأل عن مدينتهم أولاً لعرض منتجات هذه العلامة التجارية."
+                
+                if quantity_info:
+                    quantity_info_ar = f"\n\nسياق الكمية: العميل سأل عن {quantity_info['quantity']} وحدة. عندما تحصل على أسعار المنتجات، استخدم calculate_total_price لعرض التكلفة الإجمالية لهذه الكمية."
+                
                 system_message = {
                     "role": "system",
-                    "content": f"""أنت موظف خدمة عملاء ودود في شركة أبار لتوصيل المياه في السعودية.{city_info_ar}
+                    "content": f"""أنت موظف خدمة عملاء ودود في شركة أبار لتوصيل المياه في السعودية.{city_info_ar}{brand_info_ar}{quantity_info_ar}
 
 وظيفتك مساعدة العملاء في:
 1. إيجاد المدن المتاحة لخدمة توصيل المياه
@@ -661,6 +985,8 @@ Be helpful, understanding, and respond exactly like a friendly human employee wo
 3. عرض منتجات المياه وأسعارها من كل علامة تجارية
 4. الإجابة على الأسئلة بطريقة طبيعية ومفيدة
 5. طرح أسئلة ودودة عندما تحتاج معلومات أكثر
+6. حساب الأسعار الإجمالية عند طلب كميات محددة
+7. التعامل مع طلبات العلامات التجارية المحددة
 
 أسلوب التواصل:
 - تكلم مثل موظف خدمة عملاء حقيقي
@@ -674,6 +1000,19 @@ Be helpful, understanding, and respond exactly like a friendly human employee wo
 🚨 الخطوة 2: اعرض العلامات التجارية المتاحة في تلك المدينة (استخدم get_brands_by_city)
 🚨 الخطوة 3: عندما يختار العميل علامة تجارية، اعرض منتجات تلك العلامة (استخدم get_products_by_brand)
 🚨 الخطوة 4: قدم الرد النهائي مع المعلومات الكاملة
+
+✨ حالات خاصة جديدة:
+
+🏷️ طلبات العلامة التجارية فقط:
+- عندما يذكر العميل فقط اسم علامة تجارية (مثل "أكوافينا" أو "نوفا" أو "الهدا"):
+  - إذا كنت تعرف مدينته من السياق: استخدم find_brand_in_city لعرض منتجات هذه العلامة في مدينته
+  - إذا لم تعرف المدينة: اسأل "في أي مدينة أنت؟ راح أعرض لك منتجات [اسم العلامة] المتاحة هناك!"
+
+💰 حسابات الكميات والأسعار:
+- عندما يسأل العميل عن سعر كمية محددة (مثل "كم سعر 5 قناني أكوافينا؟"):
+  - احصل على سعر الوحدة الواحدة أولاً
+  - استخدم calculate_total_price لحساب السعر الإجمالي
+  - اعرض التفاصيل: "سعر الوحدة × الكمية = السعر الإجمالي"
 
 أولوية اكتشاف المدينة:
 1. تحقق إذا كانت المدينة مذكورة في رسالة العميل الحالية
@@ -692,6 +1031,12 @@ Be helpful, understanding, and respond exactly like a friendly human employee wo
 - "هل عندكم أكوافينا؟" → "في أي مدينة أنت؟ راح أتأكد لك إذا أكوافينا متوفرة هناك وأعرض منتجاتها!"
 - "وريني خيارات المياه" → "في أي مدينة أنت؟ راح أعرض لك كل العلامات التجارية ومنتجاتها المتاحة هناك!"
 - "ما هي المنتجات عندكم؟" → "في أي مدينة أنت؟ راح أعرض لك كل المنتجات المتاحة هناك!"
+- "أكوافينا" (فقط اسم العلامة) → "في أي مدينة أنت؟ راح أعرض لك منتجات أكوافينا المتاحة هناك!"
+
+أمثلة للتعامل مع طلبات الكميات:
+- "كم سعر 5 قناني نوفا؟" → احصل على سعر قنينة نوفا واحدة، ثم احسب 5 × السعر
+- "أريد 10 وحدات من الهدا، كم يكلف؟" → احصل على سعر وحدة الهدا، ثم احسب 10 × السعر
+- "لو أشتري 3 عبوات أكوافينا كبيرة؟" → احصل على سعر العبوة الكبيرة، ثم احسب 3 × السعر
 
 التعامل مع الأخطاء الإملائية:
 - العملاء غالباً يكتبون أسماء المدن بأخطاء إملائية (مثل "رياص" بدلاً من "رياض")
