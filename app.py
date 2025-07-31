@@ -875,6 +875,8 @@ async def process_message_async(data, phone_number, message_type, wati_message_i
             return
             
         else:
+             if not is_allowed_user:
+                return ""
             # Continue to classification agent
             message_journey_logger.add_step(
                 journey_id=journey_id,
