@@ -5,8 +5,7 @@ import json
 import logging
 import asyncio
 import time
-import re
-from typing import Dict, List, Any, Optional, Tuple
+from typing import Dict, List, Any, Optional
 from openai import AsyncOpenAI
 import os
 from dotenv import load_dotenv
@@ -35,6 +34,7 @@ class QueryAgent:
     """
     Enhanced Query Agent with function calling capabilities for answering user queries 
     about water delivery services, cities, brands, and products
+    Enhanced with brand extraction and improved context handling
     """
     
     def __init__(self):
@@ -53,8 +53,6 @@ class QueryAgent:
             "get_city_id_by_name": self.get_city_id_by_name,
             "get_brands_by_city": self.get_brands_by_city,
             "get_products_by_brand": self.get_products_by_brand,
-            "get_products_by_brand_and_city": self.get_products_by_brand_and_city,
-            "calculate_total_price": self.calculate_total_price,
             "search_cities": self.search_cities,
             "check_city_availability": self.check_city_availability
         }
@@ -70,8 +68,9 @@ class QueryAgent:
 ✅ أسئلة عن أحجام المياه والعبوات
 ✅ الاستفسار عن خدمة التوصيل
 ✅ أسئلة عن شركات المياه
-✅ طلبات حساب السعر الإجمالي للكميات
-✅ الردود البسيطة مثل "نعم" أو "لا" في سياق محادثة عن المياه
+✅ ذكر أسماء العلامات التجارية مثل (نستله، أكوافينا، العين، القصيم، المراعي، وغيرها)
+✅ الرد بـ "نعم" أو "أي" عندما نسأل عن منتج معين
+✅ أسئلة عن الأسعار الإجمالية أو قوائم الأسعار
 
 الرسائل غير المتعلقة بالخدمة تشمل:
 ❌ التحيات العامة ("أهلاً", "مرحبا", "السلام عليكم", "صباح الخير", "مساء الخير")  
@@ -84,7 +83,8 @@ class QueryAgent:
 تعليمات خاصة:
 - لا تعتبر التحيات والشكر متعلقة بالخدمة حتى لو كانت في سياق محادثة عن المياه
 - كن صارم في التصنيف - فقط الأسئلة المباشرة عن المدن والعلامات والمنتجات تعتبر متعلقة
-- الردود البسيطة مثل "نعم" أو "موافق" تعتبر متعلقة إذا كانت في سياق محادثة عن المياه
+- اعتبر ذكر أسماء العلامات التجارية للمياه متعلق بالخدمة
+- اعتبر الرد بـ "نعم" أو "أي" متعلق بالخدمة إذا كان في سياق محادثة عن المنتجات
 
 أجب بـ "relevant" إذا كانت الرسالة متعلقة بخدمات المياه، أو "not_relevant" إذا لم تكن متعلقة."""
 
@@ -98,8 +98,9 @@ Service-related messages include ONLY:
 ✅ Questions about water sizes and packaging
 ✅ Inquiries about delivery service
 ✅ Questions about water companies
-✅ Requests to calculate total price for quantities
-✅ Simple replies like "yes" or "no" in water service context
+✅ Mentioning brand names like (Nestle, Aquafina, Alain, Qassim, Almarai, etc.)
+✅ Replying with "yes" when we ask about a specific product
+✅ Questions about total prices or price lists
 
 Non-service-related messages include:
 ❌ General greetings ("hello", "hi", "good morning", "good evening", "how are you")
@@ -112,7 +113,8 @@ Non-service-related messages include:
 Special instructions:
 - Do not consider greetings and thanks as service-related even if they appear in water-related conversations
 - Be strict in classification - only direct questions about cities, brands, and products count as relevant
-- Simple replies like "yes" or "okay" are relevant if they're in water service conversation context
+- Consider mentioning water brand names as service-related
+- Consider "yes" replies as service-related if in context of product discussions
 
 Reply with "relevant" if the message is related to water services, or "not_relevant" if it's not related."""
         
@@ -170,50 +172,6 @@ Reply with "relevant" if the message is related to water services, or "not_relev
                 }
             },
             {
-                "name": "get_products_by_brand_and_city",
-                "description": "Get products from a specific brand in a specific city. Use this when customer mentions only a brand name and you know their city from context or previous conversation. This combines steps 2 and 3 when brand is known.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "brand_name": {
-                            "type": "string",
-                            "description": "Name of the brand (e.g., 'أكوافينا', 'Aquafina', 'نوفا', 'Nova')"
-                        },
-                        "city_id": {
-                            "type": "integer",
-                            "description": "City ID where to look for the brand"
-                        }
-                    },
-                    "required": ["brand_name", "city_id"]
-                }
-            },
-            {
-                "name": "calculate_total_price",
-                "description": "Calculate total price for a specific quantity of a product. Use this when customer asks for price of multiple units (like '5 cartons', '10 bottles', etc.).",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "product_title": {
-                            "type": "string",
-                            "description": "Exact product title/name"
-                        },
-                        "unit_price": {
-                            "type": "number",
-                            "description": "Price per unit/carton/bottle"
-                        },
-                        "quantity": {
-                            "type": "integer",
-                            "description": "Number of units requested"
-                        },
-                        "product_packing": {
-                            "type": "string",
-                            "description": "Product packaging information (e.g., '24 × 330 مل')"
-                        }
-                    },
-                    "required": ["product_title", "unit_price", "quantity"]
-                }
-            },
-            {
                 "name": "search_cities",
                 "description": "STEP 1 alternative: Search for cities by name when exact city name doesn't match. Use this as part of Step 1 in the workflow when get_city_id_by_name fails to find the city. This helps handle typos or find similar city names.",
                 "parameters": {
@@ -258,157 +216,148 @@ Reply with "relevant" if the message is related to water services, or "not_relev
         from database.db_utils import SessionLocal
         return SessionLocal()
     
-    def _extract_context_info(self, user_message: str, conversation_history: List[Dict] = None) -> Dict[str, Any]:
-        """
-        Enhanced context extraction that finds city, brand names, and conversation context
-        including handling simple replies like 'yes' in context of previous bot suggestions
-        """
-        context_info = {
-            "city": None,
-            "brand": None,
-            "quantity": None,
-            "previous_suggestion": None,
-            "is_simple_reply": False
-        }
-        
+    def _extract_city_from_context(self, user_message: str, conversation_history: List[Dict] = None) -> Optional[Dict[str, Any]]:
+        """Extract city information from current message and conversation history"""
         try:
             db = self._get_db_session()
             try:
                 all_cities = data_api.get_all_cities(db)
-                all_brands = []
                 
-                # Get all brands from all cities for brand detection
-                for city in all_cities:
-                    try:
-                        city_brands = data_api.get_brands_by_city(db, city["id"])
-                        all_brands.extend(city_brands)
-                    except:
-                        continue
+                # PRIORITY 1: Check current user message first
+                if user_message:
+                    current_content = user_message.lower()
+                    for city in all_cities:
+                        city_name_ar = city.get("name", "").lower()
+                        city_name_en = city.get("name_en", "").lower()
+                        
+                        if city_name_ar and city_name_ar in current_content:
+                            return {
+                                "city_id": city["id"],
+                                "city_name": city["name"],
+                                "city_name_en": city["name_en"],
+                                "found_in": "current_message"
+                            }
+                        elif city_name_en and city_name_en in current_content:
+                            return {
+                                "city_id": city["id"],
+                                "city_name": city["name"],
+                                "city_name_en": city["name_en"],
+                                "found_in": "current_message"
+                            }
                 
-                # Check if current message is a simple reply (yes/no/موافق etc.)
-                simple_replies = ['نعم', 'لا', 'yes', 'no', 'موافق', 'حسناً', 'اوكيه', 'ok', 'okay', 'تمام', 'ممتاز', 'جيد']
-                user_message_lower = user_message.lower().strip()
-                
-                if any(reply in user_message_lower for reply in simple_replies):
-                    context_info["is_simple_reply"] = True
-                    
-                    # Look for previous bot suggestions in conversation history
-                    if conversation_history:
-                        for msg in reversed(conversation_history[-5:]):  # Check last 5 messages
-                            if msg.get("role") == "bot" or msg.get("role") == "assistant":
-                                bot_content = msg.get("content", "").lower()
-                                # Look for product suggestions in bot messages
-                                if any(word in bot_content for word in ['منتج', 'سعر', 'price', 'product', 'ريال']):
-                                    context_info["previous_suggestion"] = msg.get("content", "")
-                                    break
-                
-                # Extract quantity from current message
-                quantity_patterns = [
-                    r'(\d+)\s*(?:كرتون|carton|علبة|صندوق|قطعة|حبة|زجاجة|bottle)',
-                    r'(\d+)\s*(?:من|of|pieces?|units?)',
-                    r'اريد\s+(\d+)',
-                    r'ابي\s+(\d+)',
-                    r'أريد\s+(\d+)'
-                ]
-                
-                for pattern in quantity_patterns:
-                    match = re.search(pattern, user_message, re.IGNORECASE)
-                    if match:
-                        context_info["quantity"] = int(match.group(1))
-                        break
-                
-                # PRIORITY 1: Check current user message for city and brand
-                current_content = user_message.lower()
-                
-                # Extract city from current message
-                for city in all_cities:
-                    city_name_ar = city.get("name", "").lower()
-                    city_name_en = city.get("name_en", "").lower()
-                    
-                    if city_name_ar and city_name_ar in current_content:
-                        context_info["city"] = {
-                            "city_id": city["id"],
-                            "city_name": city["name"],
-                            "city_name_en": city["name_en"],
-                            "found_in": "current_message"
-                        }
-                        break
-                    elif city_name_en and city_name_en in current_content:
-                        context_info["city"] = {
-                            "city_id": city["id"],
-                            "city_name": city["name"],
-                            "city_name_en": city["name_en"],
-                            "found_in": "current_message"
-                        }
-                        break
-                
-                # Extract brand from current message
-                for brand in all_brands:
-                    brand_title = brand.get("title", "").lower()
-                    if brand_title and brand_title in current_content:
-                        context_info["brand"] = {
-                            "brand_id": brand["id"],
-                            "brand_title": brand["title"],
-                            "found_in": "current_message"
-                        }
-                        break
-                
-                # PRIORITY 2: Check conversation history if not found in current message
-                if conversation_history and (not context_info["city"] or not context_info["brand"]):
+                # PRIORITY 2: Check conversation history if no city in current message
+                if conversation_history:
                     for message in reversed(conversation_history[-10:]):  # Check last 10 messages
                         content = message.get("content", "").lower()
                         
-                        # Look for city in history if not found
-                        if not context_info["city"]:
-                            for city in all_cities:
-                                city_name_ar = city.get("name", "").lower()
-                                city_name_en = city.get("name_en", "").lower()
-                                
-                                if city_name_ar and city_name_ar in content:
-                                    context_info["city"] = {
-                                        "city_id": city["id"],
-                                        "city_name": city["name"],
-                                        "city_name_en": city["name_en"],
-                                        "found_in": "conversation_history"
-                                    }
-                                    break
-                                elif city_name_en and city_name_en in content:
-                                    context_info["city"] = {
-                                        "city_id": city["id"],
-                                        "city_name": city["name"],
-                                        "city_name_en": city["name_en"],
-                                        "found_in": "conversation_history"
-                                    }
-                                    break
-                        
-                        # Look for brand in history if not found
-                        if not context_info["brand"]:
-                            for brand in all_brands:
-                                brand_title = brand.get("title", "").lower()
-                                if brand_title and brand_title in content:
-                                    context_info["brand"] = {
-                                        "brand_id": brand["id"],
-                                        "brand_title": brand["title"],
-                                        "found_in": "conversation_history"
-                                    }
-                                    break
-                        
-                        # Break if we found both
-                        if context_info["city"] and context_info["brand"]:
-                            break
+                        # Check if any city name appears in the message
+                        for city in all_cities:
+                            city_name_ar = city.get("name", "").lower()
+                            city_name_en = city.get("name_en", "").lower()
+                            
+                            if city_name_ar and city_name_ar in content:
+                                return {
+                                    "city_id": city["id"],
+                                    "city_name": city["name"],
+                                    "city_name_en": city["name_en"],
+                                    "found_in": "conversation_history"
+                                }
+                            elif city_name_en and city_name_en in content:
+                                return {
+                                    "city_id": city["id"],
+                                    "city_name": city["name"],
+                                    "city_name_en": city["name_en"],
+                                    "found_in": "conversation_history"
+                                }
                 
-                return context_info
-                
+                return None
             finally:
                 db.close()
         except Exception as e:
-            logger.error(f"Error extracting context info: {str(e)}")
-            return context_info
+            logger.error(f"Error extracting city from context: {str(e)}")
+            return None
 
-    def _extract_city_from_context(self, user_message: str, conversation_history: List[Dict] = None) -> Optional[Dict[str, Any]]:
-        """Extract city information from current message and conversation history"""
-        context_info = self._extract_context_info(user_message, conversation_history)
-        return context_info.get("city")
+    def _extract_brand_from_context(self, user_message: str, conversation_history: List[Dict] = None, city_id: int = None) -> Optional[Dict[str, Any]]:
+        """Extract brand information from current message and conversation history
+        IMPORTANT: Only returns brands if city_id is provided (city must be known first)
+        """
+        # Do not extract brands without knowing the city first
+        if not city_id:
+            return None
+            
+        try:
+            db = self._get_db_session()
+            try:
+                # Get brands only for the specific city
+                brands = data_api.get_brands_by_city(db, city_id)
+                
+                # PRIORITY 1: Check current user message first
+                if user_message:
+                    current_content = user_message.lower()
+                    for brand in brands:
+                        brand_title = brand.get("title", "").lower()
+                        
+                        if brand_title and brand_title in current_content:
+                            return {
+                                "brand_id": brand["id"],
+                                "brand_title": brand["title"],
+                                "found_in": "current_message"
+                            }
+                
+                # PRIORITY 2: Check conversation history if no brand in current message
+                if conversation_history:
+                    for message in reversed(conversation_history[-10:]):  # Check last 10 messages
+                        content = message.get("content", "").lower()
+                        
+                        # Check if any brand name appears in the message
+                        for brand in brands:
+                            brand_title = brand.get("title", "").lower()
+                            
+                            if brand_title and brand_title in content:
+                                return {
+                                    "brand_id": brand["id"],
+                                    "brand_title": brand["title"],
+                                    "found_in": "conversation_history"
+                                }
+                
+                return None
+            finally:
+                db.close()
+        except Exception as e:
+            logger.error(f"Error extracting brand from context: {str(e)}")
+            return None
+
+    def _check_for_yes_response(self, user_message: str, conversation_history: List[Dict] = None) -> bool:
+        """Check if user is responding with yes to a previous product question"""
+        if not conversation_history:
+            return False
+        
+        # Check if current message is a yes response
+        yes_words = ["نعم", "أي", "أيوة", "اي", "yes", "yeah", "yep", "sure", "ok", "okay"]
+        user_msg_lower = user_message.lower().strip()
+        
+        if user_msg_lower in yes_words:
+            # Check if the last bot message was asking about a product
+            for message in reversed(conversation_history[-3:]):  # Check last 3 messages
+                if message.get("role") == "assistant":
+                    content = message.get("content", "").lower()
+                    # Check if the bot asked about needing a product or mentioned a price
+                    if any(phrase in content for phrase in ["تحتاج", "تريد", "هل تريد", "هل تحتاج", "السعر", "الثمن", "do you need", "would you like", "price", "cost"]):
+                        return True
+            return True  # If user says yes in context of water conversation, it's likely relevant
+        
+        return False
+
+    def _check_for_total_price_question(self, user_message: str) -> bool:
+        """Check if user is asking about total prices or price lists"""
+        price_keywords = [
+            "الأسعار", "قائمة الأسعار", "كم الأسعار", "ايش الأسعار",  
+            "أسعاركم", "جميع الأسعار", "كل الأسعار", "الاسعار كلها",
+            "prices", "price list", "all prices", "total prices", "price menu"
+        ]
+        
+        user_msg_lower = user_message.lower()
+        return any(keyword.lower() in user_msg_lower for keyword in price_keywords)
     
     def get_all_cities(self) -> Dict[str, Any]:
         """Get complete list of all cities we serve"""
@@ -510,7 +459,6 @@ Reply with "relevant" if the message is related to water services, or "not_relev
                 # Filter to return only product name, price, and amount
                 filtered_products = [
                     {
-                        "id": product.get("id"),
                         "product_title": product["product_title"],         # Product name
                         "product_contract_price": product["product_contract_price"],  # Price
                         "product_packing": product["product_packing"]      # Amount
@@ -523,77 +471,6 @@ Reply with "relevant" if the message is related to water services, or "not_relev
         except Exception as e:
             logger.error(f"Error fetching products for brand {brand_id}: {str(e)}")
             return {"error": f"Failed to get products: {str(e)}"}
-    
-    def get_products_by_brand_and_city(self, brand_name: str, city_id: int) -> Dict[str, Any]:
-        """Get products from a specific brand in a specific city"""
-        try:
-            db = self._get_db_session()
-            try:
-                # First find the brand in this city
-                brands = data_api.get_brands_by_city(db, city_id)
-                matching_brand = None
-                
-                for brand in brands:
-                    if brand_name.lower() in brand["title"].lower() or brand["title"].lower() in brand_name.lower():
-                        matching_brand = brand
-                        break
-                
-                if not matching_brand:
-                    return {
-                        "success": False,
-                        "error": f"لم أجد العلامة التجارية '{brand_name}' في هذه المدينة",
-                        "brand_name": brand_name,
-                        "city_id": city_id
-                    }
-                
-                # Get products for this brand
-                products = data_api.get_products_by_brand(db, matching_brand["id"])
-                filtered_products = [
-                    {
-                        "id": product.get("id"),
-                        "product_title": product["product_title"],
-                        "product_contract_price": product["product_contract_price"],
-                        "product_packing": product["product_packing"]
-                    }
-                    for product in products
-                ]
-                
-                return {
-                    "success": True,
-                    "brand_info": {
-                        "id": matching_brand["id"],
-                        "title": matching_brand["title"]
-                    },
-                    "data": filtered_products
-                }
-            finally:
-                db.close()
-        except Exception as e:
-            logger.error(f"Error fetching products for brand {brand_name} in city {city_id}: {str(e)}")
-            return {"error": f"Failed to get products: {str(e)}"}
-    
-    def calculate_total_price(self, product_title: str, unit_price: float, quantity: int, product_packing: str = None) -> Dict[str, Any]:
-        """Calculate total price for a given quantity of products"""
-        try:
-            total_price = unit_price * quantity
-            
-            result = {
-                "success": True,
-                "product_title": product_title,
-                "unit_price": unit_price,
-                "quantity": quantity,
-                "total_price": total_price,
-                "currency": "ريال سعودي"
-            }
-            
-            if product_packing:
-                result["product_packing"] = product_packing
-                result["total_description"] = f"{quantity} × {product_packing}"
-            
-            return result
-        except Exception as e:
-            logger.error(f"Error calculating total price: {str(e)}")
-            return {"error": f"Failed to calculate total price: {str(e)}"}
     
     def search_cities(self, query: str) -> Dict[str, Any]:
         """Search cities by name"""
@@ -708,7 +585,6 @@ Reply with "relevant" if the message is related to water services, or "not_relev
     async def _classify_message_relevance(self, user_message: str, conversation_history: List[Dict] = None, user_language: str = 'ar') -> bool:
         """
         Use AI to classify if a message is related to water delivery services
-        Enhanced to handle simple replies in context
         Returns True if relevant, False if not relevant
         """
         try:
@@ -719,14 +595,6 @@ Reply with "relevant" if the message is related to water services, or "not_relev
                 logger.info(f"Message contains URL, marking as not relevant: {user_message[:50]}...")
                 return False
             
-            # Get context information
-            context_info = self._extract_context_info(user_message, conversation_history)
-            
-            # If it's a simple reply and we have previous suggestion, it's likely relevant
-            if context_info["is_simple_reply"] and context_info["previous_suggestion"]:
-                logger.info(f"Simple reply with previous suggestion context, marking as relevant: {user_message[:50]}...")
-                return True
-            
             # Prepare context from conversation history
             context = ""
             if conversation_history:
@@ -736,6 +604,13 @@ Reply with "relevant" if the message is related to water services, or "not_relev
             
             # Choose classification prompt based on language
             classification_prompt = self.classification_prompt_ar if user_language == 'ar' else self.classification_prompt_en
+            
+            # Prepare the full prompt
+            full_prompt = f"""{classification_prompt}
+{context}
+Current message to classify: "{user_message}"
+
+Classification:"""
             
             # Call OpenAI for classification
             response = await self.openai_client.chat.completions.create(
@@ -764,7 +639,10 @@ Reply with "relevant" if the message is related to water services, or "not_relev
     async def process_query(self, user_message: str, conversation_history: List[Dict] = None, user_language: str = 'ar', journey_id: str = None) -> str:
         """
         Process user query using OpenAI with function calling capabilities
-        Enhanced with brand extraction, price calculation, and better context handling
+        Limited to maximum 3 function calls per query to prevent excessive API usage
+        Enhanced with language detection and proper conversation history handling
+        NOW INCLUDES: AI-based message relevance checking - only responds to water delivery related queries
+        Enhanced with brand extraction and better context handling
         """
         print(f"Processing query: {user_message} (Language: {user_language})")
         
@@ -778,49 +656,58 @@ Reply with "relevant" if the message is related to water services, or "not_relev
             return ""
         
         print("✅ Message is relevant to water delivery services")
+
+        # STEP 2: Check for total price questions - redirect to app/website
+        if self._check_for_total_price_question(user_message):
+            if user_language == 'ar':
+                return "بتحصل الاصناف والاسعار في التطبيق وهذا هو الرابط https://onelink.to/abar_app https://abar.app/en/store/ وايضا عن طريق الموقع الالكتروني"
+            else:
+                return "You can find all products and prices in our app: https://onelink.to/abar_app or on our website: https://abar.app/en/store/"
+
+        # STEP 3: Check if this is a "yes" response to a previous product question
+        if self._check_for_yes_response(user_message, conversation_history):
+            print("✅ Detected 'yes' response - handling product confirmation")
         
-        # STEP 2: Extract context information
-        context_info = self._extract_context_info(user_message, conversation_history)
-        print(f"🔍 Extracted context: {context_info}")
-        
-        max_function_calls = 4  # Increased to handle more complex scenarios
+        max_function_calls = 3
         function_call_count = 0
         
         try:
+            # Check if we already have city information from current message or conversation history
+            city_context = self._extract_city_from_context(user_message, conversation_history)
+            
+            # Check if we have brand information
+            brand_context = self._extract_brand_from_context(
+                user_message, 
+                conversation_history, 
+                city_context.get("city_id") if city_context else None
+            )
+            
             # Prepare conversation history
             messages = []
             
-            # Enhanced system message with brand handling and price calculation
+            # System message with instructions based on user language
             city_info = ""
             brand_info = ""
-            context_hints = ""
             
-            if context_info["city"]:
-                found_where = "current message" if context_info['city']['found_in'] == "current_message" else "conversation history"
-                city_info = f"\n\nIMPORTANT CONTEXT: The customer is from {context_info['city']['city_name_en']} ({context_info['city']['city_name']}) - detected from {found_where}. You already know their city."
+            if city_context:
+                found_where = "current message" if city_context['found_in'] == "current_message" else "conversation history"
+                city_info = f"\n\nIMPORTANT CONTEXT: The customer is from {city_context['city_name_en']} ({city_context['city_name']}) - detected from {found_where}. You already know their city, so you can show products and brands for this city without asking again."
             
-            if context_info["brand"]:
-                found_where = "current message" if context_info['brand']['found_in'] == "current_message" else "conversation history"
-                brand_info = f"\n\nBRAND CONTEXT: Customer mentioned '{context_info['brand']['brand_title']}' - detected from {found_where}."
-            
-            if context_info["quantity"]:
-                context_hints += f"\n\nQUANTITY CONTEXT: Customer wants {context_info['quantity']} units. Use calculate_total_price function when showing prices."
-            
-            if context_info["is_simple_reply"] and context_info["previous_suggestion"]:
-                context_hints += f"\n\nSIMPLE REPLY CONTEXT: Customer is responding to a previous suggestion. Previous bot message: '{context_info['previous_suggestion'][:100]}...'"
+            if brand_context:
+                found_where = "current message" if brand_context['found_in'] == "current_message" else "conversation history"
+                brand_info = f"\n\nBRAND CONTEXT: The customer mentioned '{brand_context['brand_title']}' - detected from {found_where}. If you know both city and brand, you can directly show products for this brand in this city."
             
             if user_language == 'en':
                 system_message = {
                     "role": "system",
-                    "content": f"""You are a friendly customer service employee at Abar Water Delivery Company in Saudi Arabia.{city_info}{brand_info}{context_hints}
+                    "content": f"""You are a friendly customer service employee at Abar Water Delivery Company in Saudi Arabia.{city_info}{brand_info}
 
 Your job is to help customers with:
 1. Finding available cities for water delivery service
 2. Showing water brands available in each city
 3. Displaying water products and their prices from each brand
-4. Handling brand-only queries (when customer mentions just a brand name)
-5. Calculating total prices for specific quantities
-6. Understanding context from conversation history
+4. Answering questions naturally and helpfully
+5. Asking friendly questions when you need more information
 
 Communication Style:
 - Talk like a real human customer service representative
@@ -828,52 +715,64 @@ Communication Style:
 - Never use phrases like "AI response", "Assistant reply", or "I am an AI"
 - Respond as if you're a real person working for the company
 
-ENHANCED WORKFLOW HANDLING:
+ENHANCED WORKFLOW - SMART CONTEXT EXTRACTION:
+🚨 ALWAYS follow this sequence but use extracted context: CITY → BRAND → PRODUCTS → RESPONSE
 
-1. BRAND-ONLY QUERIES:
-   - If customer mentions only a brand name AND you know their city → use get_products_by_brand_and_city
-   - If customer mentions only a brand name BUT you DON'T know their city → ask for city first
-   - Example: "Aquafina" → if city known: show Aquafina products, if not: "Which city are you in? I'll show you Aquafina products there!"
+SMART BRAND HANDLING:
+- If customer mentions ONLY a brand name (e.g., "Nestle", "Aquafina"), extract city from context
+- If you know BOTH city and brand: directly show products for that brand in that city
+- If you know brand but NOT city: ask for city, then show products
+- If customer says "yes" after you asked about a product: provide the price/details
 
-2. PRICE CALCULATIONS:
-   - When customer asks for specific quantities (5 cartons, 10 bottles, etc.) → use calculate_total_price function
-   - Always show unit price AND total price for quantities
-   - Example: "Customer wants 5 cartons of X" → show "Each carton: 20 SAR, Total for 5 cartons: 100 SAR"
+CITY DETECTION PRIORITY:
+1. Check if city is mentioned in current user message
+2. Check if city is available in conversation history context
+3. If NO city found in either - IMMEDIATELY ask for city before proceeding
 
-3. SIMPLE REPLIES HANDLING:
-   - If customer says "yes", "okay", "نعم" in response to previous suggestions → provide the requested information (prices, details, etc.)
-   - Use conversation history to understand what they're confirming
-   - Example: If you previously asked "Do you want Aquafina?" and they say "yes" → show Aquafina products and prices
+BRAND DETECTION PRIORITY:
+1. Check if brand is mentioned in current user message
+2. Check if brand is available in conversation history context
+3. If brand is mentioned but city unknown - ask for city
+4. If both city and brand known - show products directly
 
-4. STANDARD WORKFLOW (when no shortcuts apply):
-   🚨 CITY → BRANDS → PRODUCTS → RESPONSE
-   🚨 Step 1: Get the customer's city (use get_city_id_by_name or search_cities)
-   🚨 Step 2: Show brands available in that city (use get_brands_by_city)
-   🚨 Step 3: When customer selects a brand, show products from that brand (use get_products_by_brand)
-   🚨 Step 4: Provide final response with complete information
+PROACTIVE HANDLING:
+- "Nestle" + known city → Show Nestle products in that city
+- "Aquafina" + no known city → "Which city are you in? I'll show you Aquafina products there!"
+- "yes" after product question → Provide price and details
+- General price questions → Direct to app/website links
 
 Important rules:
 - Always use available functions to get updated information
-- For brand + city queries: use get_products_by_brand_and_city
-- For quantity requests: use calculate_total_price
+- For city queries: try get_city_id_by_name first, if fails use search_cities
 - Be patient with typos and spelling variations
 - Respond in English since the customer is communicating in English
 - Keep responses helpful and conversational like a real person would
+- Use context smartly - don't ask for information you already have
 
 Be helpful, understanding, and respond exactly like a friendly human employee would."""
                 }
             else:
+                city_info_ar = ""
+                brand_info_ar = ""
+                
+                if city_context:
+                    found_where_ar = "الرسالة الحالية" if city_context['found_in'] == "current_message" else "تاريخ المحادثة"
+                    city_info_ar = f"\n\nسياق مهم: العميل من {city_context['city_name']} ({city_context['city_name_en']}) - تم اكتشافها من {found_where_ar}. أنت تعرف مدينتهم بالفعل، لذا يمكنك عرض المنتجات والعلامات التجارية لهذه المدينة بدون السؤال مرة أخرى."
+                
+                if brand_context:
+                    found_where_ar = "الرسالة الحالية" if brand_context['found_in'] == "current_message" else "تاريخ المحادثة"
+                    brand_info_ar = f"\n\nسياق العلامة التجارية: العميل ذكر '{brand_context['brand_title']}' - تم اكتشافها من {found_where_ar}. إذا كنت تعرف المدينة والعلامة التجارية، يمكنك عرض منتجات هذه العلامة في هذه المدينة مباشرة."
+                
                 system_message = {
                     "role": "system",
-                    "content": f"""أنت موظف خدمة عملاء ودود في شركة أبار لتوصيل المياه في السعودية.{city_info}{brand_info}{context_hints}
+                    "content": f"""أنت موظف خدمة عملاء ودود في شركة أبار لتوصيل المياه في السعودية.{city_info_ar}{brand_info_ar}
 
 وظيفتك مساعدة العملاء في:
 1. إيجاد المدن المتاحة لخدمة توصيل المياه
 2. عرض العلامات التجارية للمياه المتاحة في كل مدينة  
 3. عرض منتجات المياه وأسعارها من كل علامة تجارية
-4. التعامل مع استفسارات العلامات التجارية فقط (عندما يذكر العميل اسم العلامة فقط)
-5. حساب الأسعار الإجمالية للكميات المحددة
-6. فهم السياق من تاريخ المحادثة
+4. الإجابة على الأسئلة بطريقة طبيعية ومفيدة
+5. طرح أسئلة ودودة عندما تحتاج معلومات أكثر
 
 أسلوب التواصل:
 - تكلم مثل موظف خدمة عملاء حقيقي
@@ -881,39 +780,41 @@ Be helpful, understanding, and respond exactly like a friendly human employee wo
 - لا تستخدم أبداً عبارات مثل "رد الذكاء الاصطناعي" أو "رد المساعد" أو "أنا ذكاء اصطناعي"
 - رد كأنك شخص حقيقي يعمل في الشركة
 
-سير العمل المحسن:
+سير العمل المحسن - استخراج السياق الذكي:
+🚨 اتبع دائماً هذا التسلسل لكن استخدم السياق المستخرج: المدينة → العلامة التجارية → المنتجات → الرد
 
-1. استفسارات العلامة التجارية فقط:
-   - إذا ذكر العميل اسم علامة تجارية فقط وأنت تعرف مدينته → استخدم get_products_by_brand_and_city
-   - إذا ذكر العميل اسم علامة تجارية فقط لكن لا تعرف مدينته → اسأل عن المدينة أولاً
-   - مثال: "أكوافينا" → إذا كانت المدينة معروفة: اعرض منتجات أكوافينا، إذا لم تكن معروفة: "في أي مدينة أنت؟ راح أعرض لك منتجات أكوافينا هناك!"
+التعامل الذكي مع العلامات التجارية:
+- إذا ذكر العميل علامة تجارية فقط (مثل "نستله"، "أكوافينا")، استخرج المدينة من السياق
+- إذا كنت تعرف المدينة والعلامة التجارية: اعرض منتجات هذه العلامة في هذه المدينة مباشرة
+- إذا كنت تعرف العلامة التجارية لكن لا تعرف المدينة: اسأل عن المدينة، ثم اعرض المنتجات
+- إذا قال العميل "نعم" بعد أن سألت عن منتج: قدم السعر والتفاصيل
 
-2. حساب الأسعار:
-   - عندما يسأل العميل عن كميات محددة (5 كراتين، 10 زجاجات، إلخ) → استخدم وظيفة calculate_total_price
-   - اعرض دائماً سعر الوحدة والسعر الإجمالي للكميات
-   - مثال: "العميل يريد 5 كراتين من X" → اعرض "الكرتون الواحد: 20 ريال، الإجمالي لـ 5 كراتين: 100 ريال"
+أولوية اكتشاف المدينة:
+1. تحقق إذا كانت المدينة مذكورة في رسالة العميل الحالية
+2. تحقق إذا كانت المدينة متوفرة في سياق تاريخ المحادثة
+3. إذا لم تجد مدينة في أي منهما - اسأل فوراً عن المدينة قبل المتابعة
 
-3. التعامل مع الردود البسيطة:
-   - إذا قال العميل "نعم"، "موافق", "اوكيه" رداً على اقتراحات سابقة → قدم المعلومات المطلوبة (الأسعار، التفاصيل، إلخ)
-   - استخدم تاريخ المحادثة لفهم ما يؤكدونه
-   - مثال: إذا سألت سابقاً "تريد أكوافينا؟" وقالوا "نعم" → اعرض منتجات وأسعار أكوافينا
+أولوية اكتشاف العلامة التجارية:
+1. تحقق إذا كانت العلامة التجارية مذكورة في رسالة العميل الحالية
+2. تحقق إذا كانت العلامة التجارية متوفرة في سياق تاريخ المحادثة
+3. إذا ذكرت العلامة التجارية لكن المدينة غير معروفة - اسأل عن المدينة
+4. إذا كنت تعرف المدينة والعلامة التجارية - اعرض المنتجات مباشرة
 
-4. سير العمل القياسي (عندما لا تنطبق الاختصارات):
-   🚨 المدينة ← العلامات التجارية ← المنتجات ← الرد
-   🚨 الخطوة 1: احصل على مدينة العميل (استخدم get_city_id_by_name أو search_cities)
-   🚨 الخطوة 2: اعرض العلامات التجارية المتاحة في تلك المدينة (استخدم get_brands_by_city)
-   🚨 الخطوة 3: عندما يختار العميل علامة تجارية، اعرض منتجات تلك العلامة (استخدم get_products_by_brand)
-   🚨 الخطوة 4: قدم الرد النهائي مع المعلومات الكاملة
+التعامل الاستباقي:
+- "نستله" + مدينة معروفة → اعرض منتجات نستله في هذه المدينة
+- "أكوافينا" + مدينة غير معروفة → "في أي مدينة أنت؟ راح أعرض لك منتجات أكوافينا هناك!"
+- "نعم" بعد سؤال عن منتج → قدم السعر والتفاصيل
+- أسئلة الأسعار العامة → وجه للتطبيق/الموقع
 
 قواعد مهمة:
 - استخدم دائماً الوظائف المتاحة للحصول على معلومات حديثة
-- لاستفسارات العلامة + المدينة: استخدم get_products_by_brand_and_city
-- لطلبات الكميات: استخدم calculate_total_price
+- للاستفسارات عن المدن: جرب get_city_id_by_name أولاً، إذا فشل استخدم search_cities
 - كن صبور مع الأخطاء الإملائية والتنويعات
 - أجب باللغة العربية لأن العميل يتواصل بالعربية
 - خلي ردودك مفيدة وودودة مثل أي شخص حقيقي
+- استخدم السياق بذكاء - لا تسأل عن معلومات تعرفها بالفعل
 
-معلومات اضافية 
+معلومات اضافية:
 ابو ربع هي  ٢٠٠ مل او ٢٥٠
 ابو نص هي  ٣٣٠ او ٣٠٠
 ابو ريال  هي  ٦٠٠ مل  او ٥٥٠ مل 
@@ -921,7 +822,6 @@ Be helpful, understanding, and respond exactly like a friendly human employee wo
 
 كن مساعد ومتفهم ورد تماماً مثل موظف ودود حقيقي."""
                 }
-            
             messages.append(system_message)
             
             # Add conversation history if provided (use last 5 messages to keep context manageable)
