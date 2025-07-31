@@ -66,8 +66,6 @@ class QueryAgent:
 ✅ أسئلة عن المنتجات والأسعار
 ✅ طلبات معرفة التوفر في مدينة معينة
 ✅ أسئلة عن أحجام المياه والعبوات
-✅ الاستفسار عن خدمة التوصيل
-✅ أسئلة عن شركات المياه
 ✅ ذكر أسماء العلامات التجارية مثل (نستله، أكوافينا، العين، القصيم، المراعي، وغيرها)
 ✅ الرد بـ "نعم" أو "أي" عندما نسأل عن منتج معين
 ✅ أسئلة عن الأسعار الإجمالية أو قوائم الأسعار
@@ -80,14 +78,23 @@ class QueryAgent:
 ❌ الأسئلة الشخصية
 ❌ طلبات المساعدة في مواضيع أخرى
 ❌ الرسائل التي تحتوي على روابط
+❌ الاستفسار عن خدمة التوصيل العامة
+❌ مشاكل متعلقة بالمندوب أو المندوبين
+❌ شكاوي من المندوب أو طاقم التوصيل
+❌ مشاكل التوصيل (تأخير، عدم وصول الطلب، مشاكل التوصيل)
+❌ شكاوي خدمة العملاء أو مشاكل الخدمة
+❌ طلبات إلغاء أو تعديل طلبات موجودة
+❌ استفسارات عن حالة الطلب أو تتبع الطلب
 
-تعليمات خاصة:
+تعليمات خاصة وصارمة:
+- كن صارم جداً في التصنيف - فقط الأسئلة عن المدن والعلامات التجارية والمنتجات والأسعار تعتبر متعلقة
+- أي رسالة تذكر "المندوب" أو "التوصيل" أو "الطلب لم يصل" أو "تأخر" تعتبر غير متعلقة
+- أي شكوى أو مشكلة في الخدمة تعتبر غير متعلقة
 - لا تعتبر التحيات والشكر متعلقة بالخدمة حتى لو كانت في سياق محادثة عن المياه
-- كن صارم في التصنيف - فقط الأسئلة المباشرة عن المدن والعلامات والمنتجات تعتبر متعلقة
-- اعتبر ذكر أسماء العلامات التجارية للمياه متعلق بالخدمة
-- اعتبر الرد بـ "نعم" أو "أي" متعلق بالخدمة إذا كان في سياق محادثة عن المنتجات
+- اعتبر ذكر أسماء العلامات التجارية للمياه متعلق بالخدمة فقط
+- اعتبر الرد بـ "نعم" أو "أي" متعلق بالخدمة إذا كان في سياق محادثة عن المنتجات فقط
 
-أجب بـ "relevant" إذا كانت الرسالة متعلقة بخدمات المياه، أو "not_relevant" إذا لم تكن متعلقة."""
+أجب بـ "relevant" إذا كانت الرسالة متعلقة بالمنتجات والأسعار والعلامات التجارية والمدن فقط، أو "not_relevant" لأي شيء آخر."""
 
         self.classification_prompt_en = """You are a smart message classifier for a water delivery company. Your task is to determine if a message is related to the company's services or not.
 
@@ -97,8 +104,6 @@ Service-related messages include ONLY:
 ✅ Questions about products and prices
 ✅ Requests to check availability in specific cities
 ✅ Questions about water sizes and packaging
-✅ Inquiries about delivery service
-✅ Questions about water companies
 ✅ Mentioning brand names like (Nestle, Aquafina, Alain, Qassim, Almarai, etc.)
 ✅ Replying with "yes" when we ask about a specific product
 ✅ Questions about total prices or price lists
@@ -111,14 +116,23 @@ Non-service-related messages include:
 ❌ Personal questions
 ❌ Requests for help with other topics
 ❌ Messages containing links or URLs
+❌ General delivery service inquiries
+❌ Problems related to delivery person/driver
+❌ Complaints about delivery person or delivery staff
+❌ Delivery problems (delays, order not arrived, delivery issues)
+❌ Customer service complaints or service problems
+❌ Requests to cancel or modify existing orders
+❌ Inquiries about order status or order tracking
 
-Special instructions:
+Special strict instructions:
+- Be very strict in classification - only questions about cities, brands, products, and prices count as relevant
+- Any message mentioning "delivery person", "driver", "delivery", "order not arrived", or "delayed" is not relevant
+- Any complaint or service problem is not relevant
 - Do not consider greetings and thanks as service-related even if they appear in water-related conversations
-- Be strict in classification - only direct questions about cities, brands, and products count as relevant
-- Consider mentioning water brand names as service-related
-- Consider "yes" replies as service-related if in context of product discussions
+- Consider mentioning water brand names as service-related only
+- Consider "yes" replies as service-related only if in context of product discussions
 
-Reply with "relevant" if the message is related to water services, or "not_relevant" if it's not related."""
+Reply with "relevant" if the message is related to products, prices, brands, and cities only, or "not_relevant" for anything else."""
         
         # Function definitions for OpenAI function calling
         self.function_definitions = [
@@ -653,7 +667,7 @@ Classification:"""
         is_relevant = await self._classify_message_relevance(user_message, conversation_history, user_language)
         
         if not is_relevant:
-            print(f"❌ Message not relevant to water delivery services: {user_message[:50]}...")
+            print(f"❌ Message not relevant to water delivery services: {user_message}...")
             # Return None or empty string to indicate the agent should not reply
             return ""
         
@@ -670,7 +684,7 @@ Classification:"""
         if self._check_for_yes_response(user_message, conversation_history):
             print("✅ Detected 'yes' response - handling product confirmation")
         
-        max_function_calls = 3
+        max_function_calls = 5
         function_call_count = 0
         
         try:
@@ -760,6 +774,27 @@ Important rules:
 
 Be helpful, understanding, and respond exactly like a friendly human employee would."""
                 }
+                
+                # Check user message and conversation history for size-related keywords (English)
+                all_conversation_text = user_message
+                if conversation_history:
+                    for msg in conversation_history[-5:]:  # Check last 5 messages
+                        all_conversation_text += " " + msg.get("content", "")
+                
+                if "quarter" in all_conversation_text or "half" in all_conversation_text or "riyal" in all_conversation_text:
+                    system_message["content"] += "\n\nAdditional info: Quarter size = 200ml or 250ml, Half size = 330ml or 300ml, Riyal size = 600ml or 550ml, Two Riyal size = 1.5L"
+                if "groundwater" in all_conversation_text or "artesian" in all_conversation_text:
+                    system_message["content"] += (
+                        "\n\nAdditional info: Groundwater/artesian water brands include: "
+                        "Nova, Naqi, Berrin, Mawared, B, Vio, Miles, Aquaya, Aqua 8, Mana, Tania, Abar Hail, Oska, Nestle, Ava, Hena, Saqya Al Madina, Deman, Hani, Sahtak, Halwa, Athb, Aus, Qataf, Rest, Eval, We."
+                    )
+                if "gallon" in all_conversation_text:
+                    system_message["content"] += (
+                        "\n\nGallon exchange services available in:\n"
+                        "Tania – Riyadh\n"
+                        "Safia – Riyadh\n"
+                        "Yanabee Al Mahbooba – Medina"
+                    )
             else:
                 city_info_ar = ""
                 brand_info_ar = ""
@@ -830,14 +865,30 @@ Be helpful, understanding, and respond exactly like a friendly human employee wo
 - خلي ردودك مفيدة وودودة مثل أي شخص حقيقي
 - استخدم السياق بذكاء - لا تسأل عن معلومات تعرفها بالفعل
 
-معلومات اضافية:
-ابو ربع هي المياه بحجم   ٢٠٠ مل او ٢٥٠ مل
-ابو نص هي المياه بحجم  ٣٣٠ او ٣٠٠ مل
-ابو ريال  هي المياه بحجم  ٦٠٠ مل  او ٥٥٠ مل 
-ابو ريالين هي المياه بحجم  ١.٥ لتر
 
 كن مساعد ومتفهم ورد تماماً مثل موظف ودود حقيقي."""
                 }
+            # Check user message and conversation history for size-related keywords
+            all_conversation_text = user_message
+            if conversation_history:
+                for msg in conversation_history[-5:]:  # Check last 5 messages
+                    all_conversation_text += " " + msg.get("content", "")
+            
+            if "ربع" in all_conversation_text or "نص" in all_conversation_text or "ريال" in all_conversation_text or "ريالين" in all_conversation_text:
+                system_message["content"] = system_message["content"] + "\n\nمعلومات اضافية: ابو ربع هي المياه بحجم ٢٠٠ مل او ٢٥٠ مل ابو نص هي المياه بحجم  ٣٣٠ او ٣٠٠ مل ابو ريال  هي المياه بحجم  ٦٠٠ مل  او ٥٥٠ مل ابو ريالين هي المياه بحجم  ١.٥ لتر"
+            if "ابار" in all_conversation_text or "جوفية" in all_conversation_text:
+                system_message["content"] += (
+                    "\n\nمعلومات إضافية: الآبار الجوفية هي المياه الجوفية المعدنية التي تُستخرج من الأرض وتحتوي على معادن ومواد طبيعية مختلفة."
+                    "\n\nوهذه هي العلامات التجارية التي تُعد من منتجات الآبار الجوفية:\n"
+                    "نوفا، نقي، بيرين، موارد، بي، فيو، مايلز، أكويا، أكوا 8، مانا، تانيا، آبار حائل، أوسكا، نستله، آفا، هنا، سقيا المدينة، ديمان، هني، صحتك، حلوة، عذب، أوس، قطاف، رست، إيفال، وي."
+                )
+            if " جوالين" in all_conversation_text or "جالون" in all_conversation_text: 
+                system_message["content"] += (
+                    "\n\nهذه هي العلامات التي توفر تبديل الجوالين، والمدن التي يتوفر بها التبديل:\n\n"
+                    "تانيا – الرياض\n"
+                    "صافية – الرياض\n"
+                    "ينابيع المحبوبة – المدينة المنورة"
+                )
             messages.append(system_message)
             
             # Add conversation history if provided (use last 5 messages to keep context manageable)
