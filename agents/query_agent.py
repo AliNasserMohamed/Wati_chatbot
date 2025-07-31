@@ -59,6 +59,13 @@ class QueryAgent:
             "find_brand_in_city": self.find_brand_in_city
         }
         
+        # Async functions that need special handling
+        self.async_functions = {
+            "check_city_availability",
+            "get_products_by_brand_and_city",
+            "find_brand_in_city"
+        }
+        
         # Classification prompts for message relevance
         self.classification_prompt_ar = """أنت مصنف رسائل ذكي لشركة توصيل المياه. مهمتك تحديد ما إذا كانت الرسالة متعلقة بخدمات الشركة أم لا.
 
@@ -72,8 +79,7 @@ class QueryAgent:
 ✅ أسئلة عن شركات المياه
 
 الرسائل غير المتعلقة بالخدمة تشمل:
-❌ التحيات العامة ("أهلاً", "مرحبا", "السلام عليكم", "صباح الخير", "مساء الخير")  
-❌ رسائل الشكر والامتنان ("شكراً", "جزاك الله خير", "مشكور", "الله يعطيك العافية")
+
 ❌ المواضيع العامة غير المتعلقة بالمياه
 ❌ الأسئلة الشخصية
 ❌ طلبات المساعدة في مواضيع أخرى
@@ -180,13 +186,13 @@ Reply with "relevant" if the message is related to water services, or "not_relev
 
             {
                 "name": "check_city_availability",
-                "description": "Check if a product or brand is available in a specific city. Use this when user asks about product/brand availability in their city after you know both the city and the product/brand name.",
+                "description": "Check if a product or brand is available in a specific city. NOW WITH AI-POWERED EXTRACTION: Handles variations like 'امياه حلوه' or 'موية حلوه' to extract correct brand names. Use this when user asks about product/brand availability.",
                 "parameters": {
                     "type": "object",
                     "properties": {
                         "city_name": {
                             "type": "string",
-                            "description": "Name of the city in Arabic or English"
+                            "description": "Name of the city in Arabic or English (AI will extract correct city name from variations)"
                         },
                         "item_type": {
                             "type": "string",
@@ -195,7 +201,7 @@ Reply with "relevant" if the message is related to water services, or "not_relev
                         },
                         "item_name": {
                             "type": "string",
-                            "description": "Name of the brand or product to check availability for"
+                            "description": "Name of the brand or product as user typed it (AI will extract correct brand name from variations like 'امياه حلوه' → 'حلوه')"
                         }
                     },
                     "required": ["city_name", "item_type", "item_name"]
@@ -203,13 +209,13 @@ Reply with "relevant" if the message is related to water services, or "not_relev
             },
             {
                 "name": "find_brand_in_city",
-                "description": "Find if a specific brand exists in a known city and get its products. Use this when customer mentions ONLY a brand name and you already know their city from context.",
+                "description": "Find if a specific brand exists in a known city and get its products. NOW WITH AI-POWERED EXTRACTION: Handles variations like 'امياه حلوه' → 'حلوه'. Use this when customer mentions ONLY a brand name and you already know their city from context.",
                 "parameters": {
                     "type": "object",
                     "properties": {
                         "brand_name": {
                             "type": "string",
-                            "description": "Name of the brand the customer mentioned (e.g., 'أكوافينا', 'نوفا', 'الهدا')"
+                            "description": "Name of the brand as customer typed it (e.g., 'أكوافينا', 'امياه حلوه', 'موية نوفا') - AI will extract correct brand name"
                         },
                         "city_id": {
                             "type": "integer",
@@ -221,17 +227,17 @@ Reply with "relevant" if the message is related to water services, or "not_relev
             },
             {
                 "name": "get_products_by_brand_and_city",
-                "description": "Get all products from a specific brand in a specific city. Use this when you know both the brand name and city.",
+                "description": "Get all products from a specific brand in a specific city. NOW WITH AI-POWERED EXTRACTION: Handles brand variations like 'امياه حلوه' → 'حلوه' and city variations. Use this when you know both the brand name and city.",
                 "parameters": {
                     "type": "object",
                     "properties": {
                         "brand_name": {
                             "type": "string",
-                            "description": "Name of the brand to search for"
+                            "description": "Name of the brand as customer typed it (AI will extract correct brand name from variations)"
                         },
                         "city_name": {
                             "type": "string", 
-                            "description": "Name of the city in Arabic or English"
+                            "description": "Name of the city in Arabic or English (AI will extract correct city name from variations)"
                         }
                     },
                     "required": ["brand_name", "city_name"]
@@ -239,17 +245,17 @@ Reply with "relevant" if the message is related to water services, or "not_relev
             },
             {
                 "name": "calculate_total_price",
-                "description": "Calculate total price when customer asks about cost for specific quantities (e.g., '5 bottles', '10 units'). Use this when customer specifies quantity and you have product price information.",
+                "description": "Calculate total price when customer asks about cost for specific quantities (e.g., '5 bottles', '10 units'). IMPORTANT: API prices are per CARTON/BOX, not per individual unit. So if customer wants 5 cartons, multiply carton_price × 5.",
                 "parameters": {
                     "type": "object",
                     "properties": {
                         "unit_price": {
                             "type": "number",
-                            "description": "Price per single unit/bottle in SAR"
+                            "description": "Price per CARTON/BOX from API (NOT per individual bottle) in SAR"
                         },
                         "quantity": {
                             "type": "integer", 
-                            "description": "Number of units customer wants"
+                            "description": "Number of CARTONS customer wants (NOT individual units)"
                         },
                         "product_name": {
                             "type": "string",
@@ -367,19 +373,182 @@ Reply with "relevant" if the message is related to water services, or "not_relev
             logger.error(f"Error extracting brand from message: {str(e)}")
             return None
     
+    async def _ai_extract_brand_from_message(self, user_message: str) -> Optional[str]:
+        """Use AI to intelligently extract brand name from user message"""
+        try:
+            db = self._get_db_session()
+            try:
+                # Get all available brands for context
+                all_brands = data_api.get_all_brands(db)
+                brands_list = [brand.get("title", "") for brand in all_brands if brand.get("title")]
+                
+                if not brands_list:
+                    return None
+                
+                # Create prompt for brand extraction
+                brands_text = "، ".join(brands_list)
+                
+                prompt = f"""أنت خبير في استخراج أسماء العلامات التجارية للمياه من رسائل العملاء.
+
+العلامات التجارية المتاحة: {brands_text}
+
+رسالة العميل: "{user_message}"
+
+مهمتك:
+1. ابحث عن أي إشارة لعلامة تجارية في الرسالة
+2. العملاء قد يكتبون "امياه حلوه" أو "موية حلوه" ويقصدون "حلوه"
+3. العملاء قد يكتبون أسماء مختصرة أو بأخطاء إملائية
+4. إذا وجدت علامة تجارية، أرجع الاسم الصحيح بالضبط كما هو في القائمة
+5. إذا لم تجد أي علامة تجارية، أرجع "لا يوجد"
+
+أرجع فقط اسم العلامة التجارية أو "لا يوجد":"""
+
+                response = await self.openai_client.chat.completions.create(
+                    model="gpt-3.5-turbo",
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.1,
+                    max_tokens=50
+                )
+                
+                result = response.choices[0].message.content.strip()
+                
+                # Validate the result against available brands
+                if result and result != "لا يوجد":
+                    for brand in brands_list:
+                        if result.lower() == brand.lower():
+                            return brand
+                
+                return None
+                
+            finally:
+                db.close()
+                
+        except Exception as e:
+            logger.error(f"Error in AI brand extraction: {str(e)}")
+            # Fallback to original method
+            return self._extract_brand_from_message_fallback(user_message)
+    
+    def _extract_brand_from_message_fallback(self, user_message: str) -> Optional[str]:
+        """Fallback method for brand extraction (original hardcoded approach)"""
+        try:
+            db = self._get_db_session()
+            try:
+                # Get all brands to check against
+                all_brands = data_api.get_all_brands(db)
+                
+                message_lower = user_message.lower()
+                
+                # Check if any brand name appears in the message
+                for brand in all_brands:
+                    brand_title = brand.get("title", "").lower()
+                    if brand_title and brand_title in message_lower:
+                        return brand["title"]  # Return original case brand name
+                
+                # Check for common Arabic brand name variations
+                brand_mappings = {
+                    "اكوافينا": "أكوافينا",
+                    "نوفا": "نوفا", 
+                    "الهدا": "الهدا",
+                    "نستله": "نستلة",
+                    "هنا": "هنا",
+                    "اروى": "أروى",
+                    "بيرين": "بيريه",
+                    "امياه حلوه": "حلوه",
+                    "موية حلوه": "حلوه",
+                    "مياه حلوه": "حلوه"
+                }
+                
+                for variation, correct_name in brand_mappings.items():
+                    if variation in message_lower:
+                        return correct_name
+                
+                return None
+                
+            finally:
+                db.close()
+                
+        except Exception as e:
+            logger.error(f"Error extracting brand from message: {str(e)}")
+            return None
+    
+    async def _ai_extract_city_from_message(self, user_message: str) -> Optional[Dict[str, Any]]:
+        """Use AI to intelligently extract city name from user message"""
+        try:
+            db = self._get_db_session()
+            try:
+                # Get all available cities for context
+                all_cities = data_api.get_all_cities(db)
+                cities_list = []
+                for city in all_cities:
+                    city_ar = city.get("name", "")
+                    city_en = city.get("name_en", "")
+                    if city_ar:
+                        cities_list.append(f"{city_ar} ({city_en})")
+                
+                if not cities_list:
+                    return None
+                
+                # Create prompt for city extraction
+                cities_text = "، ".join(cities_list)
+                
+                prompt = f"""أنت خبير في استخراج أسماء المدن من رسائل العملاء.
+
+المدن المتاحة: {cities_text}
+
+رسالة العميل: "{user_message}"
+
+مهمتك:
+1. ابحث عن أي إشارة لمدينة في الرسالة
+2. العملاء قد يكتبون بأخطاء إملائية (مثل "رياص" بدلاً من "رياض")
+3. العملاء قد يستخدمون أسماء مختصرة أو عامية
+4. إذا وجدت مدينة، أرجع الاسم العربي الصحيح بالضبط كما هو في القائمة فقط
+5. إذا لم تجد أي مدينة، أرجع "لا يوجد"
+
+أرجع فقط الاسم العربي للمدينة أو "لا يوجد":"""
+
+                response = await self.openai_client.chat.completions.create(
+                    model="gpt-3.5-turbo",
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.1,
+                    max_tokens=50
+                )
+                
+                result = response.choices[0].message.content.strip()
+                
+                # Validate and find the matching city
+                if result and result != "لا يوجد":
+                    for city in all_cities:
+                        if result.lower() == city.get("name", "").lower():
+                            return {
+                                "city_id": city["id"],
+                                "city_name": city["name"],
+                                "city_name_en": city["name_en"],
+                                "found_in": "ai_extraction"
+                            }
+                
+                return None
+                
+            finally:
+                db.close()
+                
+        except Exception as e:
+            logger.error(f"Error in AI city extraction: {str(e)}")
+            return None
+    
     def _extract_quantity_from_message(self, user_message: str) -> Optional[Dict[str, Any]]:
         """Extract quantity information from user message"""
         try:
             import re
             
-            # Patterns to match quantities in Arabic and English
+            # Patterns to match quantities in Arabic and English (focusing on cartons/boxes)
             quantity_patterns = [
-                r'(\d+)\s*(?:قنينة|قناني|عبوة|عبوات|وحدة|وحدات|كيس|أكياس)',  # Arabic
-                r'(\d+)\s*(?:bottles?|units?|pieces?|packs?|bags?)',  # English
+                r'(\d+)\s*(?:كرتونة|كراتين|كرتون|عبوة|عبوات|وحدة|وحدات|كيس|أكياس)',  # Arabic - added cartons
+                r'(\d+)\s*(?:cartons?|boxes?|packs?|units?|bottles?|pieces?|bags?)',  # English - prioritize cartons
                 r'(?:كم\s*سعر|كم\s*يكلف|كم\s*ثمن)\s*(\d+)',  # "How much for X" patterns
                 r'(?:أريد|عايز|أبي|ابغي|أشتري)\s*(\d+)',  # "I want X" patterns
                 r'(\d+)\s*×',  # Multiplication sign
                 r'(\d+)\s*من',  # "X from" pattern
+                r'اختار\s*(\d+)',  # "I choose X" pattern
             ]
             
             message_lower = user_message.lower()
@@ -540,39 +709,72 @@ Reply with "relevant" if the message is related to water services, or "not_relev
             return {"error": f"Failed to search cities: {str(e)}"}
     
 
-    def check_city_availability(self, city_name: str, item_type: str, item_name: str) -> Dict[str, Any]:
-        """Check if a brand or product is available in a specific city"""
+    async def check_city_availability(self, city_name: str, item_type: str, item_name: str) -> Dict[str, Any]:
+        """Check if a brand or product is available in a specific city - Now with AI-powered brand extraction"""
         try:
             db = self._get_db_session()
             try:
-                # First get the city ID
+                # First get the city ID - try AI extraction if regular method fails
                 city_result = self.get_city_id_by_name(city_name)
                 if not city_result.get("success"):
-                    return {
-                        "success": False,
-                        "error": f"لم أجد مدينة باسم '{city_name}'. يرجى التحقق من الاسم.",
-                        "item_type": item_type,
-                        "item_name": item_name
-                    }
+                    # Try AI city extraction as fallback
+                    ai_city = await self._ai_extract_city_from_message(city_name)
+                    if ai_city:
+                        city_result = {
+                            "success": True,
+                            "city_id": ai_city["city_id"],
+                            "city_name": ai_city["city_name"],
+                            "city_name_en": ai_city["city_name_en"],
+                            "match_type": "ai_extracted"
+                        }
+                    else:
+                        return {
+                            "success": False,
+                            "error": f"لم أجد مدينة باسم '{city_name}'. يرجى التحقق من الاسم.",
+                            "item_type": item_type,
+                            "item_name": item_name
+                        }
                 
                 city_id = city_result["city_id"]
                 
                 if item_type == "brand":
+                    # Use AI to extract the actual brand name from user input
+                    # This handles cases like "امياه حلوه" → "حلوه"
+                    actual_brand_name = await self._ai_extract_brand_from_message(item_name)
+                    if not actual_brand_name:
+                        # Fallback to original input
+                        actual_brand_name = item_name
+                    
                     # Check if brand exists in this city
                     brands = data_api.get_brands_by_city(db, city_id)
+                    found_brand = None
+                    
+                    # First try exact match with AI-extracted brand name
                     for brand in brands:
-                        if item_name.lower() in brand["title"].lower():
-                            return {
-                                "success": True,
-                                "available": True,
-                                "city_name": city_result["city_name"],
-                                "item_type": item_type,
-                                "item_name": item_name,
-                                "brand_info": {
-                                    "id": brand["id"],
-                                    "title": brand["title"]
-                                }
+                        if actual_brand_name.lower() == brand["title"].lower():
+                            found_brand = brand
+                            break
+                    
+                    # If not found, try partial match
+                    if not found_brand:
+                        for brand in brands:
+                            if actual_brand_name.lower() in brand["title"].lower() or brand["title"].lower() in actual_brand_name.lower():
+                                found_brand = brand
+                                break
+                    
+                    if found_brand:
+                        return {
+                            "success": True,
+                            "available": True,
+                            "city_name": city_result["city_name"],
+                            "item_type": item_type,
+                            "item_name": item_name,
+                            "actual_brand_name": actual_brand_name,
+                            "brand_info": {
+                                "id": found_brand["id"],
+                                "title": found_brand["title"]
                             }
+                        }
                     
                     return {
                         "success": True,
@@ -580,7 +782,8 @@ Reply with "relevant" if the message is related to water services, or "not_relev
                         "city_name": city_result["city_name"],
                         "item_type": item_type,
                         "item_name": item_name,
-                        "message": f"للأسف، العلامة التجارية '{item_name}' غير متوفرة في {city_result['city_name']}"
+                        "actual_brand_name": actual_brand_name,
+                        "message": f"للأسف، العلامة التجارية '{actual_brand_name}' غير متوفرة في {city_result['city_name']}"
                     }
                 
                 elif item_type == "product":
@@ -627,32 +830,51 @@ Reply with "relevant" if the message is related to water services, or "not_relev
             logger.error(f"Error checking availability for {item_name} in {city_name}: {str(e)}")
             return {"error": f"حدث خطأ في التحقق من التوفر: {str(e)}"}
     
-    def find_brand_in_city(self, brand_name: str, city_id: int) -> Dict[str, Any]:
-        """Find if a specific brand exists in a city and return its products"""
+    async def find_brand_in_city(self, brand_name: str, city_id: int) -> Dict[str, Any]:
+        """Find if a specific brand exists in a city and return its products - Now with AI-powered brand matching"""
         try:
             db = self._get_db_session()
             try:
                 # Get all brands in the city
                 brands = data_api.get_brands_by_city(db, city_id)
                 
+                # Use AI to extract/correct the brand name first
+                actual_brand_name = await self._ai_extract_brand_from_message(brand_name)
+                if not actual_brand_name:
+                    actual_brand_name = brand_name  # Fallback to original
+                
                 # Find the brand by name (case insensitive search)
                 found_brand = None
+                
+                # First try exact match with AI-extracted name
                 for brand in brands:
-                    if brand_name.lower() in brand["title"].lower() or brand["title"].lower() in brand_name.lower():
+                    if actual_brand_name.lower() == brand["title"].lower():
                         found_brand = brand
                         break
                 
+                # If not found, try partial match
+                if not found_brand:
+                    for brand in brands:
+                        if actual_brand_name.lower() in brand["title"].lower() or brand["title"].lower() in actual_brand_name.lower():
+                            found_brand = brand
+                            break
+                
                 if not found_brand:
                     # Get city info for error message
-                    city_result = self.get_city_id_by_name(str(city_id))
-                    city_name = city_result.get("city_name", "المدينة المحددة")
+                    all_cities = data_api.get_all_cities(db)
+                    city_name = "المدينة المحددة"
+                    for city in all_cities:
+                        if city["id"] == city_id:
+                            city_name = city["name"]
+                            break
                     
                     return {
                         "success": False,
                         "brand_found": False,
                         "brand_name": brand_name,
+                        "ai_extracted_brand": actual_brand_name,
                         "city_id": city_id,
-                        "message": f"للأسف، العلامة التجارية '{brand_name}' غير متوفرة في {city_name}",
+                        "message": f"للأسف، العلامة التجارية '{actual_brand_name}' غير متوفرة في {city_name}",
                         "available_brands": [{"id": b["id"], "title": b["title"]} for b in brands[:5]]  # Show first 5 brands as alternatives
                     }
                 
@@ -676,6 +898,8 @@ Reply with "relevant" if the message is related to water services, or "not_relev
                         "id": found_brand["id"],
                         "title": found_brand["title"]
                     },
+                    "original_brand_input": brand_name,
+                    "ai_extracted_brand": actual_brand_name,
                     "city_id": city_id,
                     "products": filtered_products,
                     "product_count": len(filtered_products)
@@ -688,26 +912,44 @@ Reply with "relevant" if the message is related to water services, or "not_relev
             logger.error(f"Error finding brand {brand_name} in city {city_id}: {str(e)}")
             return {"error": f"حدث خطأ في البحث عن العلامة التجارية: {str(e)}"}
     
-    def get_products_by_brand_and_city(self, brand_name: str, city_name: str) -> Dict[str, Any]:
-        """Get products from a specific brand in a specific city"""
+    async def get_products_by_brand_and_city(self, brand_name: str, city_name: str) -> Dict[str, Any]:
+        """Get products from a specific brand in a specific city - Now with AI-powered extraction"""
         try:
-            # First get city ID
+            # First get city ID - try AI extraction if needed
             city_result = self.get_city_id_by_name(city_name)
             if not city_result.get("success"):
-                return city_result  # Return the error from city lookup
+                # Try AI city extraction as fallback
+                ai_city = await self._ai_extract_city_from_message(city_name)
+                if ai_city:
+                    city_result = {
+                        "success": True,
+                        "city_id": ai_city["city_id"],
+                        "city_name": ai_city["city_name"],
+                        "city_name_en": ai_city["city_name_en"],
+                        "match_type": "ai_extracted"
+                    }
+                else:
+                    return city_result  # Return the original error
             
             city_id = city_result["city_id"]
             
-            # Use find_brand_in_city to get the products
-            result = self.find_brand_in_city(brand_name, city_id)
+            # Use AI to extract actual brand name from user input
+            actual_brand_name = await self._ai_extract_brand_from_message(brand_name)
+            if not actual_brand_name:
+                actual_brand_name = brand_name  # Fallback to original
             
-            # Add city information to the result
+            # Use find_brand_in_city to get the products with the AI-extracted brand name
+            result = await self.find_brand_in_city(actual_brand_name, city_id)
+            
+            # Add city information and AI extraction info to the result
             if result.get("success"):
                 result["city_info"] = {
                     "city_id": city_id,
                     "city_name": city_result["city_name"],
                     "city_name_en": city_result["city_name_en"]
                 }
+                result["original_brand_input"] = brand_name
+                result["ai_extracted_brand"] = actual_brand_name
             
             return result
             
@@ -716,12 +958,12 @@ Reply with "relevant" if the message is related to water services, or "not_relev
             return {"error": f"حدث خطأ في البحث عن منتجات العلامة التجارية: {str(e)}"}
     
     def calculate_total_price(self, unit_price: float, quantity: int, product_name: str) -> Dict[str, Any]:
-        """Calculate total price for specific quantity of a product"""
+        """Calculate total price for specific quantity of a product - NOTE: Prices from API are per CARTON, not per unit"""
         try:
             if unit_price <= 0:
                 return {
                     "success": False,
-                    "error": "سعر الوحدة يجب أن يكون أكثر من صفر"
+                    "error": "سعر الكرتونة يجب أن يكون أكثر من صفر"
                 }
             
             if quantity <= 0:
@@ -730,29 +972,99 @@ Reply with "relevant" if the message is related to water services, or "not_relev
                     "error": "الكمية يجب أن تكون أكثر من صفر"
                 }
             
+            # API prices are per CARTON, so total = carton_price × number_of_cartons
             total_price = unit_price * quantity
             
             # Format numbers to be user-friendly
-            unit_price_formatted = f"{unit_price:.2f}".rstrip('0').rstrip('.')
+            carton_price_formatted = f"{unit_price:.2f}".rstrip('0').rstrip('.')
             total_price_formatted = f"{total_price:.2f}".rstrip('0').rstrip('.')
             
             return {
                 "success": True,
                 "product_name": product_name,
-                "unit_price": unit_price,
-                "quantity": quantity,
+                "carton_price": unit_price,  # This is actually carton price from API
+                "quantity_cartons": quantity,
                 "total_price": total_price,
                 "calculation_details": {
-                    "unit_price_formatted": unit_price_formatted,
+                    "carton_price_formatted": carton_price_formatted,
                     "total_price_formatted": total_price_formatted,
                     "currency": "ريال سعودي"
                 },
-                "summary": f"{product_name}: {quantity} وحدة × {unit_price_formatted} ريال = {total_price_formatted} ريال سعودي"
+                "summary": f"{product_name}: {quantity} كرتونة × {carton_price_formatted} ريال = {total_price_formatted} ريال سعودي",
+                "note": "السعر المعروض هو لكراتين كاملة وليس وحدات فردية"
             }
             
         except Exception as e:
             logger.error(f"Error calculating total price: {str(e)}")
             return {"error": f"حدث خطأ في حساب السعر الإجمالي: {str(e)}"}
+    
+    def _check_question_already_answered(self, user_message: str, conversation_history: List[Dict] = None) -> bool:
+        """Check if the user's question was already answered in recent conversation history"""
+        if not conversation_history or len(conversation_history) < 2:
+            return False
+        
+        try:
+            import re
+            
+            # Clean and normalize the current question
+            current_question = user_message.lower().strip()
+            
+            # Common question patterns that might be repeated
+            repeated_question_patterns = [
+                r'كم\s*الإجمالي',
+                r'كم\s*المجموع', 
+                r'كم\s*السعر\s*الكلي',
+                r'كم\s*التكلفة',
+                r'ما\s*هو\s*الإجمالي',
+                r'what.*total',
+                r'how.*much.*total',
+                r'total.*cost',
+                r'total.*price'
+            ]
+            
+            # Check if current message matches any repeated question pattern
+            is_repetitive_question = False
+            for pattern in repeated_question_patterns:
+                if re.search(pattern, current_question):
+                    is_repetitive_question = True
+                    break
+            
+            if not is_repetitive_question:
+                return False
+            
+            # Look for answers to similar questions in recent conversation history
+            # Check last 5 messages for pricing/total information
+            recent_messages = conversation_history[-5:]
+            
+            for msg in recent_messages:
+                content = msg.get('content', '').lower()
+                role = msg.get('role', '')
+                
+                # Skip user messages, only check bot responses
+                if role == 'user':
+                    continue
+                
+                # Check if the bot response contains pricing information
+                pricing_indicators = [
+                    r'\d+\s*ريال',  # Contains "X ريال"
+                    r'\d+\s*×\s*\d+',  # Contains multiplication (5 × 16)
+                    r'السعر\s*الإجمالي',  # Contains "total price"
+                    r'المجموع',  # Contains "total"
+                    r'الإجمالي',  # Contains "total"
+                    r'كرتونة\s*×',  # Contains "carton ×"
+                    r'\d+\s*كرتونة',  # Contains "X cartons"
+                ]
+                
+                for indicator in pricing_indicators:
+                    if re.search(indicator, content):
+                        print(f"🔄 Question already answered - found pricing info in recent conversation")
+                        return True
+            
+            return False
+            
+        except Exception as e:
+            logger.error(f"Error checking repeated questions: {str(e)}")
+            return False
     
     async def _classify_message_relevance(self, user_message: str, conversation_history: List[Dict] = None, user_language: str = 'ar') -> bool:
         """
@@ -828,22 +1140,40 @@ Classification:"""
         
         print("✅ Message is relevant to water delivery services")
         
-        max_function_calls = 3
+        # STEP 2: Check if this question was already answered in recent conversation
+        print("🔄 Checking for repeated questions...")
+        already_answered = self._check_question_already_answered(user_message, conversation_history)
+        
+        if already_answered:
+            print(f"🔄 Question already answered in recent conversation: {user_message[:50]}...")
+            # Return empty string to indicate no reply needed
+            return ""
+        
+        print("✅ Question is new or needs fresh answer")
+        
+        max_function_calls = 5
         function_call_count = 0
         
         try:
             # Check if we already have city information from current message or conversation history
             city_context = self._extract_city_from_context(user_message, conversation_history)
             
-            # Extract brand and quantity information for enhanced processing
-            brand_mentioned = self._extract_brand_from_message(user_message)
+            # Extract brand and quantity information for enhanced processing using AI
+            brand_mentioned = await self._ai_extract_brand_from_message(user_message)
             quantity_info = self._extract_quantity_from_message(user_message)
+            
+            # Also try AI city extraction from current message if context method didn't find anything
+            ai_city_context = None
+            if not city_context:
+                ai_city_context = await self._ai_extract_city_from_message(user_message)
+                if ai_city_context:
+                    city_context = ai_city_context
             
             # Log detection results
             if brand_mentioned:
                 print(f"🏷️ Brand detected in message: {brand_mentioned}")
             if quantity_info:
-                print(f"💰 Quantity detected: {quantity_info['quantity']} units")
+                print(f"💰 Quantity detected: {quantity_info['quantity']} cartons")
             if city_context:
                 print(f"📍 City detected: {city_context['city_name']} (from {city_context['found_in']})")
             
@@ -867,7 +1197,7 @@ Classification:"""
                     brand_info += "You need to ask for their city first to show products from this brand."
             
             if quantity_info:
-                quantity_info_text = f"\n\nQUANTITY CONTEXT: The customer asked about {quantity_info['quantity']} units. When you get product pricing, use calculate_total_price to show the total cost for this quantity."
+                quantity_info_text = f"\n\nQUANTITY CONTEXT: The customer asked about {quantity_info['quantity']} cartons. When you get product pricing, use calculate_total_price to show the total cost for this quantity. Remember: API prices are per CARTON, not per individual bottle."
             
             if user_language == 'en':
                 system_message = {
@@ -898,16 +1228,22 @@ CRITICAL WORKFLOW - MANDATORY ORDER:
 
 ✨ NEW SPECIAL CASES:
 
-🏷️ Brand Name Only Requests:
-- When customer mentions ONLY a brand name (like "Aquafina" or "Nova" or "Al-Hada"):
+🏷️ Brand Name Only Requests (with AI-powered extraction):
+- When customer mentions ONLY a brand name (like "Aquafina" or "Nova" or "Al-Hada" or variations like "امياه حلوه"):
+  - System now uses AI to extract correct brand names from different expressions and variations
   - If you know their city from context: use find_brand_in_city to show products from that brand in their city
   - If you don't know the city: ask "Which city are you in? I'll show you [brand name] products available there!"
 
 💰 Quantity and Price Calculations:
-- When customer asks about price for specific quantities (like "How much for 5 bottles of Aquafina?"):
-  - Get the unit price first
+- When customer asks about price for specific quantities (like "How much for 5 cartons of Aquafina?"):
+  - Get the carton price first (API prices are per CARTON, not per individual bottle)
   - Use calculate_total_price to compute total cost
-  - Show breakdown: "Unit price × Quantity = Total price"
+  - Show breakdown: "Carton price × Quantity = Total price"
+  - Important: Clarify to customer that prices are for full cartons, not individual bottles
+
+🔄 Avoid Repeated Answers:
+- If customer asks a question that was already answered in recent conversation (like "what's the total" after total was shown)
+- Don't reply to the same question again - system will automatically check and not send a response
 
 CITY DETECTION PRIORITY:
 1. Check if city is mentioned in current user message
@@ -929,9 +1265,10 @@ PROACTIVE CITY ASKING - When user asks about brands/products but no city is know
 - "Aquafina" (just brand name) → "Which city are you in? I'll show you Aquafina products available there!"
 
 Examples for Quantity Requests:
-- "How much for 5 Nova bottles?" → Get Nova bottle price, then calculate 5 × price
-- "I want 10 units of Al-Hada, how much?" → Get Al-Hada unit price, then calculate 10 × price
-- "If I buy 3 large Aquafina bottles?" → Get large Aquafina price, then calculate 3 × price
+- "How much for 5 Nova cartons?" → Get Nova carton price, then calculate 5 × price
+- "I want 10 cartons of Al-Hada, how much?" → Get Al-Hada carton price, then calculate 10 × price
+- "If I buy 3 large Aquafina cartons?" → Get large Aquafina carton price, then calculate 3 × price
+- Important: Always clarify to customer that prices are for full cartons, not individual bottles
 
 Typo and Spelling Handling:
 - Customers often make typos in city names (e.g., "Riyadh" variations)
@@ -973,7 +1310,7 @@ Be helpful, understanding, and respond exactly like a friendly human employee wo
                         brand_info_ar += "تحتاج لتسأل عن مدينتهم أولاً لعرض منتجات هذه العلامة التجارية."
                 
                 if quantity_info:
-                    quantity_info_ar = f"\n\nسياق الكمية: العميل سأل عن {quantity_info['quantity']} وحدة. عندما تحصل على أسعار المنتجات، استخدم calculate_total_price لعرض التكلفة الإجمالية لهذه الكمية."
+                    quantity_info_ar = f"\n\nسياق الكمية: العميل سأل عن {quantity_info['quantity']} كرتونة. عندما تحصل على أسعار المنتجات، استخدم calculate_total_price لعرض التكلفة الإجمالية لهذه الكمية. تذكر: أسعار API هي للكراتين وليس للقناني الفردية."
                 
                 system_message = {
                     "role": "system",
@@ -1003,16 +1340,22 @@ Be helpful, understanding, and respond exactly like a friendly human employee wo
 
 ✨ حالات خاصة جديدة:
 
-🏷️ طلبات العلامة التجارية فقط:
-- عندما يذكر العميل فقط اسم علامة تجارية (مثل "أكوافينا" أو "نوفا" أو "الهدا"):
+🏷️ طلبات العلامة التجارية فقط (مع استخراج ذكي):
+- عندما يذكر العميل فقط اسم علامة تجارية (مثل "أكوافينا" أو "نوفا" أو "الهدا" أو "امياه حلوه" أو "موية حلوه"):
+  - النظام الآن يستخدم الذكاء الاصطناعي لاستخراج اسم العلامة التجارية الصحيح من تعبيرات مختلفة
   - إذا كنت تعرف مدينته من السياق: استخدم find_brand_in_city لعرض منتجات هذه العلامة في مدينته
   - إذا لم تعرف المدينة: اسأل "في أي مدينة أنت؟ راح أعرض لك منتجات [اسم العلامة] المتاحة هناك!"
 
 💰 حسابات الكميات والأسعار:
-- عندما يسأل العميل عن سعر كمية محددة (مثل "كم سعر 5 قناني أكوافينا؟"):
-  - احصل على سعر الوحدة الواحدة أولاً
+- عندما يسأل العميل عن سعر كمية محددة (مثل "كم سعر 5 كراتين أكوافينا؟"):
+  - احصل على سعر الكرتونة الواحدة أولاً (الأسعار في API هي للكراتين وليس للوحدات الفردية)
   - استخدم calculate_total_price لحساب السعر الإجمالي
-  - اعرض التفاصيل: "سعر الوحدة × الكمية = السعر الإجمالي"
+  - اعرض التفاصيل: "سعر الكرتونة × الكمية = السعر الإجمالي"
+  - مهم: وضح للعميل أن السعر للكرتونة الكاملة وليس للقنينة الواحدة
+
+🔄 تجنب تكرار الإجابات:
+- إذا سأل العميل سؤال تمت إجابته في المحادثة السابقة (مثل "كم الإجمالي" بعد أن تم عرض الإجمالي)
+- لا ترد على نفس السؤال مرة أخرى - النظام سيتحقق تلقائياً ولن يرسل رد
 
 أولوية اكتشاف المدينة:
 1. تحقق إذا كانت المدينة مذكورة في رسالة العميل الحالية
@@ -1034,9 +1377,10 @@ Be helpful, understanding, and respond exactly like a friendly human employee wo
 - "أكوافينا" (فقط اسم العلامة) → "في أي مدينة أنت؟ راح أعرض لك منتجات أكوافينا المتاحة هناك!"
 
 أمثلة للتعامل مع طلبات الكميات:
-- "كم سعر 5 قناني نوفا؟" → احصل على سعر قنينة نوفا واحدة، ثم احسب 5 × السعر
-- "أريد 10 وحدات من الهدا، كم يكلف؟" → احصل على سعر وحدة الهدا، ثم احسب 10 × السعر
-- "لو أشتري 3 عبوات أكوافينا كبيرة؟" → احصل على سعر العبوة الكبيرة، ثم احسب 3 × السعر
+- "كم سعر 5 كراتين نوفا؟" → احصل على سعر كرتونة نوفا واحدة، ثم احسب 5 × السعر
+- "أريد 10 كراتين من الهدا، كم يكلف؟" → احصل على سعر كرتونة الهدا، ثم احسب 10 × السعر
+- "لو أشتري 3 كراتين أكوافينا كبيرة؟" → احصل على سعر كرتونة أكوافينا الكبيرة، ثم احسب 3 × السعر
+- مهم: وضح دائماً للعميل أن الأسعار للكراتين الكاملة وليس للقناني الفردية
 
 التعامل مع الأخطاء الإملائية:
 - العملاء غالباً يكتبون أسماء المدن بأخطاء إملائية (مثل "رياص" بدلاً من "رياض")
@@ -1143,7 +1487,11 @@ Be helpful, understanding, and respond exactly like a friendly human employee wo
                         # Call the requested function
                         if function_name in self.available_functions:
                             try:
-                                function_result = self.available_functions[function_name](**function_args)
+                                # Check if this is an async function
+                                if function_name in self.async_functions:
+                                    function_result = await self.available_functions[function_name](**function_args)
+                                else:
+                                    function_result = self.available_functions[function_name](**function_args)
                                 
                                 # Add function call and result to conversation
                                 messages.append({
