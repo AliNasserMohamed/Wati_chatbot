@@ -1287,7 +1287,6 @@ async def send_whatsapp_message(phone_number: str, message: str):
         print(f"📤 Sending WhatsApp message to {phone_number}")
         print(f"🔗 Using Wati API URL: {wati_api_url}")
         print(f"🔤 Original message: {message}")
-        print(f"🔤 Message bytes: {message.encode('utf-8')}")
         
         # URL encode the message to handle special characters, including Arabic
         encoded_message = urllib.parse.quote(message, safe='', encoding='utf-8')
@@ -1296,7 +1295,6 @@ async def send_whatsapp_message(phone_number: str, message: str):
         send_url = f"{wati_api_url}/sendSessionMessage/{phone_number}?messageText={encoded_message}"
         
         print(f"📡 Request URL: {send_url[:80]}...")  # Show partial URL for debugging
-        print(f"🔡 Encoded message: {encoded_message[:100]}...")  # Show partial encoded message
         
         # Headers based on working examples with proper UTF-8 support
         headers = {
