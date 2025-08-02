@@ -44,7 +44,7 @@ async def test_rate_limits():
             start_time = time.time()
             
             response = await client.chat.completions.create(
-                model="gpt-3.5-turbo",  # Use cheaper model for testing
+                model="gpt-4o-mini",  # Use same model as query agent
                 messages=[{"role": "user", "content": "Hello"}],
                 max_tokens=5
             )

@@ -197,7 +197,7 @@ python database/migrate_add_columns.py
 ## OpenAI Rate Limiting Configuration
 
 ### Understanding 429 Errors
-If you see "HTTP/1.1 429 Too Many Requests" errors, you've hit OpenAI's rate limits. This system makes multiple API calls per user message:
+If you see "HTTP/1.1 429 Too Many Requests" errors, you've hit OpenAI's rate limits. This system makes multiple API calls per user message using GPT-4o Mini:
 - Message relevance classification
 - Main query processing with function calls
 - Final response generation
