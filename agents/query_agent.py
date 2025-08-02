@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from utils.language_utils import language_handler
 from services.data_api import data_api
 from database.db_utils import get_db
+import random
 
 # Load environment variables
 load_dotenv()
@@ -46,6 +47,16 @@ class QueryAgent:
             raise ValueError("OPENAI_API_KEY environment variable is required")
         
         self.openai_client = AsyncOpenAI(api_key=openai_api_key)
+        
+        # Rate limiting settings (configurable via environment variables)
+        self.last_request_time = 0
+        self.min_request_interval = float(os.getenv("OPENAI_MIN_REQUEST_INTERVAL", "0.5"))  # Default 500ms between requests
+        self.max_retries = int(os.getenv("OPENAI_MAX_RETRIES", "3"))  # Default 3 retries
+        self.base_delay = float(os.getenv("OPENAI_BASE_DELAY", "1"))  # Default 1 second base delay
+        
+        # Simple classification cache to reduce API calls
+        self.classification_cache = {}
+        self.cache_max_size = 1000
         
         # Define available functions for the LLM
         self.available_functions = {
@@ -226,6 +237,54 @@ Reply with "relevant" if the message is related to products, prices, brands, and
                 }
             }
         ]
+    
+    async def _rate_limit_delay(self):
+        """Ensure minimum time between API requests"""
+        current_time = time.time()
+        time_since_last = current_time - self.last_request_time
+        if time_since_last < self.min_request_interval:
+            delay = self.min_request_interval - time_since_last
+            await asyncio.sleep(delay)
+        self.last_request_time = time.time()
+    
+    async def _call_openai_with_retry(self, **kwargs):
+        """Make OpenAI API call with exponential backoff retry logic"""
+        for attempt in range(self.max_retries + 1):
+            try:
+                # Apply rate limiting
+                await self._rate_limit_delay()
+                
+                # Make the API call
+                response = await self.openai_client.chat.completions.create(**kwargs)
+                return response
+                
+            except Exception as e:
+                error_str = str(e)
+                
+                # Handle 429 rate limit errors specifically
+                if "429" in error_str or "rate limit" in error_str.lower():
+                    if attempt < self.max_retries:
+                        # Exponential backoff with jitter
+                        delay = (self.base_delay * (2 ** attempt)) + random.uniform(0, 1)
+                        logger.warning(f"Rate limit hit, attempt {attempt + 1}/{self.max_retries + 1}. Retrying in {delay:.2f}s...")
+                        await asyncio.sleep(delay)
+                        continue
+                    else:
+                        logger.error("Max retries reached for rate limit error")
+                        raise Exception("OpenAI rate limit exceeded. Please try again in a few minutes.")
+                
+                # Handle other errors
+                elif attempt < self.max_retries:
+                    delay = 1.0 + random.uniform(0, 0.5)  # Small delay for other errors
+                    logger.warning(f"API error on attempt {attempt + 1}: {error_str}. Retrying in {delay:.2f}s...")
+                    await asyncio.sleep(delay)
+                    continue
+                else:
+                    # Max retries reached, re-raise the error
+                    raise e
+        
+        # This should never be reached, but just in case
+        raise Exception("Unexpected error in API retry logic")
     
     def _get_db_session(self):
         """Get database session"""
@@ -725,6 +784,12 @@ Reply with "relevant" if the message is related to products, prices, brands, and
                 logger.info(f"Message contains URL, marking as not relevant: {user_message[:50]}...")
                 return False
             
+            # Check cache first to avoid duplicate API calls
+            cache_key = f"{user_message.strip().lower()}_{user_language}"
+            if cache_key in self.classification_cache:
+                logger.info(f"Using cached classification for: {user_message[:30]}...")
+                return self.classification_cache[cache_key]
+            
             # Prepare context from conversation history
             context = ""
             if conversation_history:
@@ -742,9 +807,9 @@ Current message to classify: "{user_message}"
 
 Classification:"""
             
-            # Call OpenAI for classification
-            response = await self.openai_client.chat.completions.create(
-                model="gpt-4",
+            # Call OpenAI for classification with retry logic
+            response = await self._call_openai_with_retry(
+                model="gpt-3.5-turbo",
                 messages=[
                     {"role": "system", "content": classification_prompt},
                     {"role": "user", "content": f"{context}\nCurrent message: {user_message}"}
@@ -758,8 +823,19 @@ Classification:"""
             # Log the classification
             logger.info(f"Message classification for '{user_message[:50]}...': {classification_result}")
             
+            # Determine relevance and cache the result
+            is_relevant = "relevant" in classification_result
+            
+            # Cache the result (with size limit)
+            if len(self.classification_cache) >= self.cache_max_size:
+                # Remove oldest entry (simple FIFO)
+                oldest_key = next(iter(self.classification_cache))
+                del self.classification_cache[oldest_key]
+            
+            self.classification_cache[cache_key] = is_relevant
+            
             # Return True if relevant, False if not relevant
-            return "relevant" in classification_result
+            return is_relevant
             
         except Exception as e:
             logger.error(f"Error classifying message relevance: {str(e)}")
@@ -1077,7 +1153,7 @@ Be helpful, understanding, and respond exactly like a friendly human employee wo
                     if LOGGING_AVAILABLE and journey_id:
                         prompt_text = "\n".join([f"{msg['role']}: {msg.get('content', 'Function call')}" for msg in messages[-3:]])  # Last 3 messages for context
                         
-                    response = await self.openai_client.chat.completions.create(
+                    response = await self._call_openai_with_retry(
                         model="gpt-4",
                         messages=messages,
                         functions=self.function_definitions,
@@ -1175,7 +1251,7 @@ Be helpful, understanding, and respond exactly like a friendly human employee wo
             
             # If we reached max function calls, get final response
             try:
-                final_response = await self.openai_client.chat.completions.create(
+                final_response = await self._call_openai_with_retry(
                     model="gpt-4",
                     messages=messages,
                     temperature=0.3,

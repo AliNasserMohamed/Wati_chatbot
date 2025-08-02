@@ -193,3 +193,45 @@ python database/migrate_add_columns.py
 3. Commit your changes: `git commit -m 'Add feature'`
 4. Push to the branch: `git push origin feature-name`
 5. Submit a pull request 
+
+## OpenAI Rate Limiting Configuration
+
+### Understanding 429 Errors
+If you see "HTTP/1.1 429 Too Many Requests" errors, you've hit OpenAI's rate limits. This system makes multiple API calls per user message:
+- Message relevance classification
+- Main query processing with function calls
+- Final response generation
+
+### Configure Rate Limits by Plan
+
+**Free Tier (3 RPM):**
+```env
+OPENAI_MIN_REQUEST_INTERVAL=20    # 20 seconds between requests
+OPENAI_MAX_RETRIES=5              # More retries with longer delays
+OPENAI_BASE_DELAY=2               # Longer initial delay
+```
+
+**Paid Tier ($5+ spent):**
+```env
+OPENAI_MIN_REQUEST_INTERVAL=0.5   # 0.5 seconds between requests (120 RPM)
+OPENAI_MAX_RETRIES=3              # Standard retries
+OPENAI_BASE_DELAY=1               # Standard delay
+```
+
+**High Volume Usage:**
+```env
+OPENAI_MIN_REQUEST_INTERVAL=0.1   # Very fast requests
+OPENAI_MAX_RETRIES=3
+OPENAI_BASE_DELAY=0.5
+```
+
+### Additional Optimizations
+
+1. **Caching**: The system now caches classification results to reduce duplicate API calls
+2. **Exponential Backoff**: Automatic retry with increasing delays
+3. **Smart Rate Limiting**: Enforces minimum time between requests
+
+### Monitoring Usage
+- Check your OpenAI usage dashboard: https://platform.openai.com/usage
+- Monitor logs for rate limit warnings
+- Adjust settings based on your actual usage patterns 
