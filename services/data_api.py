@@ -51,22 +51,96 @@ class DataAPIService:
     
     @staticmethod
     def search_cities(db: Session, query: str) -> List[Dict[str, Any]]:
-        """Search cities by name - simplified response"""
+        """Search cities by name with special Riyadh regions handling - simplified response"""
+        query_normalized = query.strip().lower()
+        
+        # Special handling for Riyadh regions - prioritize exact matches
+        riyadh_regions = {
+            "شمال الرياض": ["شمال الرياض", "north riyadh", "الرياض الشمالي"],
+            "جنوب الرياض": ["جنوب الرياض", "south riyadh", "الرياض الجنوبي"], 
+            "غرب الرياض": ["غرب الرياض", "west riyadh", "الرياض الغربي"],
+            "شرق الرياض": ["شرق الرياض", "east riyadh", "الرياض الشرقي"],
+            "الرياض": ["الرياض", "riyadh", "رياض"]
+        }
+        
+        # Check for Riyadh regions with priority handling
+        for region_name, variations in riyadh_regions.items():
+            for variation in variations:
+                if query_normalized == variation.lower():
+                    # Find exact match for this specific region
+                    exact_city = db.query(City).filter(City.name == region_name).first()
+                    if exact_city:
+                        return [{
+                            "id": exact_city.id,
+                            "external_id": exact_city.external_id,
+                            "name": exact_city.name,
+                            "name_en": exact_city.name_en or "",
+                            "match_type": "exact_region"
+                        }]
+        
+        # If user searches for just "الرياض" or "riyadh", return main Riyadh first, then regions
+        if query_normalized in ["الرياض", "riyadh", "رياض"]:
+            results = []
+            
+            # Add main Riyadh first
+            main_riyadh = db.query(City).filter(City.name == "الرياض").first()
+            if main_riyadh:
+                results.append({
+                    "id": main_riyadh.id,
+                    "external_id": main_riyadh.external_id,
+                    "name": main_riyadh.name,
+                    "name_en": main_riyadh.name_en or "",
+                    "match_type": "main_city"
+                })
+            
+            # Then add Riyadh regions
+            riyadh_region_names = ["شمال الرياض", "جنوب الرياض", "غرب الرياض", "شرق الرياض"]
+            region_cities = db.query(City).filter(City.name.in_(riyadh_region_names)).all()
+            for city in region_cities:
+                results.append({
+                    "id": city.id,
+                    "external_id": city.external_id,
+                    "name": city.name,
+                    "name_en": city.name_en or "",
+                    "match_type": "region"
+                })
+            
+            if results:
+                return results
+        
+        # Regular search for other cities
         cities = db.query(City).filter(
             City.name.ilike(f"%{query}%") | 
             City.name_en.ilike(f"%{query}%") |
             City.title.ilike(f"%{query}%")
         ).all()
         
-        return [
-            {
-                "id": city.id,              # Now matches external ID
+        # Sort results: exact matches first, then partial matches
+        exact_matches = []
+        partial_matches = []
+        
+        for city in cities:
+            city_name_lower = city.name.lower() if city.name else ""
+            city_name_en_lower = city.name_en.lower() if city.name_en else ""
+            
+            city_data = {
+                "id": city.id,
                 "external_id": city.external_id,
-                "name": city.name,          # Arabic name
-                "name_en": city.name_en     # English name
+                "name": city.name,
+                "name_en": city.name_en or ""
             }
-            for city in cities
-        ]
+            
+            # Check for exact matches
+            if (query_normalized == city_name_lower or 
+                query_normalized == city_name_en_lower):
+                city_data["match_type"] = "exact"
+                exact_matches.append(city_data)
+            else:
+                city_data["match_type"] = "partial"
+                partial_matches.append(city_data)
+        
+        # Return exact matches first, then partial matches
+        return exact_matches + partial_matches
     
     @staticmethod
     def get_brands_by_city(db: Session, city_id: int) -> List[Dict[str, Any]]:
