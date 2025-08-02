@@ -296,13 +296,19 @@ Reply with "relevant" if the message is related to products, prices, brands, and
     def _extract_brand_from_context(self, user_message: str, conversation_history: List[Dict] = None, city_id: int = None) -> Optional[Dict[str, Any]]:
         """Extract brand information from current message and conversation history
         IMPORTANT: Only returns brands if city_id is provided (city must be known first)
+        IMPORTANT: Ignores size terms like ابو ربع, ابو نص, ابو ريال as they are NOT brand names
         """
         # Do not extract brands without knowing the city first
         if not city_id:
             return None
         
         # Size terms that should NEVER be treated as brand names
-        size_terms = ["ابو ربع", "ابو نص", "ابو ريال", "ابو ريالين", "أبو ربع", "أبو نص", "أبو ريال", "أبو ريالين"]
+        size_terms = ["ابو ربع", "ابو نص", "ابو ريال", "ابو ريالين"]
+        
+        # Check if the message only contains size terms - if so, don't extract any brand
+        message_lower = user_message.lower()
+        if any(size_term in message_lower for size_term in size_terms) and not any(brand_indicator in message_lower for brand_indicator in ["نستله", "أكوافينا", "العين", "القصيم", "المراعي"]):
+            return None
             
         try:
             db = self._get_db_session()
@@ -315,10 +321,6 @@ Reply with "relevant" if the message is related to products, prices, brands, and
                     current_content = user_message.lower()
                     for brand in brands:
                         brand_title = brand.get("title", "").lower()
-                        
-                        # IMPORTANT: Skip if brand title is actually a size term
-                        if brand_title in [term.lower() for term in size_terms]:
-                            continue
                         
                         if brand_title and brand_title in current_content:
                             return {
@@ -336,10 +338,6 @@ Reply with "relevant" if the message is related to products, prices, brands, and
                         for brand in brands:
                             brand_title = brand.get("title", "").lower()
                             
-                            # IMPORTANT: Skip if brand title is actually a size term
-                            if brand_title in [term.lower() for term in size_terms]:
-                                continue
-                            
                             if brand_title and brand_title in content:
                                 return {
                                     "brand_id": brand["id"],
@@ -354,104 +352,26 @@ Reply with "relevant" if the message is related to products, prices, brands, and
             logger.error(f"Error extracting brand from context: {str(e)}")
             return None
 
-    def _detect_response_to_question(self, user_message: str, conversation_history: List[Dict] = None) -> Dict[str, Any]:
-        """
-        Enhanced method to detect if user is responding to a previous question
-        Returns details about what question they're responding to
-        """
+    def _check_for_yes_response(self, user_message: str, conversation_history: List[Dict] = None) -> bool:
+        """Check if user is responding with yes to a previous product question"""
         if not conversation_history:
-            return {"is_response": False}
+            return False
         
-        # Expanded response words
-        yes_words = ["نعم", "أي", "أيوة", "اي", "اه", "ايه", "yes", "yeah", "yep", "sure", "ok", "okay"]
+        # Check if current message is a yes response
+        yes_words = ["نعم", "أي", "أيوة", "اي", "yes", "yeah", "yep", "sure", "ok", "okay"]
         user_msg_lower = user_message.lower().strip()
         
-        # Check if this is a yes response
-        is_yes_response = user_msg_lower in yes_words
+        if user_msg_lower in yes_words:
+            # Check if the last bot message was asking about a product
+            for message in reversed(conversation_history[-3:]):  # Check last 3 messages
+                if message.get("role") == "assistant":
+                    content = message.get("content", "").lower()
+                    # Check if the bot asked about needing a product or mentioned a price
+                    if any(phrase in content for phrase in ["تحتاج", "تريد", "هل تريد", "هل تحتاج", "السعر", "الثمن", "do you need", "would you like", "price", "cost"]):
+                        return True
+            return True  # If user says yes in context of water conversation, it's likely relevant
         
-        # Check if user mentioned a brand name directly (which could be a response)
-        is_brand_mention = False
-        mentioned_brand = None
-        
-        # Get brands from database to check if user mentioned one
-        try:
-            db = self._get_db_session()
-            try:
-                all_cities = data_api.get_all_cities(db)
-                for city in all_cities:
-                    brands = data_api.get_brands_by_city(db, city["id"])
-                    for brand in brands:
-                        brand_title = brand.get("title", "").lower()
-                        if brand_title and brand_title in user_msg_lower:
-                            is_brand_mention = True
-                            mentioned_brand = brand["title"]
-                            break
-                    if is_brand_mention:
-                        break
-            finally:
-                db.close()
-        except Exception as e:
-            logger.error(f"Error checking for brand mention: {str(e)}")
-        
-        # If neither yes response nor brand mention, not a response
-        if not is_yes_response and not is_brand_mention:
-            return {"is_response": False}
-        
-        # Check what question they might be responding to
-        for message in reversed(conversation_history[-5:]):  # Check last 5 messages
-            if message.get("role") == "assistant":
-                content = message.get("content", "").lower()
-                
-                # Check for different types of questions
-                if "متواجد باي مدينة" in content or "في أي مدينة" in content:
-                    return {
-                        "is_response": True,
-                        "response_type": "city_question",
-                        "question_asked": "city",
-                        "is_yes": is_yes_response,
-                        "mentioned_brand": mentioned_brand,
-                        "message": "The user is responding to a city location question"
-                    }
-                
-                elif "اي ماركة" in content or "أي علامة" in content or "شركة تريد" in content:
-                    return {
-                        "is_response": True,
-                        "response_type": "brand_question", 
-                        "question_asked": "brand",
-                        "is_yes": is_yes_response,
-                        "mentioned_brand": mentioned_brand,
-                        "message": "The user is responding to a brand selection question"
-                    }
-                
-                elif any(phrase in content for phrase in ["تحتاج", "تريد", "هل تريد", "هل تحتاج", "السعر", "الثمن"]):
-                    return {
-                        "is_response": True,
-                        "response_type": "product_question",
-                        "question_asked": "product",
-                        "is_yes": is_yes_response,
-                        "mentioned_brand": mentioned_brand,
-                        "message": "The user is responding to a product or price question"
-                    }
-                
-                elif any(phrase in content for phrase in ["متوفر", "available", "يتوفر"]):
-                    return {
-                        "is_response": True,
-                        "response_type": "availability_question",
-                        "question_asked": "availability",
-                        "is_yes": is_yes_response,
-                        "mentioned_brand": mentioned_brand,
-                        "message": "The user is responding to an availability question"
-                    }
-        
-        # Default: likely a response but unclear to what
-        return {
-            "is_response": True,
-            "response_type": "general_response",
-            "question_asked": "unknown",
-            "is_yes": is_yes_response,
-            "mentioned_brand": mentioned_brand,
-            "message": "The user appears to be responding to a previous question"
-        }
+        return False
 
     def _check_for_total_price_question(self, user_message: str) -> bool:
         """Check if user is asking about total prices or price lists"""
@@ -719,7 +639,7 @@ Classification:"""
             
             # Call OpenAI for classification
             response = await self.openai_client.chat.completions.create(
-                model="gpt-3.5-turbo",
+                model="gpt-4",
                 messages=[
                     {"role": "system", "content": classification_prompt},
                     {"role": "user", "content": f"{context}\nCurrent message: {user_message}"}
@@ -769,13 +689,9 @@ Classification:"""
             else:
                 return "You can find all products and prices in our app: https://onelink.to/abar_app or on our website: https://abar.app/en/store/"
 
-        # STEP 3: Check if this is a response to a previous question
-        response_context = self._detect_response_to_question(user_message, conversation_history)
-        if response_context["is_response"]:
-            print(f"✅ Detected response to previous question: {response_context['message']}")
-            print(f"   Response type: {response_context['response_type']}")
-            print(f"   Is yes: {response_context['is_yes']}")
-            print(f"   Mentioned brand: {response_context.get('mentioned_brand')}")
+        # STEP 3: Check if this is a "yes" response to a previous product question
+        if self._check_for_yes_response(user_message, conversation_history):
+            print("✅ Detected 'yes' response - handling product confirmation")
         
         max_function_calls = 5
         function_call_count = 0
@@ -797,7 +713,6 @@ Classification:"""
             # System message with instructions based on user language
             city_info = ""
             brand_info = ""
-            response_info = ""
             
             if city_context:
                 found_where = "current message" if city_context['found_in'] == "current_message" else "conversation history"
@@ -807,13 +722,10 @@ Classification:"""
                 found_where = "current message" if brand_context['found_in'] == "current_message" else "conversation history"
                 brand_info = f"\n\nBRAND CONTEXT: The customer mentioned '{brand_context['brand_title']}' - detected from {found_where}. If you know both city and brand, you can directly show products for this brand in this city."
             
-            if response_context["is_response"]:
-                response_info = f"\n\nRESPONSE CONTEXT: The customer is responding to a previous question. Response type: {response_context['response_type']}. Question asked: {response_context['question_asked']}. Is yes response: {response_context['is_yes']}. Mentioned brand: {response_context.get('mentioned_brand')}. You should answer the question they are responding to directly without repeating the same question."
-            
             if user_language == 'en':
                 system_message = {
                     "role": "system",
-                    "content": f"""You are a friendly customer service employee at Abar Water Delivery Company in Saudi Arabia.{city_info}{brand_info}{response_info}
+                    "content": f"""You are a friendly customer service employee at Abar Water Delivery Company in Saudi Arabia.{city_info}{brand_info}
 
 Your job is to help customers with:
 1. Finding available cities for water delivery service
@@ -896,7 +808,6 @@ Be helpful, understanding, and respond exactly like a friendly human employee wo
             else:
                 city_info_ar = ""
                 brand_info_ar = ""
-                response_info_ar = ""
                 
                 if city_context:
                     found_where_ar = "الرسالة الحالية" if city_context['found_in'] == "current_message" else "تاريخ المحادثة"
@@ -906,20 +817,9 @@ Be helpful, understanding, and respond exactly like a friendly human employee wo
                     found_where_ar = "الرسالة الحالية" if brand_context['found_in'] == "current_message" else "تاريخ المحادثة"
                     brand_info_ar = f"\n\nسياق العلامة التجارية: العميل ذكر '{brand_context['brand_title']}' - تم اكتشافها من {found_where_ar}. إذا كنت تعرف المدينة والعلامة التجارية، يمكنك عرض منتجات هذه العلامة في هذه المدينة مباشرة."
                 
-                if response_context["is_response"]:
-                    response_type_ar = {
-                        "city_question": "سؤال عن المدينة",
-                        "brand_question": "سؤال عن العلامة التجارية", 
-                        "product_question": "سؤال عن المنتج",
-                        "availability_question": "سؤال عن التوفر",
-                        "general_response": "رد عام"
-                    }.get(response_context['response_type'], "رد على سؤال")
-                    
-                    response_info_ar = f"\n\nسياق الرد: العميل يرد على سؤال سابق. نوع الرد: {response_type_ar}. السؤال المطروح: {response_context['question_asked']}. هل قال نعم: {response_context['is_yes']}. العلامة التجارية المذكورة: {response_context.get('mentioned_brand') or 'لا توجد'}. يجب أن تجيب على السؤال الذي يرد عليه مباشرة بدون إعادة طرح نفس السؤال."
-                
                 system_message = {
                     "role": "system",
-                    "content": f"""أنت موظف خدمة عملاء ودود في شركة أبار لتوصيل المياه في السعودية.{city_info_ar}{brand_info_ar}{response_info_ar}
+                    "content": f"""أنت موظف خدمة عملاء ودود في شركة أبار لتوصيل المياه في السعودية.{city_info_ar}{brand_info_ar}
 
 وظيفتك مساعدة العملاء في:
 1. إيجاد المدن المتاحة لخدمة توصيل المياه
@@ -937,25 +837,15 @@ Be helpful, understanding, and respond exactly like a friendly human employee wo
 سير العمل المحسن - استخراج السياق الذكي:
 🚨 اتبع دائماً هذا التسلسل لكن استخدم السياق المستخرج: المدينة → العلامة التجارية → المنتجات → الرد
 
-🚨🚨🚨 تعليمات مهمة جداً حول الأحجام - اقرأ بعناية:
-⚠️ "ابو ربع" و "ابو نص" و "ابو ريال" و "ابو ريالين" هي أحجام المياه وليست أسماء علامات تجارية أبداً!
-⚠️ لا تتعامل مع هذه الكلمات كأسماء شركات أو علامات تجارية
-⚠️ هذه مصطلحات شعبية للأحجام فقط:
-  - ابو ربع = حجم ٢٠٠-٢٥٠ مل
-  - ابو نص = حجم ٣٠٠-٣٣٠ مل  
-  - ابو ريال = حجم ٥٥٠-٦٠٠ مل
-  - ابو ريالين = حجم ١.٥ لتر
-⚠️ عندما يذكر المستخدم هذه المصطلحات، فهو يسأل عن أسعار المياه بهذه الأحجام
-⚠️ يجب أن تسأل عن  المدينة ثم العلامة التجارية أولاً   للحصول على الأسعار
+🚨 تعليمات صارمة حول الأحجام - مهم جداً:
+- "ابو ربع" = حجم ٢٠٠-٢٥٠ مل (ليس علامة تجارية)
+- "ابو نص" = حجم ٣٣٠-٣٠٠ مل (ليس علامة تجارية)  
+- "ابو ريال" = حجم ٦٠٠-٥٥٠ مل (ليس علامة تجارية)
+- "ابو ريالين" = حجم ١.٥ لتر (ليس علامة تجارية)
 
-🚨🚨🚨 التعامل مع ردود العملاء على الأسئلة:
-⚠️ عندما يقول العميل "نعم" أو "أي" أو "اه" أو "ايوة" أو يذكر اسم علامة تجارية مباشرة، فهم أن هذا رد على سؤال سابق
-⚠️ يجب أن تجيب على السؤال الذي يرد عليه العميل مباشرة:
-  - إذا سألت عن المدينة وقال "الرياض" → استخدم الرياض وانتقل للخطوة التالية
-  - إذا سألت عن العلامة التجارية وقال "نستله" → استخدم نستله وأعرض منتجاتها
-  - إذا سألت عن منتج وقال "نعم" → أعرض تفاصيل هذا المنتج والسعر
-  - إذا عرضت منتجات وقال "أي" → اعتبره موافقة وأعطه المعلومات
-⚠️ لا تعيد طرح نفس السؤال مرة أخرى إذا أجاب العميل عليه
+هذه كلها أحجام مياه وليست أسماء علامات تجارية على الإطلاق. لا تحاول البحث عنها كعلامات تجارية أبداً.
+عندما يذكرها المستخدم، افهم أنه يتكلم عن حجم المياه وليس عن علامة تجارية.
+المستخدمون عادة يسألون عن أسعار هذه الأحجام وليس عن وجودها.
 
 التعامل الذكي مع العلامات التجارية:
 - إذا ذكر العميل علامة تجارية فقط (مثل "نستله"، "أكوافينا")، استخرج المدينة من السياق
@@ -1056,7 +946,7 @@ Be helpful, understanding, and respond exactly like a friendly human employee wo
                         prompt_text = "\n".join([f"{msg['role']}: {msg.get('content', 'Function call')}" for msg in messages[-3:]])  # Last 3 messages for context
                         
                     response = await self.openai_client.chat.completions.create(
-                        model="gpt-3.5-turbo",
+                        model="gpt-4",
                         messages=messages,
                         functions=self.function_definitions,
                         function_call="auto",
@@ -1081,7 +971,7 @@ Be helpful, understanding, and respond exactly like a friendly human employee wo
                             llm_type="openai",
                             prompt=prompt_text,
                             response=message.content or f"Function call: {message.function_call.name}" if message.function_call else "",
-                            model="gpt-3.5-turbo",
+                            model="gpt-4",
                             function_calls=function_calls_info,
                             duration_ms=api_duration,
                             tokens_used={"total_tokens": response.usage.total_tokens if response.usage else None}
@@ -1154,7 +1044,7 @@ Be helpful, understanding, and respond exactly like a friendly human employee wo
             # If we reached max function calls, get final response
             try:
                 final_response = await self.openai_client.chat.completions.create(
-                    model="gpt-3.5-turbo",
+                    model="gpt-4",
                     messages=messages,
                     temperature=0.3,
                     max_tokens=400
