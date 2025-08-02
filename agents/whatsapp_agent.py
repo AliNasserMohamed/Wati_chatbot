@@ -55,7 +55,7 @@ class WhatsAppAgent:
             
         self.chat_model = ChatOpenAI(
             temperature=0.7,
-            model="gpt-3.5-turbo",
+            model="gpt-4o",
             api_key=self.openai_api_key  # Explicitly pass the API key
         )
         
