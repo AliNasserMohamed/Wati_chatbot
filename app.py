@@ -5,7 +5,6 @@ from fastapi.templating import Jinja2Templates
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.responses import Response
-from starlette.requests import ClientDisconnect
 from typing import Optional, List
 from dotenv import load_dotenv
 import uvicorn
@@ -159,14 +158,18 @@ async def verify_webhook(
     
     raise HTTPException(status_code=403, detail="Verification failed")
 
-# Async processing function to handle webhook data in background
-async def process_webhook_async(data: dict, db):
-    """Process webhook data asynchronously after immediate response to Wati"""
-    journey_id = None
+# Main webhook endpoint to receive WhatsApp messages from Wati
+@app.post("/webhook")
+async def webhook(request: Request, db=Depends(get_db)):
+    """Handle incoming WhatsApp messages from Wati webhook"""
+    # Start timing the webhook processing
     webhook_start_time = time.time()
+    journey_id = None
     
     try:
-        # Extract basic message information
+        data = await request.json()
+        print(f"🔍 Received data: {data}")
+        # Extract basic message information for logging
         phone_number = data.get("waId")
         message_text = data.get("text", "")
         wati_message_id = data.get("id")
@@ -182,7 +185,7 @@ async def process_webhook_async(data: dict, db):
         )
         
         # Debug: Print webhook data to understand structure
-        print(f"🔍 Processing webhook from: {data.get('waId', 'Unknown')}")
+        print(f"🔍 Webhook received from: {data.get('waId', 'Unknown')}")
         print(f"   Message ID: {data.get('id', 'None')}")
         print(f"   Type: {data.get('type', 'Unknown')}")
         print(f"   Event Type: {data.get('eventType', 'None')}")
@@ -190,12 +193,17 @@ async def process_webhook_async(data: dict, db):
         print(f"   From Me: {data.get('fromMe', False)}")
         print(f"   Text: {data.get('text', 'N/A')[:100]}...")
         
+        # Extract message data
+        phone_number = data.get("waId")
+        message_type = data.get("type", "text")  # Can be text, audio, etc.
+        wati_message_id = data.get("id")  # Extract Wati message ID
+        
         # 🚨 CRITICAL: Check message type and ownership to prevent infinite loops
         event_type = data.get("eventType", "")
         is_session_message_sent = event_type == "sessionMessageSent"
         
         # Handle bot/agent replies (sessionMessageSent) - save to database but don't process
-        if is_session_message_sent:
+        if is_session_message_sent :
             message_journey_logger.add_step(
                 journey_id=journey_id,
                 step_type="message_filter",
@@ -212,6 +220,7 @@ async def process_webhook_async(data: dict, db):
                 await save_bot_reply_to_database(data, journey_id)
                 message_journey_logger.complete_journey(journey_id, status="saved_bot_reply")
                 print(f"💾 Bot/agent reply saved to database - Not processing through agents")
+                print(f"   eventType: {event_type}, ")
             except Exception as e:
                 message_journey_logger.log_error(
                     journey_id=journey_id,
@@ -220,7 +229,8 @@ async def process_webhook_async(data: dict, db):
                     step="save_bot_reply"
                 )
                 print(f"❌ Error saving bot reply: {str(e)}")
-            return
+            
+            return {"status": "success", "message": "Bot reply saved - not processed"}
         
         # Check if this is a template reply from WATI (button reply, list reply, etc.)
         button_reply = data.get("buttonReply")
@@ -231,38 +241,25 @@ async def process_webhook_async(data: dict, db):
             message_journey_logger.add_step(
                 journey_id=journey_id,
                 step_type="message_filter",
-                description=f"Template reply detected: button_reply={button_reply}, list_reply={list_reply}, interactive_button_reply={interactive_button_reply}",
+                description="Skipped: Template reply detected",
                 data={
                     "button_reply": button_reply,
                     "list_reply": list_reply,
-                    "interactive_button_reply": interactive_button_reply,
-                    "message_type": message_type
+                    "interactive_button_reply": interactive_button_reply
                 },
-                status="template_reply"
+                status="skipped"
             )
-            
-            # Get the actual message text from the template reply
-            extracted_text = ""
+            message_journey_logger.complete_journey(journey_id, status="skipped_template_reply")
+            print(f"🔘 Template reply detected from WATI - Skipping processing")
+            print(f"   Type: {message_type}")
             if button_reply:
-                extracted_text = button_reply.get("text", "")
-            elif list_reply:
-                extracted_text = list_reply.get("title", "")
-            elif interactive_button_reply:
-                extracted_text = interactive_button_reply.get("text", "")
+                print(f"   Button Reply: {button_reply.get('text', 'N/A')}")
+            if list_reply:
+                print(f"   List Reply: {list_reply}")
+            if interactive_button_reply:
+                print(f"   Interactive Button Reply: {interactive_button_reply}")
             
-            print(f"🎯 Template reply from {phone_number}: {extracted_text}")
-            
-            # Update the data with extracted text for processing
-            data["text"] = extracted_text
-            data["original_message_type"] = message_type
-            data["message_type"] = "text"  # Treat as text for processing
-            message_type = "text"
-            
-            # Only process if we have actual text content
-            if not extracted_text or extracted_text.strip() == "":
-                message_journey_logger.complete_journey(journey_id, status="empty_template_reply")
-                print(f"🚫 Empty template reply - not processing")
-                return
+            return {"status": "success", "message": "Template reply - not processed"}
         
         # Early duplicate check with existing session
         if wati_message_id and DatabaseManager.check_message_already_processed(db, wati_message_id):
@@ -274,8 +271,8 @@ async def process_webhook_async(data: dict, db):
                 status="skipped"
             )
             message_journey_logger.complete_journey(journey_id, status="skipped_duplicate")
-            print(f"🔄 Duplicate message detected with ID: {wati_message_id}. Skipping processing.")
-            return
+            print(f"🔄 Duplicate message detected with ID: {wati_message_id}. Returning success immediately.")
+            return {"status": "success", "message": "Already processed"}
         
         # Additional check: Skip if the same message was processed recently (time-based)
         if wati_message_id:
@@ -284,7 +281,7 @@ async def process_webhook_async(data: dict, db):
                 last_processed_time = processed_messages[wati_message_id]
                 if current_time - last_processed_time < 30:  # 30 seconds cooldown
                     print(f"🔄 Message {wati_message_id} processed recently. Skipping to prevent spam.")
-                    return
+                    return {"status": "success", "message": "Recently processed"}
             
             # Track this message
             processed_messages[wati_message_id] = current_time
@@ -296,7 +293,10 @@ async def process_webhook_async(data: dict, db):
                     del processed_messages[msg_id]
         
         # Log the incoming message for debugging
-        print(f"📱 Processing message from {phone_number}: {data.get('text', 'N/A')[:50]}...")
+        print(f"📱 New message from {phone_number}: {data.get('text', 'N/A')[:50]}...")
+        
+        # IMMEDIATE RESPONSE: Send quick response to Wati to prevent duplicate notifications
+        immediate_response = {"status": "success", "message": "Processing"}
         
         # Add journey_id to message data for tracking throughout processing
         data['journey_id'] = journey_id
@@ -310,82 +310,28 @@ async def process_webhook_async(data: dict, db):
             duration_ms=int((time.time() - webhook_start_time) * 1000)
         )
         
-        # Add message to batch for processing
+        # Add message to batch instead of processing immediately
         await add_message_to_batch(phone_number, data)
         
+        return immediate_response
+
     except Exception as e:
         # Log error in journey if journey_id exists
         if journey_id:
             message_journey_logger.log_error(
                 journey_id=journey_id,
-                error_type="async_processing_error",
+                error_type="webhook_error",
                 error_message=str(e),
-                step="async_processing",
+                step="webhook_processing",
                 exception=e
             )
             message_journey_logger.complete_journey(journey_id, status="failed")
         
-        print(f"[Async Processing ERROR] {str(e)}")
-        import traceback
-        traceback.print_exc()
-
-
-# Main webhook endpoint to receive WhatsApp messages from Wati
-@app.post("/webhook")
-async def webhook(request: Request, db=Depends(get_db)):
-    """Handle incoming WhatsApp messages from Wati webhook"""
-    # Start timing the webhook processing
-    webhook_start_time = time.time()
-    journey_id = None
-    
-    try:
-        try:
-            # Add timeout to prevent hanging requests
-            data = await asyncio.wait_for(request.json(), timeout=30.0)
-        except ClientDisconnect:
-            print(f"⚠️ Client disconnected before request body was read - returning success")
-            return {"status": "success", "message": "Client disconnected - no processing needed"}
-        except asyncio.TimeoutError:
-            print(f"⚠️ Request timed out while reading JSON body - returning error")
-            return {"status": "error", "message": "Request timeout"}
-        
-        print(f"🔍 Received data: {data}")
-        
-        # Validate that we have valid JSON data
-        if not data or not isinstance(data, dict):
-            print(f"⚠️ Invalid or empty webhook data received")
-            return {"status": "error", "message": "Invalid webhook data"}
-        
-        # Extract basic message information for immediate validation
-        phone_number = data.get("waId")
-        message_text = data.get("text", "")
-        wati_message_id = data.get("id")
-        message_type = data.get("type", "text")
-        
-        # Basic validation - respond immediately if no phone number
-        if not phone_number:
-            print(f"⚠️ No phone number in webhook data")
-            return {"status": "error", "message": "No phone number provided"}
-        
-        # 🚀 IMMEDIATE RESPONSE: Respond to Wati immediately to prevent timeouts
-        print(f"📱 Immediate response to Wati for {phone_number}")
-        
-        # Schedule async processing in background and return immediately
-        asyncio.create_task(process_webhook_async(data, db))
-        
-        return {"status": "success", "message": "Message received - processing in background"}
-
-    except ClientDisconnect:
-        # Client disconnected during processing - this is normal, just log and return success
-        print(f"⚠️ Client disconnected during webhook processing")
-        return {"status": "success", "message": "Client disconnected during processing"}
-    
-    except Exception as e:
         print(f"[Webhook ERROR] {str(e)}")
         import traceback
         traceback.print_exc()
         # Return success even on error to prevent Wati from retrying
-        return {"status": "success", "message": "Webhook processed - error logged"}
+        return {"status": "error", "message": "Internal error occurred", "error": str(e)}
 
 # Replace the global dictionaries with thread-safe alternatives
 class ThreadSafeMessageBatcher:
@@ -1037,7 +983,7 @@ Important notes:
                     llm_type="openai",
                     prompt=greeting_prompt,
                     response=response_text,
-                    model="gpt-3.5-turbo",
+                    model="gpt-4",
                     duration_ms=int((time.time() - greeting_start_time) * 1000)
                 )
                 
@@ -1084,7 +1030,7 @@ Important notes:
                     llm_type="openai",
                     prompt=thanking_prompt,
                     response=response_text,
-                    model="gpt-3.5-turbo",
+                    model="gpt-4",
                     duration_ms=int((time.time() - thanking_start_time) * 1000)
                 )
                 
