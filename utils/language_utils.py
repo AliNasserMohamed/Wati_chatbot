@@ -107,7 +107,7 @@ class LanguageHandler:
             messages.append({"role": "user", "content": prompt})
 
             response = await self.openai_client.chat.completions.create(
-                model="gpt-4",
+                model="gpt-3.5-turbo",
                 messages=messages,
                 temperature=0.7
             )

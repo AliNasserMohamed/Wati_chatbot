@@ -322,7 +322,7 @@ Reply with "relevant" if the message is related to products, prices, brands, and
                 
                 # PRIORITY 2: Check conversation history if no city in current message
                 if conversation_history:
-                    for message in reversed(conversation_history[-10:]):  # Check last 10 messages
+                    for message in reversed(conversation_history[-3:]):  # Check last 3 messages
                         content = message.get("content", "").lower()
                         
                         # Check if any city name appears in the message
@@ -390,7 +390,7 @@ Reply with "relevant" if the message is related to products, prices, brands, and
                 
                 # PRIORITY 2: Check conversation history if no brand in current message
                 if conversation_history:
-                    for message in reversed(conversation_history[-10:]):  # Check last 10 messages
+                    for message in reversed(conversation_history[-3:]):  # Check last 3 messages
                         content = message.get("content", "").lower()
                         
                         # Check if any brand name appears in the message
@@ -982,7 +982,7 @@ Be helpful, understanding, and respond exactly like a friendly human employee wo
                 # Check user message and conversation history for size-related keywords (English)
                 all_conversation_text = user_message
                 if conversation_history:
-                    for msg in conversation_history[-5:]:  # Check last 5 messages
+                    for msg in conversation_history[-3:]:  # Check last 3 messages
                         all_conversation_text += " " + msg.get("content", "")
                 
                 if "quarter" in all_conversation_text or "half" in all_conversation_text or "riyal" in all_conversation_text:
@@ -1103,7 +1103,7 @@ Be helpful, understanding, and respond exactly like a friendly human employee wo
             # Check user message and conversation history for size-related keywords
             all_conversation_text = user_message
             if conversation_history:
-                for msg in conversation_history[-5:]:  # Check last 5 messages
+                for msg in conversation_history[-3:]:  # Check last 3 messages
                     all_conversation_text += " " + msg.get("content", "")
             
             # if "ربع" in all_conversation_text or "نص" in all_conversation_text or "ريال" in all_conversation_text or "ريالين" in all_conversation_text:
@@ -1124,19 +1124,17 @@ Be helpful, understanding, and respond exactly like a friendly human employee wo
                 )
             messages.append(system_message)
             
-            # Add conversation history if provided (use last 5 messages to keep context manageable)
+            # Add conversation history if provided (use last 3 messages to keep context manageable)
             if conversation_history:
                 # Filter and add recent conversation history
-                recent_history = conversation_history[-5:]  # Last 5 messages for better context
+                recent_history = conversation_history[-3:]  # Last 3 messages for better context
                 for msg in recent_history:
-                    # Create a clean message without problematic fields
-                    clean_msg = {
-                        "role": msg.get("role", "user"),
-                        "content": msg.get("content", "")
-                    }
-                    # Skip empty messages
-                    if clean_msg["content"].strip():
-                        messages.append(clean_msg)
+                    # Get message as is from database with role and content
+                    if msg.get("content", "").strip():
+                        messages.append({
+                            "role": msg.get("role", "user"),
+                            "content": msg.get("content", "")
+                        })
                 
                 print(f"📚 Added {len([m for m in recent_history if m.get('content', '').strip()])} messages from conversation history")
             
@@ -1154,7 +1152,7 @@ Be helpful, understanding, and respond exactly like a friendly human employee wo
                         prompt_text = "\n".join([f"{msg['role']}: {msg.get('content', 'Function call')}" for msg in messages[-3:]])  # Last 3 messages for context
                         
                     response = await self._call_openai_with_retry(
-                        model="gpt-4",
+                        model="gpt-3.5-turbo",
                         messages=messages,
                         functions=self.function_definitions,
                         function_call="auto",
@@ -1179,7 +1177,7 @@ Be helpful, understanding, and respond exactly like a friendly human employee wo
                             llm_type="openai",
                             prompt=prompt_text,
                             response=message.content or f"Function call: {message.function_call.name}" if message.function_call else "",
-                            model="gpt-4",
+                            model="gpt-3.5-turbo",
                             function_calls=function_calls_info,
                             duration_ms=api_duration,
                             tokens_used={"total_tokens": response.usage.total_tokens if response.usage else None}
@@ -1252,7 +1250,7 @@ Be helpful, understanding, and respond exactly like a friendly human employee wo
             # If we reached max function calls, get final response
             try:
                 final_response = await self._call_openai_with_retry(
-                    model="gpt-4",
+                    model="gpt-3.5-turbo",
                     messages=messages,
                     temperature=0.3,
                     max_tokens=400

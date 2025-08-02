@@ -1037,7 +1037,7 @@ Important notes:
                     llm_type="openai",
                     prompt=greeting_prompt,
                     response=response_text,
-                    model="gpt-4",
+                    model="gpt-3.5-turbo",
                     duration_ms=int((time.time() - greeting_start_time) * 1000)
                 )
                 
@@ -1084,7 +1084,7 @@ Important notes:
                     llm_type="openai",
                     prompt=thanking_prompt,
                     response=response_text,
-                    model="gpt-4",
+                    model="gpt-3.5-turbo",
                     duration_ms=int((time.time() - thanking_start_time) * 1000)
                 )
                 

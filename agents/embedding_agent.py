@@ -429,7 +429,7 @@ Return only one of: `reply`, `skip`, or `continue`.
                         "user_message": user_message,
                         "matched_question": matched_question,
                         "matched_answer": matched_answer,
-                        "model": "gpt-4o-mini"
+                        "model": "gpt-3.5-turbo"
                     }
                 )
             
@@ -437,7 +437,7 @@ Return only one of: `reply`, `skip`, or `continue`.
             llm_start_time = time.time()
             
             response = await self.openai_client.chat.completions.create(
-                model="gpt-4o-mini",
+                model="gpt-3.5-turbo",
                 messages=messages,
                 max_tokens=20,
                 temperature=0.1
@@ -453,7 +453,7 @@ Return only one of: `reply`, `skip`, or `continue`.
                     llm_type="openai",
                     prompt=f"SYSTEM: {system_content}\n\nUSER: {evaluation_prompt}",
                     response=evaluation,
-                    model="gpt-4o-mini",
+                    model="gpt-3.5-turbo",
                     duration_ms=llm_duration,
                     tokens_used={"total_tokens": response.usage.total_tokens if response.usage else None}
                 )
