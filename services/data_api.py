@@ -325,3 +325,4 @@ class DataAPIService:
 
 # Singleton instance
 data_api = DataAPIService() 
+#data_api.get_products_by_brand(db, 1288)
