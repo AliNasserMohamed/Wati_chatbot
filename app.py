@@ -962,7 +962,7 @@ async def process_message_async(data, phone_number, message_type, wati_message_i
             
             # SELECTIVE ACCESS CHECK: Allow INQUIRY and SERVICE_REQUEST for all users
             # Other categories only for allowed users
-            if not is_allowed_user:
+            if is_allowed_user:
                 # Check if regular user is trying to access restricted categories
                 restricted_categories = [
                     MessageType.GREETING, 

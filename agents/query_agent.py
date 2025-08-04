@@ -967,6 +967,24 @@ When user wants to place an order, make a purchase, or asks how to order, ALWAYS
 - Never ask for delivery details, payment info, or personal information
 - Always direct them to the official app/website for ordering
 
+🚨 SPECIFIC BUSINESS RULES - CRITICAL:
+
+1. APARTMENT DOOR DELIVERY:
+   - When customer specifically asks about delivery TO THE APARTMENT DOOR (not general delivery), answer: "Yes, delivery to apartment door is available and you can add a note with your order through the app."
+
+2. JUG EXCHANGE SERVICE:
+   - Jug exchange is ONLY available in specified cities, not outside them
+   - Jug exchange is NOT available for Al-Manhal brand yet
+   - Always mention these limitations when discussing jug exchange
+
+3. BRANCHES QUESTION:
+   - If customer asks if we have branches: "We don't have physical branches, but we deliver to many cities."
+
+4. PRICE DISPUTES:
+   - If customer asks about product price and claims it's available at a lower price elsewhere, DO NOT agree or confirm lower prices
+   - ONLY provide prices from our official data - never generate or estimate prices
+   - Always use the get_products_by_brand function for accurate pricing information
+
 Important rules:
 - Always use available functions to get updated information
 - For city queries: try get_city_id_by_name first, if fails use search_cities
@@ -1089,6 +1107,23 @@ Be helpful, understanding, and respond exactly like a friendly human employee wo
 - لا تسأل عن تفاصيل التوصيل أو معلومات الدفع أو المعلومات الشخصية
 - وجههم دائماً للتطبيق/الموقع الرسمي للطلب
 
+🚨 قواعد العمل المحددة - مهمة جداً:
+
+1. التوصيل لباب الشقة:
+   - عندما يسأل العميل عن التوصيل لباب الشقة تحديداً (وليس التوصيل بشكل عام)، أجب: "نعم موجود التوصيل لباب الشقة وممكن تضيف ملاحظة مع الطلب من خلال التطبيق"
+
+2. تبديل الجوالين:
+   - التبديل لدينا يتم فقط في المدن المحددة وليس خارجها
+   - لا يتوفر لدينا تبديل لماركة المنهل حتى الآن
+
+3. سؤال الفروع:
+   - إذا سأل العميل هل لدينا فروع: "نحن ليس لدينا فروع ولكن نوصل للعديد من المدن"
+
+4. خلافات الأسعار:
+   - إذا سأل العميل عن سعر منتج وقال المستخدم أنه بسعر أقل، لا يجب أن ترد بأنه فعلاً بسعر أقل
+   - يأخذ البوت الأسعار من الداتا المحددة به فقط ولا يقوم بجلب أي أسعار من نفسه
+   - استخدم دائماً وظيفة get_products_by_brand للحصول على معلومات الأسعار الدقيقة
+
 قواعد مهمة:
 - استخدم دائماً الوظائف المتاحة للحصول على معلومات حديثة
 - للاستفسارات عن المدن: جرب get_city_id_by_name أولاً، إذا فشل استخدم search_cities
@@ -1115,7 +1150,7 @@ Be helpful, understanding, and respond exactly like a friendly human employee wo
                     "\n\nوهذه هي العلامات التجارية التي تُعد من منتجات الآبار الجوفية:\n"
                     "نوفا، نقي، بيرين، موارد، بي، فيو، مايلز، أكويا، أكوا 8، مانا، تانيا، آبار حائل، أوسكا، نستله، آفا، هنا، سقيا المدينة، ديمان، هني، صحتك، حلوة، عذب، أوس، قطاف، رست، إيفال، وي."
                 )
-            if " جوالين" in all_conversation_text or "جالون" in all_conversation_text: 
+            if " جوالين" in all_conversation_text or "جالون" in all_conversation_text or "تبديل" in all_conversation_text: 
                 system_message["content"] += (
                     "\n\nهذه هي العلامات التي توفر تبديل الجوالين، والمدن التي يتوفر بها التبديل:\n\n"
                     "تانيا – الرياض\n"

@@ -207,11 +207,11 @@ class EmbeddingAgent:
         print(f"   - User message language: {user_language}")
         print(f"   - Answer language: {answer_language}")
         
-        # If languages don't match, skip the response
+        # If languages don't match, proceed to classification
         if user_language != answer_language:
-            print(f"🚫 Language mismatch: user={user_language}, answer={answer_language} - skipping response")
+            print(f"🔄 Language mismatch: user={user_language}, answer={answer_language} - proceeding to classification")
             return {
-                'action': 'skip',
+                'action': 'continue_to_classification',
                 'response': None,
                 'confidence': similarity_score,
                 'matched_question': matched_question_text or matched_document,
@@ -259,10 +259,10 @@ class EmbeddingAgent:
         user_language = language_handler.detect_language(user_message)
         answer_language = language_handler.detect_language(matched_answer)
         
-        # If languages don't match, skip the response
+        # If languages don't match, proceed to classification
         if user_language != answer_language:
-            print(f"🌐 Language mismatch: user={user_language}, answer={answer_language} - skipping response")
-            return {'action': 'skip'}
+            print(f"🌐 Language mismatch: user={user_language}, answer={answer_language} - proceeding to classification")
+            return {'action': 'continue'}
         
         # Format conversation history for context
         conversation_context = ""
