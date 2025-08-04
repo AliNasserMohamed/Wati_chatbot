@@ -172,13 +172,13 @@ Reply with "relevant" if the message is related to products, prices, brands, and
             },
             {
                 "name": "get_brands_by_city",
-                "description": "STEP 2 in workflow: Get all water brands available in a specific city. ONLY use this AFTER getting the city in Step 1. This is the second step in the mandatory workflow: City→Brands→Products→Response. You must call get_city_id_by_name first to get the city_id.",
+                "description": "STEP 2 in workflow: Get all water brands available in a specific city. ONLY use this AFTER getting the city in Step 1. This is the second step in the mandatory workflow: City→Brands→Products→Response. You must call get_city_id_by_name first to get the city_id. NEVER use random or guessed city IDs - ONLY use IDs returned from get_city_id_by_name function.",
                 "parameters": {
                     "type": "object",
                     "properties": {
                         "city_id": {
                             "type": "integer",
-                            "description": "Internal city ID (get this using get_city_id_by_name function first)"
+                            "description": "Internal city ID (MUST get this using get_city_id_by_name function first - NEVER use random numbers)"
                         }
                     },
                     "required": ["city_id"]
@@ -186,13 +186,13 @@ Reply with "relevant" if the message is related to products, prices, brands, and
             },
             {
                 "name": "get_products_by_brand",
-                "description": "STEP 3 in workflow: Get all water products offered by a specific brand. ONLY use this AFTER Steps 1 (get city) and 2 (show brands) are complete. This is the third step in the mandatory workflow: City→Brands→Products→Response. Customer must have selected a specific brand first.",
+                "description": "STEP 3 in workflow: Get all water products offered by a specific brand. ONLY use this AFTER Steps 1 (get city) and 2 (show brands) are complete. This is the third step in the mandatory workflow: City→Brands→Products→Response. Customer must have selected a specific brand first. NEVER use random or guessed brand IDs - ONLY use IDs returned from get_brands_by_city function.",
                 "parameters": {
                     "type": "object",
                     "properties": {
                         "brand_id": {
                             "type": "integer",
-                            "description": "Brand ID (get this from get_brands_by_city response after customer selects a brand)"
+                            "description": "Brand ID (MUST get this from get_brands_by_city response after customer selects a brand - NEVER use random numbers)"
                         }
                     },
                     "required": ["brand_id"]
@@ -993,6 +993,16 @@ Important rules:
 - Keep responses helpful and conversational like a real person would
 - Use context smartly - don't ask for information you already have
 
+🚨 CRITICAL RULE - NEVER USE RANDOM IDs:
+- NEVER mention or use random city ID numbers in your responses
+- NEVER mention or use random brand ID numbers in your responses
+- ALWAYS use the get_city_id_by_name function to get the correct city ID first
+- ALWAYS use get_brands_by_city function to get correct brand IDs after getting city ID
+- ONLY use IDs that are returned from proper function calls
+- If you need a city ID, you MUST call get_city_id_by_name function with the city name
+- If you need brand information, you MUST call get_brands_by_city with the correct city ID
+- Do not assume or guess any ID numbers - always get them from the database functions
+
 Be helpful, understanding, and respond exactly like a friendly human employee would."""
                 }
 
@@ -1132,6 +1142,15 @@ Be helpful, understanding, and respond exactly like a friendly human employee wo
 - خلي ردودك مفيدة وودودة مثل أي شخص حقيقي
 - استخدم السياق بذكاء - لا تسأل عن معلومات تعرفها بالفعل
 
+🚨 قاعدة مهمة جداً - لا تستخدم أي أرقام معرفات عشوائية:
+- لا تذكر أبداً أو تستخدم أرقام معرف المدن (city IDs) العشوائية في ردودك
+- لا تذكر أبداً أو تستخدم أرقام معرف العلامات التجارية (brand IDs) العشوائية في ردودك
+- استخدم دائماً وظيفة get_city_id_by_name للحصول على معرف المدينة الصحيح أولاً
+- استخدم دائماً وظيفة get_brands_by_city للحصول على معرفات العلامات التجارية الصحيحة بعد الحصول على معرف المدينة
+- استخدم فقط المعرفات التي يتم إرجاعها من استدعاءات الوظائف الصحيحة
+- إذا كنت بحاجة لمعرف مدينة، يجب عليك استدعاء وظيفة get_city_id_by_name مع اسم المدينة
+- إذا كنت بحاجة لمعلومات العلامة التجارية، يجب عليك استدعاء get_brands_by_city مع معرف المدينة الصحيح
+- لا تفترض أو تخمن أي أرقام معرفات - احصل عليها دائماً من وظائف قاعدة البيانات
 
 كن مساعد ومتفهم ورد تماماً مثل موظف ودود حقيقي."""
                 }

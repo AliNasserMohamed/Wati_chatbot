@@ -969,7 +969,6 @@ async def process_message_async(data, phone_number, message_type, wati_message_i
                     MessageType.THANKING, 
                     MessageType.COMPLAINT, 
                     MessageType.SUGGESTION,
-                    MessageType.TEMPLATE_REPLY,
                     MessageType.OTHERS
                 ]
                 
@@ -1132,26 +1131,7 @@ Important notes:
                     duration_ms=int((time.time() - service_start_time) * 1000)
                 )
                 
-            elif classified_message_type == MessageType.TEMPLATE_REPLY:
-                # Send template replies to query agent for context-aware processing
-                print(f"🔘 Sending TEMPLATE_REPLY to query agent")
-                template_start_time = time.time()
-                response_text = await query_agent.process_query(
-                    user_message=message_text,
-                    conversation_history=conversation_history,
-                    user_language=detected_language,
-                    journey_id=journey_id
-                )
-                
-                message_journey_logger.log_agent_processing(
-                    journey_id=journey_id,
-                    agent_name="query_agent",
-                    action="process_template_reply",
-                    input_data={"message_type": "TEMPLATE_REPLY", "language": detected_language},
-                    output_data={"response_length": len(response_text) if response_text else 0},
-                    duration_ms=int((time.time() - template_start_time) * 1000)
-                )
-                
+
             else:
                 # Fallback for unclassified or OTHER messages - send to query agent
                 print(f"❓ Sending unclassified/OTHER message to query agent")

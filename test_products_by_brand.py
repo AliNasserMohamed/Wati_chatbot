@@ -62,6 +62,6 @@ def test_products_by_brand(brand_id: int = 1288):
 
 if __name__ == "__main__":
     # 🔧 CHANGE THE BRAND ID HERE:
-    BRAND_ID = 1288  # ← Modify this value to test different brands
+    BRAND_ID = 70  # ← Modify this value to test different brands
     
     test_products_by_brand(BRAND_ID) 
