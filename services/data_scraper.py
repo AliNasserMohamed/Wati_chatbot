@@ -27,6 +27,9 @@ class DataScraperService:
             'AccessKey': '4e7f1b2c-3d5a-4b6c-9f7d-8e0f1b2c3d5a',
             'Lang': 'en'
         }
+        
+        # Cities to exclude from scraping (specific Riyadh regions)
+        self.excluded_city_ids = {6, 7, 8, 9}  # شمال، جنوب، غرب، شرق الرياض
     
     async def fetch_cities_arabic(self) -> Dict[str, Any]:
         """Fetch all cities from external API in Arabic"""
@@ -83,6 +86,48 @@ class DataScraperService:
             except Exception as e:
                 logger.error(f"Error fetching products for brand {brand_id}: {str(e)}")
                 raise
+
+    async def brand_has_products(self, session: aiohttp.ClientSession, brand_id: int, max_retries: int = 3) -> bool:
+        """Check if a brand has any products with retry logic"""
+        url = f"{self.base_url}/get-brand-products/{brand_id}"
+        
+        for attempt in range(max_retries):
+            try:
+                # Add a small delay before each request to avoid overwhelming the server
+                if attempt > 0:
+                    logger.info(f"🔄 Retrying brand {brand_id} check (attempt {attempt + 1}/{max_retries})")
+                    await asyncio.sleep(5)  # Wait 5 seconds before retry
+                else:
+                    await asyncio.sleep(0.5)  # Small delay for first attempt
+                
+                async with session.get(url, headers=self.headers_ar) as response:
+                    response.raise_for_status()
+                    data = await response.json()
+                    
+                    if data.get('key') == 'success':
+                        products = data.get('data', [])
+                        has_products = len(products) > 0
+                        logger.info(f"✅ Brand {brand_id} check successful: {'has products' if has_products else 'no products'}")
+                        return has_products
+                    else:
+                        logger.warning(f"⚠️ API returned non-success for brand {brand_id}: {data.get('msg', 'Unknown error')}")
+                        return False
+                        
+            except aiohttp.ClientResponseError as e:
+                logger.error(f"❌ HTTP error checking products for brand {brand_id} (attempt {attempt + 1}): {e.status}, message='{e.message}', url='{e.request_info.url}'")
+                if attempt == max_retries - 1:  # Last attempt
+                    logger.error(f"💥 Failed to check brand {brand_id} after {max_retries} attempts")
+                    return False
+                # Continue to next attempt with delay
+                
+            except Exception as e:
+                logger.error(f"❌ Unexpected error checking products for brand {brand_id} (attempt {attempt + 1}): {str(e)}")
+                if attempt == max_retries - 1:  # Last attempt
+                    logger.error(f"💥 Failed to check brand {brand_id} after {max_retries} attempts")
+                    return False
+                # Continue to next attempt with delay
+        
+        return False
     
     async def fetch_brand_details(self) -> Dict[str, Any]:
         """Fetch detailed brand information"""
@@ -138,6 +183,11 @@ class DataScraperService:
                 city_title_en = english_cities.get(external_city_id, '')
                 city_lat = city_data.get('lat')
                 city_lng = city_data.get('lng')
+                
+                # Skip excluded Riyadh region cities
+                if external_city_id in self.excluded_city_ids:
+                    logger.info(f"⏭️ Skipping excluded city: ID={external_city_id}, {city_title_ar}")
+                    continue
                 
                 if external_city_id and city_title_ar:
                     # Create city with external ID as the primary key
@@ -222,6 +272,17 @@ class DataScraperService:
                             brand_image = brand_data.get('brand_image', '')
                             
                             if contract_id and brand_title:
+                                # Check if brand has products before saving
+                                logger.info(f"🔍 Checking if brand {contract_id} ({brand_title}) has products...")
+                                has_products = await self.brand_has_products(session, contract_id)
+                                
+                                if not has_products:
+                                    logger.info(f"⏭️ Skipping brand without products: ID={contract_id}, {brand_title}")
+                                    continue
+                                
+                                # Add delay between processing different brands to avoid overwhelming the server
+                                await asyncio.sleep(1)
+                                
                                 # Create brand with external ID as primary key (if not exists)
                                 if contract_id not in all_brands:
                                     brand = Brand(
@@ -232,7 +293,7 @@ class DataScraperService:
                                     )
                                     db.add(brand)
                                     all_brands[contract_id] = brand
-                                    logger.info(f"✅ Created brand: ID={contract_id}, {brand_title}")
+                                    logger.info(f"✅ Created brand: ID={contract_id}, {brand_title} (verified has products)")
                                 
                                 # Store city-brand relationship for bulk insert
                                 relationship = (city.id, contract_id)
@@ -244,6 +305,9 @@ class DataScraperService:
                     except Exception as e:
                         logger.error(f"❌ Error syncing brands for city {city.id}: {str(e)}")
                         continue
+                    
+                    # Add delay between processing different cities to avoid overwhelming the server
+                    await asyncio.sleep(2)
             
             # Commit brands first
             db.commit()
@@ -499,6 +563,11 @@ class DataScraperService:
                 city_lat = city_data.get('lat')
                 city_lng = city_data.get('lng')
                 
+                # Skip excluded Riyadh region cities
+                if external_city_id in self.excluded_city_ids:
+                    logger.info(f"⏭️ Skipping excluded city: ID={external_city_id}, {city_title_ar}")
+                    continue
+                
                 if external_city_id and city_title_ar:
                     # Create city with external ID as the primary key
                     city = City(
@@ -572,6 +641,17 @@ class DataScraperService:
                             brand_image = brand_data.get('brand_image', '')
                             
                             if contract_id and brand_title:
+                                # Check if brand has products before saving
+                                logger.info(f"🔍 Checking if brand {contract_id} ({brand_title}) has products...")
+                                has_products = await self.brand_has_products(session, contract_id)
+                                
+                                if not has_products:
+                                    logger.info(f"⏭️ Skipping brand without products: ID={contract_id}, {brand_title}")
+                                    continue
+                                
+                                # Add delay between processing different brands to avoid overwhelming the server
+                                await asyncio.sleep(1)
+                                
                                 # Create brand with external ID as primary key (if not exists)
                                 if contract_id not in all_brands:
                                     brand = Brand(
@@ -582,7 +662,7 @@ class DataScraperService:
                                     )
                                     db.add(brand)
                                     all_brands[contract_id] = brand
-                                    logger.info(f"✅ Created brand: ID={contract_id}, {brand_title}")
+                                    logger.info(f"✅ Created brand: ID={contract_id}, {brand_title} (verified has products)")
                                 
                                 # Store city-brand relationship for bulk insert
                                 relationship = (city.id, contract_id)
@@ -594,6 +674,9 @@ class DataScraperService:
                     except Exception as e:
                         logger.error(f"❌ Error syncing brands for city {city.id}: {str(e)}")
                         continue
+                    
+                    # Add delay between processing different cities to avoid overwhelming the server
+                    await asyncio.sleep(2)
             
             # Commit brands first
             db.commit()

@@ -1,6 +1,7 @@
 from typing import List, Optional, Dict, Any
 from sqlalchemy.orm import Session
 from fastapi import HTTPException
+from sqlalchemy import or_
 
 from database.db_utils import DatabaseManager
 from database.db_models import City, Brand, Product
@@ -51,71 +52,25 @@ class DataAPIService:
     
     @staticmethod
     def search_cities(db: Session, query: str) -> List[Dict[str, Any]]:
-        """Search cities by name with special Riyadh regions handling - simplified response"""
+        """
+        Enhanced city search with exact and partial matching.
+        Returns cities ordered by relevance (exact matches first, then partial)
+        
+        Args:
+            db: Database session
+            query: Search term (can be Arabic or English)
+            
+        Returns:
+            List of cities with match_type indicating exact or partial match
+        """
+        if not query or not query.strip():
+            return []
+        
         query_normalized = query.strip().lower()
         
-        # Special handling for Riyadh regions - prioritize exact matches
-        riyadh_regions = {
-            "شمال الرياض": ["شمال الرياض", "north riyadh", "الرياض الشمالي"],
-            "جنوب الرياض": ["جنوب الرياض", "south riyadh", "الرياض الجنوبي"], 
-            "غرب الرياض": ["غرب الرياض", "west riyadh", "الرياض الغربي"],
-            "شرق الرياض": ["شرق الرياض", "east riyadh", "الرياض الشرقي"],
-            "الرياض": ["الرياض", "riyadh", "رياض"]
-        }
+        # Get all cities for filtering
+        cities = db.query(City).all()
         
-        # Check for Riyadh regions with priority handling
-        for region_name, variations in riyadh_regions.items():
-            for variation in variations:
-                if query_normalized == variation.lower():
-                    # Find exact match for this specific region
-                    exact_city = db.query(City).filter(City.name == region_name).first()
-                    if exact_city:
-                        return [{
-                            "id": exact_city.id,
-                            "external_id": exact_city.external_id,
-                            "name": exact_city.name,
-                            "name_en": exact_city.name_en or "",
-                            "match_type": "exact_region"
-                        }]
-        
-        # If user searches for just "الرياض" or "riyadh", return main Riyadh first, then regions
-        if query_normalized in ["الرياض", "riyadh", "رياض"]:
-            results = []
-            
-            # Add main Riyadh first
-            main_riyadh = db.query(City).filter(City.name == "الرياض").first()
-            if main_riyadh:
-                results.append({
-                    "id": main_riyadh.id,
-                    "external_id": main_riyadh.external_id,
-                    "name": main_riyadh.name,
-                    "name_en": main_riyadh.name_en or "",
-                    "match_type": "main_city"
-                })
-            
-            # Then add Riyadh regions
-            riyadh_region_names = ["شمال الرياض", "جنوب الرياض", "غرب الرياض", "شرق الرياض"]
-            region_cities = db.query(City).filter(City.name.in_(riyadh_region_names)).all()
-            for city in region_cities:
-                results.append({
-                    "id": city.id,
-                    "external_id": city.external_id,
-                    "name": city.name,
-                    "name_en": city.name_en or "",
-                    "match_type": "region"
-                })
-            
-            if results:
-                return results
-        
-        # Regular search for other cities
-        cities = db.query(City).filter(
-            City.name.ilike(f"%{query}%") | 
-            City.name_en.ilike(f"%{query}%") |
-            City.title.ilike(f"%{query}%")
-        ).all()
-        
-        # Sort results: exact matches first, then partial matches
         exact_matches = []
         partial_matches = []
         
@@ -160,6 +115,121 @@ class DataAPIService:
         ]
     
     @staticmethod
+    def get_brands_by_city_name(db: Session, city_name: str) -> List[Dict[str, Any]]:
+        """Get all brands for a specific city using city name with fuzzy matching"""
+        # First try to find the city by name
+        city = db.query(City).filter(
+            or_(
+                City.name.ilike(f"%{city_name}%"),
+                City.name_en.ilike(f"%{city_name}%"),
+                City.title.ilike(f"%{city_name}%")
+            )
+        ).first()
+        
+        if not city:
+            return []
+        
+        return [
+            {
+                "id": brand.id,
+                "external_id": brand.external_id,
+                "title": brand.title,
+                "title_en": brand.title_en,
+                "image_url": brand.image_url,
+                "city_id": city.id,
+                "city_name": city.name,
+                "city_name_en": city.name_en
+            }
+            for brand in city.brands
+        ]
+    
+    @staticmethod
+    def search_brands_in_city(db: Session, brand_name: str, city_name: str) -> List[Dict[str, Any]]:
+        """Search brands by name within a specific city only (not global search)"""
+        # Find the city first
+        city = db.query(City).filter(
+            or_(
+                City.name.ilike(f"%{city_name}%"),
+                City.name_en.ilike(f"%{city_name}%"),
+                City.title.ilike(f"%{city_name}%")
+            )
+        ).first()
+        
+        if not city:
+            return []
+        
+        # Search brands only within this city
+        matching_brands = []
+        for brand in city.brands:
+            if (brand.title and brand_name.lower() in brand.title.lower()) or \
+               (brand.title_en and brand_name.lower() in brand.title_en.lower()):
+                matching_brands.append({
+                    "id": brand.id,
+                    "external_id": brand.external_id,
+                    "title": brand.title,
+                    "title_en": brand.title_en,
+                    "image_url": brand.image_url,
+                    "city_id": city.id,
+                    "city_name": city.name,
+                    "city_name_en": city.name_en
+                })
+        
+        return matching_brands
+    
+    @staticmethod 
+    def get_products_by_brand_and_city_name(db: Session, brand_name: str, city_name: str) -> List[Dict[str, Any]]:
+        """Get products by brand name and city name with fuzzy matching"""
+        # Find the brand in the specified city
+        brand = (db.query(Brand)
+                .join(City.brands)
+                .filter(
+                    or_(
+                        Brand.title.ilike(f"%{brand_name}%"),
+                        Brand.title_en.ilike(f"%{brand_name}%")
+                    ),
+                    or_(
+                        City.name.ilike(f"%{city_name}%"),
+                        City.name_en.ilike(f"%{city_name}%"),
+                        City.title.ilike(f"%{city_name}%")
+                    )
+                ).first())
+        
+        if not brand:
+            return []
+        
+        # Get the city information
+        city = (db.query(City)
+                .join(City.brands)
+                .filter(Brand.id == brand.id)
+                .filter(
+                    or_(
+                        City.name.ilike(f"%{city_name}%"),
+                        City.name_en.ilike(f"%{city_name}%"),
+                        City.title.ilike(f"%{city_name}%")
+                    )
+                ).first())
+        
+        # Get products for this brand
+        products = DatabaseManager.get_products_by_brand(db, brand.id)
+        return [
+            {
+                "product_id": product.id,
+                "external_id": product.external_id,
+                "product_title": product.title,
+                "product_title_en": product.title_en,
+                "product_packing": product.packing,
+                "product_contract_price": product.contract_price,
+                "brand_id": brand.id,
+                "brand_title": brand.title,
+                "brand_title_en": brand.title_en,
+                "city_id": city.id if city else None,
+                "city_name": city.name if city else None,
+                "city_name_en": city.name_en if city else None
+            }
+            for product in products
+        ]
+
+    @staticmethod
     def get_brands_by_city_external_id(db: Session, city_external_id: int) -> List[Dict[str, Any]]:
         """Get all brands for a specific city using external city ID - now same as get_brands_by_city"""
         return DataAPIService.get_brands_by_city(db, city_external_id)
@@ -172,14 +242,21 @@ class DataAPIService:
             {
                 "id": brand.id,              # Now matches external ID
                 "external_id": brand.external_id,
-                "title": brand.title         # Brand name
+                "title": brand.title,
+                "title_en": brand.title_en,
+                "image_url": brand.image_url,
+                "mounting_rate_image": brand.mounting_rate_image,
+                "meta_keywords": brand.meta_keywords,
+                "meta_description": brand.meta_description,
+                "created_at": brand.created_at.isoformat() if brand.created_at else None,
+                "updated_at": brand.updated_at.isoformat() if brand.updated_at else None
             }
             for brand in brands
         ]
     
     @staticmethod
     def get_brand_by_id(db: Session, brand_id: int) -> Optional[Dict[str, Any]]:
-        """Get a specific brand by ID"""
+        """Get a specific brand by ID - simplified response"""
         brand = db.query(Brand).filter(Brand.id == brand_id).first()
         if not brand:
             return None

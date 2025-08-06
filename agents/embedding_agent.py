@@ -267,8 +267,8 @@ class EmbeddingAgent:
         # Format conversation history for context
         conversation_context = ""
         if conversation_history:
-            # Get the latest 3 messages for context
-            recent_messages = conversation_history[-3:] if len(conversation_history) >= 3 else conversation_history
+            # Get the latest 5 messages for context
+            recent_messages = conversation_history[-5:] if len(conversation_history) >= 5 else conversation_history
             
             if language == 'ar':
                 conversation_context = "\n\nسياق المحادثة (آخر 3 رسائل):\n"

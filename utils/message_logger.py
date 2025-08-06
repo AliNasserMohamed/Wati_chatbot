@@ -383,6 +383,52 @@ class MessageJourneyLogger:
         if to_remove:
             self.logger.info(f"🧹 Cleaned up {len(to_remove)} old journey records")
 
+    def log_function_call(self,
+                         journey_id: str,
+                         function_name: str,
+                         function_args: Dict[str, Any],
+                         function_result: Any,
+                         duration_ms: Optional[int] = None,
+                         status: str = "completed",
+                         error: Optional[str] = None):
+        """Log individual function calls and their responses"""
+        self.add_step(
+            journey_id=journey_id,
+            step_type="function_call",
+            description=f"Function call: {function_name}",
+            data={
+                "function_name": function_name,
+                "arguments": function_args,
+                "result": function_result if isinstance(function_result, (dict, list, str, int, float, bool)) else str(function_result),
+                "result_type": type(function_result).__name__,
+                "error": error,
+                "status": status
+            },
+            duration_ms=duration_ms,
+            status=status
+        )
+        
+        # Additional detailed logging for function calls
+        args_str = json.dumps(function_args, ensure_ascii=False, indent=None)[:200]
+        if len(args_str) >= 200:
+            args_str += "..."
+            
+        self.logger.info(f"🔧 FUNCTION_CALL | ID: {journey_id} | Function: {function_name} | Args: {args_str}")
+        
+        if error:
+            self.logger.error(f"❌ FUNCTION_ERROR | ID: {journey_id} | Function: {function_name} | Error: {error}")
+        elif isinstance(function_result, dict) and function_result.get('success'):
+            result_summary = f"Success: {len(function_result.get('data', []))} items" if 'data' in function_result else "Success"
+            self.logger.info(f"✅ FUNCTION_SUCCESS | ID: {journey_id} | Function: {function_name} | Result: {result_summary}")
+        elif isinstance(function_result, dict) and not function_result.get('success'):
+            error_msg = function_result.get('error', 'Unknown error')
+            self.logger.warning(f"⚠️ FUNCTION_PARTIAL | ID: {journey_id} | Function: {function_name} | Issue: {error_msg}")
+        else:
+            result_str = str(function_result)[:100]
+            if len(str(function_result)) > 100:
+                result_str += "..."
+            self.logger.info(f"📋 FUNCTION_RESULT | ID: {journey_id} | Function: {function_name} | Result: {result_str}")
+
 
 # Create global instance
 message_journey_logger = MessageJourneyLogger() 

@@ -61,10 +61,10 @@ class QueryAgent:
         # Define available functions for the LLM
         self.available_functions = {
             "get_all_cities": self.get_all_cities,
-            "get_city_id_by_name": self.get_city_id_by_name,
-            "get_brands_by_city": self.get_brands_by_city,
-            "get_products_by_brand": self.get_products_by_brand,
+            "get_brands_by_city_name": self.get_brands_by_city_name,
+            "get_products_by_brand_and_city_name": self.get_products_by_brand_and_city_name,
             "search_cities": self.search_cities,
+            "search_brands_in_city": self.search_brands_in_city,
             "check_city_availability": self.check_city_availability
         }
         
@@ -149,7 +149,7 @@ Reply with "relevant" if the message is related to products, prices, brands, and
         self.function_definitions = [
             {
                 "name": "get_all_cities",
-                "description": "Get complete list of all cities we serve with water delivery. Use this when user asks about available cities, locations we serve, or wants to see all cities. Returns city ID, Arabic name, and English name for each city.",
+                "description": "Get complete list of all cities we serve with water delivery. Use this when user asks about available cities, locations we serve, or wants to see all cities. Returns city names in Arabic and English.",
                 "parameters": {
                     "type": "object",
                     "properties": {},
@@ -157,50 +157,40 @@ Reply with "relevant" if the message is related to products, prices, brands, and
                 }
             },
             {
-                "name": "get_city_id_by_name",
-                "description": "STEP 1 in workflow: Get the internal city ID from a city name (Arabic or English). This is the FIRST step in the mandatory workflow: City→Brands→Products→Response. Always start here when customer asks about brands or products.",
+                "name": "get_brands_by_city_name",
+                "description": "STEP 1 in workflow: Get all water brands available in a specific city using city name. This handles fuzzy matching for incomplete or misspelled city names. Use this when customer mentions a city and you want to show available brands.",
                 "parameters": {
                     "type": "object",
                     "properties": {
                         "city_name": {
                             "type": "string",
-                            "description": "Name of the city in Arabic or English (e.g., 'الرياض', 'Riyadh', 'جدة', 'Jeddah')"
+                            "description": "Name of the city in Arabic or English (e.g., 'الرياض', 'Riyadh', 'جدة', 'Jeddah'). Supports partial matches and fuzzy matching."
                         }
                     },
                     "required": ["city_name"]
                 }
             },
             {
-                "name": "get_brands_by_city",
-                "description": "STEP 2 in workflow: Get all water brands available in a specific city. ONLY use this AFTER getting the city in Step 1. This is the second step in the mandatory workflow: City→Brands→Products→Response. You must call get_city_id_by_name first to get the city_id. NEVER use random or guessed city IDs - ONLY use IDs returned from get_city_id_by_name function.",
+                "name": "get_products_by_brand_and_city_name",
+                "description": "STEP 2 in workflow: Get all water products for a specific brand in a specific city using names. This handles fuzzy matching for incomplete or misspelled brand/city names. Use this when customer has specified both a brand and city.",
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "city_id": {
-                            "type": "integer",
-                            "description": "Internal city ID (MUST get this using get_city_id_by_name function first - NEVER use random numbers)"
+                        "brand_name": {
+                            "type": "string",
+                            "description": "Name of the brand in Arabic or English (e.g., 'نستله', 'Nestle', 'أكوافينا', 'Aquafina'). Supports partial matches."
+                        },
+                        "city_name": {
+                            "type": "string",
+                            "description": "Name of the city in Arabic or English (e.g., 'الرياض', 'Riyadh', 'جدة', 'Jeddah'). Supports partial matches."
                         }
                     },
-                    "required": ["city_id"]
-                }
-            },
-            {
-                "name": "get_products_by_brand",
-                "description": "STEP 3 in workflow: Get all water products offered by a specific brand. ONLY use this AFTER Steps 1 (get city) and 2 (show brands) are complete. This is the third step in the mandatory workflow: City→Brands→Products→Response. Customer must have selected a specific brand first. NEVER use random or guessed brand IDs - ONLY use IDs returned from get_brands_by_city function.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "brand_id": {
-                            "type": "integer",
-                            "description": "Brand ID (MUST get this from get_brands_by_city response after customer selects a brand - NEVER use random numbers)"
-                        }
-                    },
-                    "required": ["brand_id"]
+                    "required": ["brand_name", "city_name"]
                 }
             },
             {
                 "name": "search_cities",
-                "description": "STEP 1 alternative: Search for cities by name when exact city name doesn't match. Use this as part of Step 1 in the workflow when get_city_id_by_name fails to find the city. This helps handle typos or find similar city names.",
+                "description": "Search for cities by name when you need to find cities with fuzzy matching. This helps handle typos or find similar city names when the exact city name is unclear.",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -212,7 +202,24 @@ Reply with "relevant" if the message is related to products, prices, brands, and
                     "required": ["query"]
                 }
             },
-
+            {
+                "name": "search_brands_in_city",
+                "description": "Search for brands by name within a specific city only. Use this when customer mentions a brand name that might be incomplete or misspelled and you know their city.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "brand_name": {
+                            "type": "string",
+                            "description": "Brand name to search for (Arabic or English). Supports partial matches."
+                        },
+                        "city_name": {
+                            "type": "string",
+                            "description": "City name where to search for brands. This is required - we only search within specific cities."
+                        }
+                    },
+                    "required": ["brand_name", "city_name"]
+                }
+            },
             {
                 "name": "check_city_availability",
                 "description": "Check if a product or brand is available in a specific city. Use this when user asks about product/brand availability in their city after you know both the city and the product/brand name.",
@@ -352,13 +359,13 @@ Reply with "relevant" if the message is related to products, prices, brands, and
             logger.error(f"Error extracting city from context: {str(e)}")
             return None
 
-    def _extract_brand_from_context(self, user_message: str, conversation_history: List[Dict] = None, city_id: int = None) -> Optional[Dict[str, Any]]:
+    def _extract_brand_from_context(self, user_message: str, conversation_history: List[Dict] = None, city_name: str = None) -> Optional[Dict[str, Any]]:
         """Extract brand information from current message and conversation history
-        IMPORTANT: Only returns brands if city_id is provided (city must be known first)
+        IMPORTANT: Only returns brands if city_name is provided (city must be known first)
         IMPORTANT: Ignores size terms like ابو ربع, ابو نص, ابو ريال as they are NOT brand names
         """
         # Do not extract brands without knowing the city first
-        if not city_id:
+        if not city_name:
             return None
         
         # Size terms that should NEVER be treated as brand names
@@ -372,8 +379,8 @@ Reply with "relevant" if the message is related to products, prices, brands, and
         try:
             db = self._get_db_session()
             try:
-                # Get brands only for the specific city
-                brands = data_api.get_brands_by_city(db, city_id)
+                # Get brands only for the specific city using city name
+                brands = data_api.get_brands_by_city_name(db, city_name)
                 
                 # PRIORITY 1: Check current user message first
                 if user_message:
@@ -383,7 +390,6 @@ Reply with "relevant" if the message is related to products, prices, brands, and
                         
                         if brand_title and brand_title in current_content:
                             return {
-                                "brand_id": brand["id"],
                                 "brand_title": brand["title"],
                                 "found_in": "current_message"
                             }
@@ -399,7 +405,6 @@ Reply with "relevant" if the message is related to products, prices, brands, and
                             
                             if brand_title and brand_title in content:
                                 return {
-                                    "brand_id": brand["id"],
                                     "brand_title": brand["title"],
                                     "found_in": "conversation_history"
                                 }
@@ -422,7 +427,7 @@ Reply with "relevant" if the message is related to products, prices, brands, and
         
         if user_msg_lower in yes_words:
             # Check if the last bot message was asking about a product
-            for message in reversed(conversation_history[-3:]):  # Check last 3 messages
+            for message in reversed(conversation_history[-5:]):  # Check last 5 messages
                 if message.get("role") == "assistant":
                     content = message.get("content", "").lower()
                     # Check if the bot asked about needing a product or mentioned a price
@@ -465,168 +470,118 @@ Reply with "relevant" if the message is related to products, prices, brands, and
             logger.error(f"Error fetching cities: {str(e)}")
             return {"error": f"Failed to get cities: {str(e)}"}
     
-    def get_city_id_by_name(self, city_name: str) -> Dict[str, Any]:
-        """Get city ID by name (helper function) with typo handling and Riyadh regions support"""
+    def get_brands_by_city_name(self, city_name: str) -> Dict[str, Any]:
+        """Get brands available in a specific city using city name with fuzzy matching"""
         try:
             db = self._get_db_session()
             try:
-                # Get all cities and find matching one
-                cities = data_api.get_all_cities(db)
-                
-                # Special handling for Riyadh regions - prioritize exact matches
-                riyadh_regions = {
-                    "شمال الرياض": ["شمال الرياض", "north riyadh", "شمال الرياض", "الرياض الشمالي"],
-                    "جنوب الرياض": ["جنوب الرياض", "south riyadh", "جنوب الرياض", "الرياض الجنوبي"], 
-                    "غرب الرياض": ["غرب الرياض", "west riyadh", "غرب الرياض", "الرياض الغربي"],
-                    "شرق الرياض": ["شرق الرياض", "east riyadh", "شرق الرياض", "الرياض الشرقي"],
-                    "الرياض": ["الرياض", "riyadh", "رياض"]
-                }
-                
-                city_name_normalized = city_name.strip().lower()
-                
-                # Check for Riyadh regions with priority handling
-                for region_name, variations in riyadh_regions.items():
-                    for variation in variations:
-                        if city_name_normalized == variation.lower():
-                            # Find exact match for this specific region
-                            for city in cities:
-                                city_name_db = city.get("name", "").strip()
-                                if city_name_db == region_name:
-                                    return {
-                                        "success": True,
-                                        "city_id": city["id"],
-                                        "city_name": city["name"],
-                                        "city_name_en": city.get("name_en", ""),
-                                        "match_type": "exact_region"
-                                    }
-                
-                # If user just typed "الرياض" and we have multiple Riyadh regions, 
-                # prioritize the main "الرياض" city over regions
-                if city_name_normalized in ["الرياض", "riyadh", "رياض"]:
-                    main_riyadh = None
-                    riyadh_regions_found = []
-                    
-                    for city in cities:
-                        city_name_db = city.get("name", "").strip()
-                        if city_name_db == "الرياض":
-                            main_riyadh = city
-                        elif city_name_db in ["شمال الرياض", "جنوب الرياض", "غرب الرياض", "شرق الرياض"]:
-                            riyadh_regions_found.append(city)
-                    
-                    # Return main Riyadh if available
-                    if main_riyadh:
-                        return {
-                            "success": True,
-                            "city_id": main_riyadh["id"],
-                            "city_name": main_riyadh["name"],
-                            "city_name_en": main_riyadh.get("name_en", ""),
-                            "match_type": "exact",
-                            "note": f"وجدت أيضاً {len(riyadh_regions_found)} مناطق أخرى في الرياض" if riyadh_regions_found else None
-                        }
-                
-                # Regular exact match (case insensitive) for other cities
-                for city in cities:
-                    city_name_db = city.get("name", "").lower()
-                    city_name_en_db = city.get("name_en", "").lower()
-                    
-                    # Exact match check
-                    if (city_name_normalized == city_name_db or 
-                        city_name_normalized == city_name_en_db):
-                        return {
-                            "success": True,
-                            "city_id": city["id"],
-                            "city_name": city["name"],
-                            "city_name_en": city.get("name_en", ""),
-                            "match_type": "exact"
-                        }
-                
-                # Partial match for other cities (existing logic)
-                for city in cities:
-                    city_name_db = city.get("name", "").lower()
-                    city_name_en_db = city.get("name_en", "").lower()
-                    
-                    if (city_name_normalized in city_name_db or 
-                        city_name_normalized in city_name_en_db):
-                        return {
-                            "success": True,
-                            "city_id": city["id"],
-                            "city_name": city["name"],
-                            "city_name_en": city.get("name_en", ""),
-                            "match_type": "partial"
-                        }
-                
-                # If no exact match, try fuzzy search for typos
-                search_results = data_api.search_cities(db, city_name)
-                if search_results:
-                    # Return the first search result with indication it's a suggested match
-                    first_result = search_results[0]
+                brands = data_api.get_brands_by_city_name(db, city_name)
+                if not brands:
                     return {
-                        "success": True,
-                        "city_id": first_result["id"],
-                        "city_name": first_result["name"],
-                        "city_name_en": first_result.get("name_en", ""),
-                        "match_type": "suggested",
-                        "original_input": city_name,
-                        "suggestion_message": f"لم أجد '{city_name}' بالضبط، لكن وجدت '{first_result['name']}'. هل تقصد هذه المدينة؟"
+                        "success": False,
+                        "error": f"لم أجد مدينة باسم '{city_name}' أو لا توجد علامات تجارية متاحة في هذه المدينة.",
+                        "original_input": city_name
                     }
                 
-                return {
-                    "success": False,
-                    "error": f"لم أجد مدينة باسم '{city_name}'. يرجى التحقق من الاسم أو جرب اسم مدينة أخرى.",
-                    "original_input": city_name
-                }
-            finally:
-                db.close()
-            
-        except Exception as e:
-            logger.error(f"Error finding city ID for {city_name}: {str(e)}")
-            return {"error": f"Failed to find city: {str(e)}"}
-    
-    def get_brands_by_city(self, city_id: int) -> Dict[str, Any]:
-        """Get brands available in a specific city"""
-        try:
-            db = self._get_db_session()
-            try:
-                brands = data_api.get_brands_by_city(db, city_id)
-                # Filter to return only brand ID and brand name
+                # Return brands with city information
                 filtered_brands = [
                     {
-                        "id": brand["id"],           # Brand ID
-                        "title": brand["title"]     # Brand name
+                        "title": brand["title"],                    # Brand name in Arabic
+                        "title_en": brand.get("title_en", ""),     # Brand name in English
+                        "city_name": brand["city_name"],           # City name in Arabic
+                        "city_name_en": brand.get("city_name_en", "")  # City name in English
                     }
                     for brand in brands
                 ]
-                return {"success": True, "data": filtered_brands}
+                
+                return {
+                    "success": True, 
+                    "data": filtered_brands,
+                    "city_found": brands[0]["city_name"] if brands else city_name
+                }
             finally:
                 db.close()
         except Exception as e:
-            logger.error(f"Error fetching brands for city {city_id}: {str(e)}")
+            logger.error(f"Error fetching brands for city {city_name}: {str(e)}")
             return {"error": f"Failed to get brands: {str(e)}"}
     
-    def get_products_by_brand(self, brand_id: int) -> Dict[str, Any]:
-        """Get products offered by a specific brand"""
+    def get_products_by_brand_and_city_name(self, brand_name: str, city_name: str) -> Dict[str, Any]:
+        """Get products for a specific brand in a specific city using names with fuzzy matching"""
         try:
             db = self._get_db_session()
             try:
-                products = data_api.get_products_by_brand(db, brand_id)
-                # Filter to return only product name, price, and amount
+                products = data_api.get_products_by_brand_and_city_name(db, brand_name, city_name)
+                if not products:
+                    return {
+                        "success": False,
+                        "error": f"لم أجد منتجات للعلامة التجارية '{brand_name}' في مدينة '{city_name}'. يرجى التحقق من الأسماء أو جرب علامة تجارية أخرى.",
+                        "original_brand": brand_name,
+                        "original_city": city_name
+                    }
+                
+                # Return products with brand and pricing information
                 filtered_products = [
                     {
-                        "product_title": product["product_title"],         # Product name
-                        "product_contract_price": product["product_contract_price"],  # Price
-                        "product_packing": product["product_packing"]      # Amount
+                        "product_title": product["product_title"],                      # Product name
+                        "product_contract_price": product["product_contract_price"],    # Price
+                        "product_packing": product["product_packing"],                  # Amount/packaging
+                        "brand_title": product["brand_title"],                          # Brand name
+                        "brand_title_en": product.get("brand_title_en", "")            # Brand name in English
                     }
                     for product in products
                 ]
-                return {"success": True, "data": filtered_products}
+                
+                return {
+                    "success": True, 
+                    "data": filtered_products,
+                    "brand_found": products[0]["brand_title"] if products else brand_name,
+                    "total_products": len(filtered_products)
+                }
             finally:
                 db.close()
         except Exception as e:
-            logger.error(f"Error fetching products for brand {brand_id}: {str(e)}")
+            logger.error(f"Error fetching products for brand {brand_name} in city {city_name}: {str(e)}")
             return {"error": f"Failed to get products: {str(e)}"}
     
+    def search_brands_in_city(self, brand_name: str, city_name: str) -> Dict[str, Any]:
+        """Search for brands by name within a specific city only"""
+        try:
+            db = self._get_db_session()
+            try:
+                brands = data_api.search_brands_in_city(db, brand_name, city_name)
+                if not brands:
+                    error_msg = f"لم أجد علامة تجارية باسم '{brand_name}' في مدينة '{city_name}'. يرجى التحقق من الاسم أو جرب علامة تجارية أخرى."
+                    
+                    return {
+                        "success": False,
+                        "error": error_msg,
+                        "original_brand": brand_name,
+                        "original_city": city_name
+                    }
+                
+                # Return found brands
+                filtered_brands = [
+                    {
+                        "title": brand["title"],                    # Brand name in Arabic
+                        "title_en": brand.get("title_en", ""),     # Brand name in English
+                        "image_url": brand.get("image_url", "")    # Brand image
+                    }
+                    for brand in brands
+                ]
+                
+                return {
+                    "success": True, 
+                    "data": filtered_brands,
+                    "total_brands": len(filtered_brands)
+                }
+            finally:
+                db.close()
+        except Exception as e:
+            logger.error(f"Error searching brands for {brand_name}: {str(e)}")
+            return {"error": f"Failed to search brands: {str(e)}"}
+    
     def search_cities(self, query: str) -> Dict[str, Any]:
-        """Search cities by name with special Riyadh regions handling"""
+        """Search cities by name with """
         try:
             db = self._get_db_session()
             try:
@@ -685,59 +640,57 @@ Reply with "relevant" if the message is related to products, prices, brands, and
     
 
     def check_city_availability(self, city_name: str, item_type: str, item_name: str) -> Dict[str, Any]:
-        """Check if a brand or product is available in a specific city"""
+        """Check if a brand or product is available in a specific city using name-based approach"""
         try:
             db = self._get_db_session()
             try:
-                # First get the city ID
-                city_result = self.get_city_id_by_name(city_name)
-                if not city_result.get("success"):
-                    return {
-                        "success": False,
-                        "error": f"لم أجد مدينة باسم '{city_name}'. يرجى التحقق من الاسم.",
-                        "item_type": item_type,
-                        "item_name": item_name
-                    }
-                
-                city_id = city_result["city_id"]
-                
                 if item_type == "brand":
-                    # Check if brand exists in this city
-                    brands = data_api.get_brands_by_city(db, city_id)
-                    for brand in brands:
-                        if item_name.lower() in brand["title"].lower():
-                            return {
-                                "success": True,
-                                "available": True,
-                                "city_name": city_result["city_name"],
-                                "item_type": item_type,
-                                "item_name": item_name,
-                                "brand_info": {
-                                    "id": brand["id"],
-                                    "title": brand["title"]
-                                }
+                    # Check if brand exists in this city using name-based search
+                    brands = data_api.search_brands_in_city(db, item_name, city_name)
+                    if brands:
+                        return {
+                            "success": True,
+                            "available": True,
+                            "city_name": city_name,
+                            "item_type": item_type,
+                            "item_name": item_name,
+                            "brand_info": {
+                                "title": brands[0]["title"],
+                                "title_en": brands[0].get("title_en", "")
                             }
+                        }
                     
                     return {
                         "success": True,
                         "available": False,
-                        "city_name": city_result["city_name"],
+                        "city_name": city_name,
                         "item_type": item_type,
                         "item_name": item_name,
-                        "message": f"للأسف، العلامة التجارية '{item_name}' غير متوفرة في {city_result['city_name']}"
+                        "message": f"للأسف، العلامة التجارية '{item_name}' غير متوفرة في {city_name}"
                     }
                 
                 elif item_type == "product":
-                    # Check if product exists in any brand in this city
-                    brands = data_api.get_brands_by_city(db, city_id)
+                    # Check if product exists by searching brands and their products
+                    brands = data_api.get_brands_by_city_name(db, city_name)
+                    if not brands:
+                        return {
+                            "success": False,
+                            "error": f"لم أجد مدينة باسم '{city_name}'. يرجى التحقق من الاسم.",
+                            "item_type": item_type,
+                            "item_name": item_name
+                        }
+                    
                     found_products = []
                     
+                    # Search through each brand's products
                     for brand in brands:
-                        products = data_api.get_products_by_brand(db, brand["id"])
+                        # Try to get products using the existing method that requires brand name and city name
+                        # We'll search through all brands to find products matching the item_name
+                        products = data_api.get_products_by_brand_and_city_name(db, brand["title"], city_name)
                         for product in products:
                             if item_name.lower() in product["product_title"].lower():
                                 found_products.append({
-                                    "brand_name": brand["title"],
+                                    "brand_name": product["brand_title"],
                                     "product_title": product["product_title"],
                                     "product_contract_price": product["product_contract_price"],
                                     "product_packing": product["product_packing"]
@@ -747,7 +700,7 @@ Reply with "relevant" if the message is related to products, prices, brands, and
                         return {
                             "success": True,
                             "available": True,
-                            "city_name": city_result["city_name"],
+                            "city_name": city_name,
                             "item_type": item_type,
                             "item_name": item_name,
                             "products": found_products
@@ -756,10 +709,10 @@ Reply with "relevant" if the message is related to products, prices, brands, and
                         return {
                             "success": True,
                             "available": False,
-                            "city_name": city_result["city_name"],
+                            "city_name": city_name,
                             "item_type": item_type,
                             "item_name": item_name,
-                            "message": f"للأسف، المنتج '{item_name}' غير متوفر في {city_result['city_name']}"
+                            "message": f"للأسف، المنتج '{item_name}' غير متوفر في {city_name}"
                         }
                 
                 return {"success": False, "error": "نوع العنصر غير صحيح. يجب أن يكون 'brand' أو 'product'"}
@@ -793,7 +746,7 @@ Reply with "relevant" if the message is related to products, prices, brands, and
             # Prepare context from conversation history
             context = ""
             if conversation_history:
-                recent_messages = conversation_history[-3:]  # Last 3 messages for context
+                recent_messages = conversation_history[-5:]  # Last 5 messages for context
                 context = "\n".join([f"{msg.get('role', 'user')}: {msg.get('content', '')}" for msg in recent_messages])
                 context = f"\nRecent conversation context:\n{context}\n"
             
@@ -885,7 +838,7 @@ Classification:"""
             brand_context = self._extract_brand_from_context(
                 user_message, 
                 conversation_history, 
-                city_context.get("city_id") if city_context else None
+                city_context.get("city_name") if city_context else None
             )
             
             # Prepare conversation history
@@ -987,21 +940,20 @@ When user wants to place an order, make a purchase, or asks how to order, ALWAYS
 
 Important rules:
 - Always use available functions to get updated information
-- For city queries: try get_city_id_by_name first, if fails use search_cities
+- For city queries: use search_cities to handle typos and fuzzy matching
 - Be patient with typos and spelling variations
 - Respond in English since the customer is communicating in English
 - Keep responses helpful and conversational like a real person would
 - Use context smartly - don't ask for information you already have
 
-🚨 CRITICAL RULE - NEVER USE RANDOM IDs:
-- NEVER mention or use random city ID numbers in your responses
-- NEVER mention or use random brand ID numbers in your responses
-- ALWAYS use the get_city_id_by_name function to get the correct city ID first
-- ALWAYS use get_brands_by_city function to get correct brand IDs after getting city ID
-- ONLY use IDs that are returned from proper function calls
-- If you need a city ID, you MUST call get_city_id_by_name function with the city name
-- If you need brand information, you MUST call get_brands_by_city with the correct city ID
-- Do not assume or guess any ID numbers - always get them from the database functions
+🚨 CRITICAL RULE - USE NAMES, NOT IDs:
+- NEVER mention or use internal database ID numbers in your responses
+- ALWAYS work with city names and brand names directly
+- Use get_brands_by_city_name to get brands for a specific city by name
+- Use get_products_by_brand_and_city_name to get products for a brand in a city by names
+- Use search_brands_in_city to find brands with fuzzy matching
+- The system handles incomplete and misspelled names automatically
+- Always use descriptive names that customers understand
 
 Be helpful, understanding, and respond exactly like a friendly human employee would."""
                 }
@@ -1136,21 +1088,20 @@ Be helpful, understanding, and respond exactly like a friendly human employee wo
 
 قواعد مهمة:
 - استخدم دائماً الوظائف المتاحة للحصول على معلومات حديثة
-- للاستفسارات عن المدن: جرب get_city_id_by_name أولاً، إذا فشل استخدم search_cities
+- للاستفسارات عن المدن: استخدم search_cities للتعامل مع الأخطاء الإملائية والمطابقة الضبابية
 - كن صبور مع الأخطاء الإملائية والتنويعات
 - أجب باللغة العربية لأن العميل يتواصل بالعربية
 - خلي ردودك مفيدة وودودة مثل أي شخص حقيقي
 - استخدم السياق بذكاء - لا تسأل عن معلومات تعرفها بالفعل
 
-🚨 قاعدة مهمة جداً - لا تستخدم أي أرقام معرفات عشوائية:
-- لا تذكر أبداً أو تستخدم أرقام معرف المدن (city IDs) العشوائية في ردودك
-- لا تذكر أبداً أو تستخدم أرقام معرف العلامات التجارية (brand IDs) العشوائية في ردودك
-- استخدم دائماً وظيفة get_city_id_by_name للحصول على معرف المدينة الصحيح أولاً
-- استخدم دائماً وظيفة get_brands_by_city للحصول على معرفات العلامات التجارية الصحيحة بعد الحصول على معرف المدينة
-- استخدم فقط المعرفات التي يتم إرجاعها من استدعاءات الوظائف الصحيحة
-- إذا كنت بحاجة لمعرف مدينة، يجب عليك استدعاء وظيفة get_city_id_by_name مع اسم المدينة
-- إذا كنت بحاجة لمعلومات العلامة التجارية، يجب عليك استدعاء get_brands_by_city مع معرف المدينة الصحيح
-- لا تفترض أو تخمن أي أرقام معرفات - احصل عليها دائماً من وظائف قاعدة البيانات
+🚨 قاعدة مهمة جداً - استخدم الأسماء وليس المعرفات:
+- لا تذكر أبداً أو تستخدم أرقام معرفات قاعدة البيانات الداخلية في ردودك
+- اعمل دائماً مع أسماء المدن وأسماء العلامات التجارية مباشرة
+- استخدم get_brands_by_city_name للحصول على العلامات التجارية لمدينة معينة بالاسم
+- استخدم get_products_by_brand_and_city_name للحصول على المنتجات لعلامة تجارية في مدينة بالأسماء
+- استخدم search_brands_in_city للبحث عن العلامات التجارية مع المطابقة الضبابية
+- النظام يتعامل مع الأسماء الناقصة والمكتوبة خطأ تلقائياً
+- استخدم دائماً أسماء وصفية يفهمها العملاء
 
 كن مساعد ومتفهم ورد تماماً مثل موظف ودود حقيقي."""
                 }
@@ -1205,7 +1156,7 @@ Be helpful, understanding, and respond exactly like a friendly human employee wo
                     
                     # Log the LLM request
                     if LOGGING_AVAILABLE and journey_id:
-                        prompt_text = "\n".join([f"{msg['role']}: {msg.get('content', 'Function call')}" for msg in messages[-3:]])  # Last 3 messages for context
+                        prompt_text = "\n".join([f"{msg['role']}: {msg.get('content', 'Function call')}" for msg in messages[-5:]])  # Last 5 messages for context
                         
                     response = await self._call_openai_with_retry(
                         model="gpt-4o-mini",
@@ -1256,7 +1207,24 @@ Be helpful, understanding, and respond exactly like a friendly human employee wo
                         # Call the requested function
                         if function_name in self.available_functions:
                             try:
+                                # Record function call start time for duration measurement
+                                func_start_time = time.time()
+                                
                                 function_result = self.available_functions[function_name](**function_args)
+                                
+                                # Calculate function execution duration
+                                func_duration = int((time.time() - func_start_time) * 1000)
+                                
+                                # Log the function call and response in detail
+                                if LOGGING_AVAILABLE and journey_id:
+                                    message_journey_logger.log_function_call(
+                                        journey_id=journey_id,
+                                        function_name=function_name,
+                                        function_args=function_args,
+                                        function_result=function_result,
+                                        duration_ms=func_duration,
+                                        status="completed"
+                                    )
                                 
                                 # Add function call and result to conversation
                                 messages.append({
@@ -1276,15 +1244,44 @@ Be helpful, understanding, and respond exactly like a friendly human employee wo
                                 logger.info(f"Function {function_name} completed successfully")
                                 
                             except Exception as func_error:
+                                # Calculate function execution duration even for errors
+                                func_duration = int((time.time() - func_start_time) * 1000) if 'func_start_time' in locals() else None
+                                
                                 logger.error(f"Function {function_name} failed: {str(func_error)}")
+                                
+                                # Log the function error in detail
+                                if LOGGING_AVAILABLE and journey_id:
+                                    message_journey_logger.log_function_call(
+                                        journey_id=journey_id,
+                                        function_name=function_name,
+                                        function_args=function_args,
+                                        function_result=None,
+                                        duration_ms=func_duration,
+                                        status="failed",
+                                        error=str(func_error)
+                                    )
+                                
                                 # Add error result to conversation
+                                error_result = {"error": f"Function failed: {str(func_error)}"}
                                 messages.append({
                                     "role": "function",
                                     "name": function_name,
-                                    "content": json.dumps({"error": f"Function failed: {str(func_error)}"}, ensure_ascii=False)
+                                    "content": json.dumps(error_result, ensure_ascii=False)
                                 })
                         else:
                             logger.error(f"Unknown function: {function_name}")
+                            
+                            # Log the unknown function call
+                            if LOGGING_AVAILABLE and journey_id:
+                                message_journey_logger.log_function_call(
+                                    journey_id=journey_id,
+                                    function_name=function_name,
+                                    function_args=function_args,
+                                    function_result=None,
+                                    status="failed",
+                                    error=f"Unknown function: {function_name}"
+                                )
+                            
                             error_msg = f"خطأ: الوظيفة '{function_name}' غير متاحة." if user_language == 'ar' else f"Error: Function '{function_name}' is not available."
                             return error_msg
                     else:
@@ -1292,9 +1289,39 @@ Be helpful, understanding, and respond exactly like a friendly human employee wo
                         final_response = message.content
                         if final_response:
                             logger.info(f"Query completed after {function_call_count} function calls")
+                            
+                            # Log successful query completion
+                            if LOGGING_AVAILABLE and journey_id:
+                                message_journey_logger.add_step(
+                                    journey_id=journey_id,
+                                    step_type="query_completion",
+                                    description=f"Query completed successfully with {function_call_count} function calls",
+                                    data={
+                                        "total_function_calls": function_call_count,
+                                        "final_response_length": len(final_response),
+                                        "completion_status": "success",
+                                        "completion_method": "natural_completion"
+                                    }
+                                )
+                            
                             return final_response
                         else:
                             error_msg = "عذراً، لم أتمكن من معالجة طلبك. الرجاء المحاولة مرة أخرى." if user_language == 'ar' else "Sorry, I couldn't process your request. Please try again."
+                            
+                            # Log empty response error
+                            if LOGGING_AVAILABLE and journey_id:
+                                message_journey_logger.add_step(
+                                    journey_id=journey_id,
+                                    step_type="query_completion",
+                                    description="Query failed - empty response from LLM",
+                                    data={
+                                        "total_function_calls": function_call_count,
+                                        "completion_status": "failed",
+                                        "error": "Empty response from LLM"
+                                    },
+                                    status="failed"
+                                )
+                            
                             return error_msg
                 
                 except Exception as api_error:
@@ -1305,6 +1332,8 @@ Be helpful, understanding, and respond exactly like a friendly human employee wo
             
             # If we reached max function calls, get final response
             try:
+                final_api_start_time = time.time()
+                
                 final_response = await self._call_openai_with_retry(
                     model="gpt-4o-mini",
                     messages=messages,
@@ -1312,12 +1341,53 @@ Be helpful, understanding, and respond exactly like a friendly human employee wo
                     max_tokens=400
                 )
                 
+                final_api_duration = int((time.time() - final_api_start_time) * 1000)
                 response_text = final_response.choices[0].message.content
+                
+                # Log final response generation
+                if LOGGING_AVAILABLE and journey_id:
+                    message_journey_logger.log_llm_interaction(
+                        journey_id=journey_id,
+                        llm_type="openai",
+                        prompt="Final response generation after function calls",
+                        response=response_text or "No response generated",
+                        model="gpt-4o-mini",
+                        duration_ms=final_api_duration,
+                        tokens_used={"total_tokens": final_response.usage.total_tokens if final_response.usage else None}
+                    )
+                
                 if response_text:
                     logger.info(f"Final response generated after {function_call_count} function calls")
+                    
+                    # Log query completion summary
+                    if LOGGING_AVAILABLE and journey_id:
+                        message_journey_logger.add_step(
+                            journey_id=journey_id,
+                            step_type="query_completion",
+                            description=f"Query completed with {function_call_count} function calls",
+                            data={
+                                "total_function_calls": function_call_count,
+                                "final_response_length": len(response_text),
+                                "completion_status": "success"
+                            }
+                        )
+                    
                     return response_text
                 else:
                     max_calls_msg = "تم الوصول للحد الأقصى من العمليات. الرجاء إعادة صياغة السؤال." if user_language == 'ar' else "Maximum operations reached. Please rephrase your question."
+                    
+                    # Log max calls reached
+                    if LOGGING_AVAILABLE and journey_id:
+                        message_journey_logger.add_step(
+                            journey_id=journey_id,
+                            step_type="query_completion",
+                            description="Query terminated - maximum function calls reached",
+                            data={
+                                "total_function_calls": function_call_count,
+                                "completion_status": "max_calls_reached"
+                            }
+                        )
+                    
                     return max_calls_msg
                     
             except Exception as e:
