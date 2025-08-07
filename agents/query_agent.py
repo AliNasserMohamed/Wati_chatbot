@@ -298,6 +298,30 @@ Reply with "relevant" if the message is related to products, prices, brands, and
         from database.db_utils import SessionLocal
         return SessionLocal()
     
+    def _clean_brand_name(self, brand_text: str) -> str:
+        """Remove water-related prefixes from brand names
+        Removes: مياه, موية, مياة before brand names
+        Example: 'مياه وي' -> 'وي', 'موية نقي' -> 'نقي'
+        """
+        # Water prefixes to remove (case insensitive)
+        water_prefixes = ["مياه", "موية", "مياة", "ميه", "water"]
+        
+        # Clean the brand text
+        cleaned_text = brand_text.strip()
+        
+        # Remove water prefixes from the beginning
+        for prefix in water_prefixes:
+            # Check if text starts with the prefix followed by space
+            if cleaned_text.lower().startswith(prefix.lower() + " "):
+                cleaned_text = cleaned_text[len(prefix):].strip()
+                break
+            # Check if text starts with the prefix without space (for concatenated cases)
+            elif cleaned_text.lower().startswith(prefix.lower()) and len(cleaned_text) > len(prefix):
+                cleaned_text = cleaned_text[len(prefix):].strip()
+                break
+        
+        return cleaned_text
+    
     def _extract_city_from_context(self, user_message: str, conversation_history: List[Dict] = None) -> Optional[Dict[str, Any]]:
         """Extract city information from current message and conversation history"""
         try:
@@ -363,6 +387,7 @@ Reply with "relevant" if the message is related to products, prices, brands, and
         """Extract brand information from current message and conversation history
         IMPORTANT: Only returns brands if city_name is provided (city must be known first)
         IMPORTANT: Ignores size terms like ابو ربع, ابو نص, ابو ريال as they are NOT brand names
+        IMPORTANT: Removes water prefixes like مياه, موية, مياة before brand names
         """
         # Do not extract brands without knowing the city first
         if not city_name:
@@ -384,11 +409,14 @@ Reply with "relevant" if the message is related to products, prices, brands, and
                 
                 # PRIORITY 1: Check current user message first
                 if user_message:
-                    current_content = user_message.lower()
+                    # Clean the user message by removing water prefixes
+                    cleaned_message = self._clean_brand_name(user_message)
+                    current_content = cleaned_message.lower()
+                    
                     for brand in brands:
                         brand_title = brand.get("title", "").lower()
                         
-                        if brand_title and brand_title in current_content:
+                        if brand_title and (brand_title in current_content or brand_title in user_message.lower()):
                             return {
                                 "brand_title": brand["title"],
                                 "found_in": "current_message"
@@ -508,9 +536,17 @@ Reply with "relevant" if the message is related to products, prices, brands, and
     def get_products_by_brand_and_city_name(self, brand_name: str, city_name: str) -> Dict[str, Any]:
         """Get products for a specific brand in a specific city using names with fuzzy matching"""
         try:
+            # Clean the brand name by removing water prefixes
+            cleaned_brand_name = self._clean_brand_name(brand_name)
+            
             db = self._get_db_session()
             try:
-                products = data_api.get_products_by_brand_and_city_name(db, brand_name, city_name)
+                # Try with cleaned brand name first
+                products = data_api.get_products_by_brand_and_city_name(db, cleaned_brand_name, city_name)
+                
+                # If no results with cleaned name, try original name
+                if not products:
+                    products = data_api.get_products_by_brand_and_city_name(db, brand_name, city_name)
                 if not products:
                     return {
                         "success": False,
@@ -546,9 +582,18 @@ Reply with "relevant" if the message is related to products, prices, brands, and
     def search_brands_in_city(self, brand_name: str, city_name: str) -> Dict[str, Any]:
         """Search for brands by name within a specific city only"""
         try:
+            # Clean the brand name by removing water prefixes
+            cleaned_brand_name = self._clean_brand_name(brand_name)
+            
             db = self._get_db_session()
             try:
-                brands = data_api.search_brands_in_city(db, brand_name, city_name)
+                # Search with both cleaned and original brand names
+                brands = data_api.search_brands_in_city(db, cleaned_brand_name, city_name)
+                
+                # If no results with cleaned name, try original name
+                if not brands:
+                    brands = data_api.search_brands_in_city(db, brand_name, city_name)
+                
                 if not brands:
                     error_msg = f"لم أجد علامة تجارية باسم '{brand_name}' في مدينة '{city_name}'. يرجى التحقق من الاسم أو جرب علامة تجارية أخرى."
                     
@@ -910,6 +955,14 @@ When customer asks about prices with "how much" or "what's the price":
 - Examples: "How much is Nestle?" - "What's the price of Aquafina?" - "How much Volvic?"
 - Even if the brand name is misspelled or unfamiliar, try searching for it
 
+🚨 HANDLING WATER WORDS BEFORE BRAND NAMES - CRITICAL:
+- Customers may mention words like "مياه" (water), "موية" (water), "مياة" (water), "water" before brand names
+- Examples: "مياه وي" (We water) - "موية نقي" (Naqi water) - "water Nestle" - "مياه نستله"
+- These water words are NOT part of the actual brand name
+- The system automatically removes these prefixes when searching
+- So "مياه وي" becomes just "وي" for database search
+- Consider these words as descriptors, not part of the brand name
+
 PROACTIVE HANDLING:
 - "Nestle" + known city → Show Nestle products in that city
 - "Aquafina" + no known city → "Which city are you in? I'll show you Aquafina products there!"
@@ -1078,6 +1131,14 @@ Be helpful, understanding, and respond exactly like a friendly human employee wo
 - استخدم وظيفة search_brands_in_city للبحث عن العلامة التجارية في المدينة المعروفة
 - أمثلة: "كم نستله؟" - "بكم أكوافينا؟" - "كم فولفيك؟"
 - حتى لو كانت العلامة التجارية مكتوبة خطأ أو غير مألوفة، جرب البحث عنها
+
+🚨 معالجة كلمات المياه قبل أسماء العلامات التجارية - مهم جداً:
+- قد يذكر العميل كلمات مثل "مياه"، "موية"، "مياة" قبل اسم العلامة التجارية
+- أمثلة: "مياه وي" - "موية نقي" - "مياة أكوافينا" - "مياه نستله"
+- هذه الكلمات ليست جزءًا من اسم العلامة التجارية الفعلي
+- النظام يزيل تلقائياً هذه الكلمات عند البحث
+- لذا "مياه وي" سيصبح "وي" فقط للبحث في قاعدة البيانات
+- اعتبر هذه الكلمات مجرد أوصاف وليست جزءًا من اسم البراند
 
 التعامل الاستباقي:
 - "نستله" + مدينة معروفة → اعرض منتجات نستله في هذه المدينة
