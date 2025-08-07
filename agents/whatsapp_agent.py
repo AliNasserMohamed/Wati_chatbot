@@ -56,7 +56,8 @@ class WhatsAppAgent:
         self.chat_model = ChatOpenAI(
             temperature=0.7,
             model="gpt-4o",
-            api_key=self.openai_api_key  # Explicitly pass the API key
+            api_key=self.openai_api_key,  # Explicitly pass the API key
+            parallel_tool_calls=False  # Disable parallel function calling
         )
         
         # Define the system prompt
