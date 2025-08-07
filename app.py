@@ -929,9 +929,9 @@ async def process_message_async(data, phone_number, message_type, wati_message_i
             return
             
         else:
-            if not is_allowed_user:
-                return ""
-            # Continue to classification agent
+            # if not is_allowed_user:
+            #     return ""
+            # # Continue to classification agent
             message_journey_logger.add_step(
                 journey_id=journey_id,
                 step_type="embedding_continue",
@@ -962,28 +962,28 @@ async def process_message_async(data, phone_number, message_type, wati_message_i
             
             # SELECTIVE ACCESS CHECK: Allow INQUIRY and SERVICE_REQUEST for all users
             # Other categories only for allowed users
-            if is_allowed_user:
-                # Check if regular user is trying to access restricted categories
-                restricted_categories = [
-                    MessageType.GREETING, 
-                    MessageType.THANKING, 
-                    MessageType.COMPLAINT, 
-                    MessageType.SUGGESTION,
-                    MessageType.OTHERS
-                ]
-                
-                if classified_message_type in restricted_categories:
-                    message_journey_logger.add_step(
-                        journey_id=journey_id,
-                        step_type="access_restriction",
-                        description=f"Regular user restricted from {classified_message_type} category",
-                        data={"phone_number": phone_number, "classified_type": str(classified_message_type), "is_allowed": False}
-                    )
-                    message_journey_logger.complete_journey(journey_id, status="completed_restricted")
-                    print(f"🔒 Regular user cannot access {classified_message_type} category - no response sent")
-                    return
-                else:
-                    print(f"✅ Regular user has access to {classified_message_type} category")
+            #if is_allowed_user:
+            # Check if regular user is trying to access restricted categories
+            restricted_categories = [
+                MessageType.GREETING, 
+                MessageType.THANKING, 
+                MessageType.COMPLAINT, 
+                MessageType.SUGGESTION,
+                MessageType.OTHERS
+            ]
+            
+            if classified_message_type in restricted_categories:
+                message_journey_logger.add_step(
+                    journey_id=journey_id,
+                    step_type="access_restriction",
+                    description=f"Regular user restricted from {classified_message_type} category",
+                    data={"phone_number": phone_number, "classified_type": str(classified_message_type), "is_allowed": False}
+                )
+                message_journey_logger.complete_journey(journey_id, status="completed_restricted")
+                print(f"🔒 Regular user cannot access {classified_message_type} category - no response sent")
+                return
+            else:
+                print(f"✅ Regular user has access to {classified_message_type} category")
             
             # Store the detected language in session context
             context = json.loads(session.context) if session.context else {}
