@@ -566,7 +566,7 @@ Reply with "relevant" if the message is related to products, prices, brands, and
                 if not brands:
                     return {
                         "success": False,
-                        "error": f" يمكنك تصفح جميع الأصناف والأسعار في التطبيق:\n\n📱 **حمل تطبيق أبار:** https://onelink.to/abar_app\n\n🌐 **أو عن طريق الموقع الإلكتروني:** https://abar.app/en/store/\n\nالتطبيق يعرض لك جميع العلامات التجارية المتوفرة في منطقتك مع الأسعار والعروض الخاصة! 🚚💧",
+                        "error": f"بتحصل الاصناف والاسعار في التطبيق وهذا هو الرابط https://onelink.to/abar_app https://abar.app/en/store/ وايضا عن طريق الموقع الالكتروني",
                         "original_input": city_name,
                         "show_app_links": True
                     }
@@ -695,7 +695,7 @@ Reply with "relevant" if the message is related to products, prices, brands, and
                 if not cities:
                     return {
                         "success": False,
-                        "error": f"يمكنك تصفح جميع الأصناف والأسعار في التطبيق:\n\n📱 **حمل تطبيق أبار:** https://onelink.to/abar_app\n\n🌐 **أو عن طريق الموقع الإلكتروني:** https://abar.app/en/store/\n\nالتطبيق يعرض لك جميع العلامات التجارية المتوفرة في منطقتك مع الأسعار والعروض الخاصة! 🚚💧",
+                        "error": f"بتحصل الاصناف والاسعار في التطبيق وهذا هو الرابط https://onelink.to/abar_app https://abar.app/en/store/ وايضا عن طريق الموقع الالكتروني",
                         "query": query,
                         "show_app_links": True
                     }
@@ -781,7 +781,7 @@ Reply with "relevant" if the message is related to products, prices, brands, and
                     if not brands:
                         return {
                             "success": False,
-                            "error": f" يمكنك تصفح جميع الأصناف والأسعار في التطبيق:\n\n📱 **حمل تطبيق أبار:** https://onelink.to/abar_app\n\n🌐 **أو عن طريق الموقع الإلكتروني:** https://abar.app/en/store/\n\nالتطبيق يعرض لك جميع العلامات التجارية المتوفرة في منطقتك مع الأسعار والعروض الخاصة! 🚚💧",
+                            "error": f"بتحصل الاصناف والاسعار في التطبيق وهذا هو الرابط https://onelink.to/abar_app https://abar.app/en/store/ وايضا عن طريق الموقع الالكتروني",
                             "item_type": item_type,
                             "item_name": item_name,
                             "show_app_links": True
