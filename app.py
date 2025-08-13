@@ -457,7 +457,7 @@ class ThreadSafeMessageBatcher:
                 except Exception as e:
                     print(f"⚠️ Error cleaning up timer for {phone_number}: {e}")
             
-            # Set new timer to process batch after 3 seconds of inactivity
+            # Set new timer to process batch after 5 seconds of inactivity
             try:
                 self._timers[phone_number] = asyncio.create_task(
                     self._process_batch_delayed(phone_number)
@@ -471,7 +471,7 @@ class ThreadSafeMessageBatcher:
     async def _process_batch_delayed(self, phone_number: str):
         """Process batch after delay"""
         try:
-            await asyncio.sleep(3)  # Wait 3 seconds for more messages
+            await asyncio.sleep(5)  # Wait 5 seconds for more messages
             await self.process_user_batch(phone_number)
         except asyncio.CancelledError:
             print(f"🔄 Batch timer cancelled for {phone_number}")
@@ -962,28 +962,28 @@ async def process_message_async(data, phone_number, message_type, wati_message_i
             
             # SELECTIVE ACCESS CHECK: Allow INQUIRY and SERVICE_REQUEST for all users
             # Other categories only for allowed users
-            if not is_allowed_user:
-                # Check if regular user is trying to access restricted categories
-                restricted_categories = [
-                    MessageType.GREETING, 
-                    MessageType.THANKING, 
-                    MessageType.COMPLAINT, 
-                    MessageType.SUGGESTION,
-                    MessageType.OTHERS
-                ]
-                
-                if classified_message_type in restricted_categories:
-                    message_journey_logger.add_step(
-                        journey_id=journey_id,
-                        step_type="access_restriction",
-                        description=f"Regular user restricted from {classified_message_type} category",
-                        data={"phone_number": phone_number, "classified_type": str(classified_message_type), "is_allowed": False}
-                    )
-                    message_journey_logger.complete_journey(journey_id, status="completed_restricted")
-                    print(f"🔒 Regular user cannot access {classified_message_type} category - no response sent")
-                    return
-                else:
-                    print(f"✅ Regular user has access to {classified_message_type} category")
+            #if not is_allowed_user:
+            # Check if regular user is trying to access restricted categories
+            restricted_categories = [
+                MessageType.GREETING, 
+                MessageType.THANKING, 
+                MessageType.COMPLAINT, 
+                MessageType.SUGGESTION,
+                MessageType.OTHERS
+            ]
+            
+            if classified_message_type in restricted_categories:
+                message_journey_logger.add_step(
+                    journey_id=journey_id,
+                    step_type="access_restriction",
+                    description=f"Regular user restricted from {classified_message_type} category",
+                    data={"phone_number": phone_number, "classified_type": str(classified_message_type), "is_allowed": False}
+                )
+                message_journey_logger.complete_journey(journey_id, status="completed_restricted")
+                print(f"🔒 Regular user cannot access {classified_message_type} category - no response sent")
+                return
+            else:
+                print(f"✅ Regular user has access to {classified_message_type} category")
             
             # Store the detected language in session context
             context = json.loads(session.context) if session.context else {}
