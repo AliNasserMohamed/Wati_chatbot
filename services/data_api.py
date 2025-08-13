@@ -400,6 +400,74 @@ class DataAPIService:
             "brands": brands_with_products
         }
 
+    @staticmethod
+    def get_cheapest_products_by_city_name(db: Session, city_name: str) -> Dict[str, Any]:
+        """Get cheapest products in each size for a specific city"""
+        # Find the city first
+        city = db.query(City).filter(
+            or_(
+                City.name.ilike(f"%{city_name}%"),
+                City.name_en.ilike(f"%{city_name}%"),
+                City.title.ilike(f"%{city_name}%")
+            )
+        ).first()
+        
+        if not city:
+            return {
+                "success": False,
+                "error": f"لم أجد مدينة باسم '{city_name}'. يرجى التحقق من الاسم.",
+                "original_city": city_name
+            }
+        
+        # Get all products from all brands in this city
+        all_products = []
+        for brand in city.brands:
+            products = DatabaseManager.get_products_by_brand(db, brand.id)
+            for product in products:
+                all_products.append({
+                    "product_id": product.id,
+                    "product_title": product.title,
+                    "product_packing": product.packing,
+                    "product_contract_price": float(product.contract_price) if product.contract_price else 0.0,
+                    "brand_id": brand.id,
+                    "brand_title": brand.title,
+                    "brand_title_en": brand.title_en,
+                    "city_id": city.id,
+                    "city_name": city.name,
+                    "city_name_en": city.name_en
+                })
+        
+        if not all_products:
+            return {
+                "success": False,
+                "error": f"لم أجد منتجات في مدينة '{city_name}'.",
+                "city_name": city.name
+            }
+        
+        # Group products by size/packing and find cheapest in each group
+        size_groups = {}
+        
+        for product in all_products:
+            packing = product["product_packing"]
+            price = product["product_contract_price"]
+            
+            if price > 0:  # Only consider products with valid prices
+                if packing not in size_groups or price < size_groups[packing]["product_contract_price"]:
+                    size_groups[packing] = product
+        
+        # Convert to list and sort by price
+        cheapest_products = list(size_groups.values())
+        cheapest_products.sort(key=lambda x: x["product_contract_price"])
+        
+        return {
+            "success": True,
+            "city_name": city.name,
+            "city_name_en": city.name_en,
+            "data": cheapest_products,
+            "total_sizes": len(cheapest_products),
+            "message": f"أرخص المنتجات في كل حجم في مدينة {city.name}"
+        }
+
 # Singleton instance
 data_api = DataAPIService() 
 #data_api.get_products_by_brand(db, 1288)

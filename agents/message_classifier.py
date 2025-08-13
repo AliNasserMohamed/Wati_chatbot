@@ -40,6 +40,28 @@ class MessageClassifier:
         language = language_handler.detect_language(text)
         user_message.language = language
 
+        # Special handling for "صحتك" brand mentions
+        text_lower = text.lower().strip()
+        sahtak_keywords = ["صحتك", "مياه صحتك", "موية صحتك", "مياة صحتك"]
+        
+        # Check if the message contains Sahtak brand mentions
+        is_sahtak_mention = any(keyword in text_lower for keyword in sahtak_keywords)
+        
+        if is_sahtak_mention:
+            print(f"🔍 Detected Sahtak brand mention: {text}")
+            # Check conversation history to determine context
+            if conversation_history and len(conversation_history) > 0:
+                # If there's conversation history, classify as inquiry to continue the conversation flow
+                print("📝 Sahtak mention with conversation history - classifying as استفسار")
+                user_message.message_type = MessageType.INQUIRY
+                return MessageType.INQUIRY, language
+            else:
+                # If no conversation history, could be service request or inquiry
+                # Default to inquiry for brand mentions
+                print("📝 Sahtak mention without conversation history - classifying as استفسار")
+                user_message.message_type = MessageType.INQUIRY
+                return MessageType.INQUIRY, language
+
         # Build context-aware classification prompt
         system_prompt = """
         أنت مساعد ذكي متخصص في تصنيف رسائل العملاء لشركة توصيل المياه في السعودية.
@@ -65,6 +87,10 @@ class MessageClassifier:
         - تحية: السلام عليكم، مرحبا، هلا، صباح الخير، مساء الخير فقط
         - شكر: شكراً، مشكور، يعطيك العافية، الله يعطيك العافية، تسلم
         - أخرى: رسائل عامة، استفسارات غير محددة، رسائل خارج نطاق العمل
+
+        🚨 تعليمات خاصة للعلامات التجارية:
+        - "صحتك" أو "مياه صحتك" أو "موية صحتك" هي علامة تجارية للمياه - يجب تصنيفها كـ "استفسار"
+        - أي ذكر لأسماء العلامات التجارية يُصنف كـ "استفسار" وليس "أخرى"
 
         مهم جداً:
         1. "تحية" فقط للتحيات المباشرة الواضحة
@@ -126,7 +152,7 @@ class MessageClassifier:
 - **استخدم سياق المحادثة بذكاء:** الردود القصيرة (كلمة واحدة) يمكن أن تكون استفسارات مهمة إذا كانت تجيب على أسئلة البوت
 - **فهم التتابع:** إذا كان العميل يتابع محادثة بدأها، احترم السياق ولا تصنف كرسالة منفصلة
 - أسماء المدن الشائعة: الرياض، جدة، الدمام، مكة، المدينة، الطائف، الخبر، تبوك، أبها، الأحساء، القصيم، حائل، جازان، نجران، الباحة
-- أسماء العلامات التجارية الشائعة: نستله، أكوافينا، العين، القصيم، المراعي، نوفا، نقي، تانيا، صافية، بنما، أروى، مساء، سدير
+- أسماء العلامات التجارية الشائعة: نستله، أكوافينا، العين، القصيم، المراعي، نوفا، نقي، تانيا، صافية، بنما، أروى، مساء، سدير، صحتك
 
 صنف الرسالة الأخيرة من المستخدم:"""
             

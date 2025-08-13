@@ -65,7 +65,8 @@ class QueryAgent:
             "get_products_by_brand_and_city_name": self.get_products_by_brand_and_city_name,
             "search_cities": self.search_cities,
             "search_brands_in_city": self.search_brands_in_city,
-            "check_city_availability": self.check_city_availability
+            "check_city_availability": self.check_city_availability,
+            "get_cheapest_products_by_city_name": self.get_cheapest_products_by_city_name
         }
         
         # Classification prompts for message relevance
@@ -241,6 +242,20 @@ Reply with "relevant" if the message is related to products, prices, brands, and
                         }
                     },
                     "required": ["city_name", "item_type", "item_name"]
+                }
+            },
+            {
+                "name": "get_cheapest_products_by_city_name",
+                "description": "Get the cheapest products in each size/packing for a specific city. Use this when user asks about cheapest prices, cheapest brands, or cheapest water in their city. Shows cheapest product from each brand in different sizes.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "city_name": {
+                            "type": "string",
+                            "description": "Name of the city in Arabic or English (e.g., 'الرياض', 'Riyadh', 'جدة', 'Jeddah'). Supports partial matches and fuzzy matching."
+                        }
+                    },
+                    "required": ["city_name"]
                 }
             }
         ]
@@ -768,6 +783,19 @@ Reply with "relevant" if the message is related to products, prices, brands, and
         except Exception as e:
             logger.error(f"Error checking availability for {item_name} in {city_name}: {str(e)}")
             return {"error": f"حدث خطأ في التحقق من التوفر: {str(e)}"}
+
+    def get_cheapest_products_by_city_name(self, city_name: str) -> Dict[str, Any]:
+        """Get cheapest products in each size for a specific city using city name with fuzzy matching"""
+        try:
+            db = self._get_db_session()
+            try:
+                result = data_api.get_cheapest_products_by_city_name(db, city_name)
+                return result
+            finally:
+                db.close()
+        except Exception as e:
+            logger.error(f"Error fetching cheapest products for city {city_name}: {str(e)}")
+            return {"error": f"Failed to get cheapest products: {str(e)}"}
     
     async def _classify_message_relevance(self, user_message: str, conversation_history: List[Dict] = None, user_language: str = 'ar') -> bool:
         """
@@ -990,6 +1018,11 @@ When user wants to place an order, make a purchase, or asks how to order, ALWAYS
 - Never ask for delivery details, payment info, or personal information
 - Always direct them to the official app/website for ordering
 
+🚨 APP PROMOTION - ALWAYS INCLUDE IN RESPONSES:
+- At the end of EVERY response that shows products/prices/brands, add: "You can browse all products and place orders through our app: https://onelink.to/abar_app"
+- When showing cheapest products, emphasize: "These are the cheapest options. Browse all products and order through our app: https://onelink.to/abar_app"
+- Always promote the app as the main way to browse and order products
+
 🚨 SPECIFIC BUSINESS RULES - CRITICAL:
 
 1. APARTMENT DOOR DELIVERY:
@@ -1167,6 +1200,11 @@ Be helpful, understanding, and respond exactly like a friendly human employee wo
 - لا تحاول أخذ طلبات من خلال المحادثة أبداً
 - لا تسأل عن تفاصيل التوصيل أو معلومات الدفع أو المعلومات الشخصية
 - وجههم دائماً للتطبيق/الموقع الرسمي للطلب
+
+🚨 الترويج للتطبيق - يجب إدراجه دائماً في الردود:
+- في نهاية كل رد يظهر منتجات/أسعار/علامات تجارية، أضف: "بتحصل على جميع المنتجات وتقدر تطلب من خلال التطبيق: https://onelink.to/abar_app"
+- عند عرض أرخص المنتجات، اكد: "هذه أرخص الخيارات المتاحة. تقدر تتصفح جميع المنتجات وتطلب من خلال التطبيق: https://onelink.to/abar_app"
+- روج دائماً للتطبيق كالطريقة الأساسية لتصفح وطلب المنتجات
 
 🚨 قواعد العمل المحددة - مهمة جداً:
 
