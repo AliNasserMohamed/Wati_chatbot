@@ -2,6 +2,8 @@ import os
 import openai
 import time
 from typing import Optional, Dict, Any, Tuple
+from langchain_openai import ChatOpenAI
+from langchain_core.messages import SystemMessage, HumanMessage
 from vectorstore.chroma_db import chroma_manager
 from utils.language_utils import language_handler
 
@@ -15,7 +17,16 @@ except ImportError:
 
 class EmbeddingAgent:
     def __init__(self):
+        # Keep AsyncOpenAI for fallback if needed
         self.openai_client = openai.AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        
+        # Initialize LangChain client for better tracing
+        self.llm = ChatOpenAI(
+            model="gpt-4o-mini",
+            temperature=0.1,
+            api_key=os.getenv("OPENAI_API_KEY"),
+            tags=["embedding-agent", "abar-chatbot"]
+        )
         self.similarity_threshold = 0.50  # Higher cosine similarity means better match
         
     async def process_message(self, user_message: str, conversation_history: list = None, user_language: str = 'ar', journey_id: str = None) -> Dict[str, Any]:
@@ -436,15 +447,18 @@ Return only one of: `reply`, `skip`, or `continue`.
             # Time the LLM call
             llm_start_time = time.time()
             
-            response = await self.openai_client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=messages,
-                max_tokens=20,
-                temperature=0.1
-            )
+            # Convert to LangChain messages
+            langchain_messages = [
+                SystemMessage(content=messages[0]["content"]),
+                HumanMessage(content=messages[1]["content"])
+            ]
+            
+            # Use LangChain with specific parameters
+            temp_llm = self.llm.bind(max_tokens=20, temperature=0.1)
+            response = await temp_llm.ainvoke(langchain_messages)
             
             llm_duration = int((time.time() - llm_start_time) * 1000)
-            evaluation = response.choices[0].message.content.strip().lower()
+            evaluation = response.content.strip().lower()
             
             # Log the complete response from LLM
             if LOGGING_AVAILABLE and journey_id:
@@ -455,7 +469,7 @@ Return only one of: `reply`, `skip`, or `continue`.
                     response=evaluation,
                     model="gpt-4o-mini",
                     duration_ms=llm_duration,
-                    tokens_used={"total_tokens": response.usage.total_tokens if response.usage else None}
+                    tokens_used={"total_tokens": None}  # LangChain response doesn't include token usage directly
                 )
                 
                 message_journey_logger.add_step(
@@ -464,9 +478,9 @@ Return only one of: `reply`, `skip`, or `continue`.
                     description=f"ChatGPT evaluation completed: {evaluation}",
                     data={
                         "evaluation_result": evaluation,
-                        "raw_response": response.choices[0].message.content,
+                        "raw_response": response.content,
                         "duration_ms": llm_duration,
-                        "tokens_used": response.usage.total_tokens if response.usage else None,
+                        "tokens_used": None,  # LangChain response doesn't include token usage directly
                         "user_message": user_message,
                         "matched_question": matched_question,
                         "matched_answer": matched_answer

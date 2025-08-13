@@ -1,3 +1,13 @@
+from dotenv import load_dotenv
+import os
+load_dotenv()
+
+# LangSmith Configuration - Load once for the entire app
+os.environ["LANGCHAIN_TRACING_V2"] = "true" 
+os.environ["LANGCHAIN_ENDPOINT"] = "https://api.smith.langchain.com"
+os.environ["LANGCHAIN_PROJECT"] = "abar-chatbot"
+
+import openai
 import os
 from fastapi import FastAPI, Request, Depends, HTTPException, Header, Query
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -20,6 +30,10 @@ import time
 import threading
 from collections import defaultdict
 from typing import Dict, List, Any
+
+
+openai_client = openai.AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
 
 # Load environment variables from .env
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -2072,11 +2086,67 @@ async def debug_test_embedding(message: str):
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
-# API health check endpoint
-@app.get("/health")
-async def health_check():
+
     """Check if the API is running"""
     return {"status": "healthy", "version": "1.0.0"}
+
+    """Test OpenAI API connection"""
+    try:
+        response = await openai_client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": "What is the capital of France?"}],
+            max_tokens=20,
+            temperature=0.1
+        )
+        return {
+            "status": "success",
+            "message": "OpenAI API is working",
+            "response": response.choices[0].message.content,
+            "model": "gpt-4o-mini"
+        }
+    except Exception as e:
+        return {
+            "status": "error", 
+            "message": f"OpenAI API test failed: {str(e)}"
+        }
+
+# Test LangSmith integration endpoint
+@app.get("/test/langsmith")
+async def test_langsmith_integration():
+    """Test LangSmith integration with LangChain"""
+    try:
+        from langchain_openai import ChatOpenAI
+        from langchain_core.messages import HumanMessage
+        
+        # Create a simple LangChain call (this will be traced in LangSmith)
+        llm = ChatOpenAI(
+            model="gpt-4o-mini",
+            temperature=0.1,
+            tags=["test", "langsmith-integration"]
+        )
+        
+        response = await llm.ainvoke([HumanMessage(content="Say 'LangSmith integration working!' in Arabic")])
+        
+        return {
+            "status": "success",
+            "message": "LangSmith integration is working! Check your LangSmith dashboard for traces.",
+            "response": response.content,
+            "langchain_config": {
+                "tracing_enabled": os.getenv("LANGCHAIN_TRACING_V2"),
+                "project": os.getenv("LANGCHAIN_PROJECT"),
+                "api_key_set": bool(os.getenv("LANGCHAIN_API_KEY"))
+            }
+        }
+    except Exception as e:
+        return {
+            "status": "error", 
+            "message": f"LangSmith test failed: {str(e)}",
+            "langchain_config": {
+                "tracing_enabled": os.getenv("LANGCHAIN_TRACING_V2"),
+                "project": os.getenv("LANGCHAIN_PROJECT"), 
+                "api_key_set": bool(os.getenv("LANGCHAIN_API_KEY"))
+            }
+        }
 
 # Model cache management endpoints
 @app.get("/models/cache/info")

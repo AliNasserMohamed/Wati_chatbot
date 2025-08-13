@@ -2,11 +2,18 @@ import openai
 from typing import Dict
 import re
 import os
+from langchain_openai import ChatOpenAI
+from langchain_core.messages import SystemMessage, HumanMessage
 
 class LanguageHandler:
     def __init__(self):
-        # Use AsyncOpenAI for async operations
-        self.openai_client = openai.AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        # Use LangChain ChatOpenAI for better tracing
+        self.llm = ChatOpenAI(
+            model="gpt-4o-mini",
+            temperature=0.7,
+            api_key=os.getenv("OPENAI_API_KEY"),
+            tags=["language-handler", "abar-chatbot"]
+        )
         self.supported_languages = ['en', 'ar']
         self.default_language = 'ar'
 
@@ -89,10 +96,8 @@ class LanguageHandler:
         return responses.get(language, responses['ar'])
 
     async def process_with_openai(self, prompt: str, system_prompt: str = None) -> str:
-        """Process text with OpenAI using Saudi Arabic context."""
+        """Process text with LangChain using Saudi Arabic context."""
         try:
-            messages = []
-            
             # Enhanced system prompt to ensure natural responses
             if not system_prompt:
                 system_prompt = """أنت موظف خدمة عملاء في شركة أبار لتوصيل المياه في السعودية.
@@ -103,44 +108,43 @@ class LanguageHandler:
 - ابدأ الرد مباشرة بالمحتوى
 - كن ودود وطبيعي ومفيد"""
             
-            messages.append({"role": "system", "content": system_prompt})
-            messages.append({"role": "user", "content": prompt})
+            # Use LangChain message format
+            messages = [
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=prompt)
+            ]
 
-            response = await self.openai_client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=messages,
-                temperature=0.7
-            )
+            # Call LangChain (this will be traced in LangSmith)
+            response = await self.llm.ainvoke(messages)
             
             # Check if response and content exist before calling strip()
-            if response and response.choices and len(response.choices) > 0:
-                content = response.choices[0].message.content
-                if content:
-                    # Clean any potential robotic prefixes
-                    cleaned_content = content.strip()
-                    
-                    # Remove common robotic prefixes if they appear
-                    prefixes_to_remove = [
-                        "رد الذكاء الاصطناعي:",
-                        "رد المساعد:",
-                        "الذكاء الاصطناعي:",
-                        "المساعد:",
-                        "AI response:",
-                        "Assistant:"
-                    ]
-                    
-                    for prefix in prefixes_to_remove:
-                        if cleaned_content.startswith(prefix):
-                            cleaned_content = cleaned_content[len(prefix):].strip()
-                            break
-                    
-                    return cleaned_content
+            if response and hasattr(response, 'content') and response.content:
+                content = response.content
+                # Clean any potential robotic prefixes
+                cleaned_content = content.strip()
+                
+                # Remove common robotic prefixes if they appear
+                prefixes_to_remove = [
+                    "رد الذكاء الاصطناعي:",
+                    "رد المساعد:",
+                    "الذكاء الاصطناعي:",
+                    "المساعد:",
+                    "AI response:",
+                    "Assistant:"
+                ]
+                
+                for prefix in prefixes_to_remove:
+                    if cleaned_content.startswith(prefix):
+                        cleaned_content = cleaned_content[len(prefix):].strip()
+                        break
+                
+                return cleaned_content
             
-            print("OpenAI response was empty or invalid")
+            print("LangChain response was empty or invalid")
             return None
             
         except Exception as e:
-            print(f"Error processing with OpenAI: {str(e)}")
+            print(f"Error processing with LangChain: {str(e)}")
             return None
 
     async def translate_to_arabic(self, text: str) -> str:

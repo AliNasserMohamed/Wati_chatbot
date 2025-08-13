@@ -7,6 +7,8 @@ import asyncio
 import time
 from typing import Dict, List, Any, Optional
 from openai import AsyncOpenAI
+from langchain_openai import ChatOpenAI
+from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 import os
 from dotenv import load_dotenv
 from database.db_models import UserSession
@@ -41,12 +43,21 @@ class QueryAgent:
     def __init__(self):
         self.api_base_url = "http://localhost:8000/api"
         
-        # Initialize OpenAI client
+        # Initialize LangChain OpenAI client for tracing
         openai_api_key = os.getenv("OPENAI_API_KEY")
         if not openai_api_key:
             raise ValueError("OPENAI_API_KEY environment variable is required")
         
+        # Keep AsyncOpenAI for fallback compatibility
         self.openai_client = AsyncOpenAI(api_key=openai_api_key)
+        
+        # Initialize LangChain client for better tracing
+        self.llm = ChatOpenAI(
+            model="gpt-4o-mini",
+            temperature=0.3,
+            api_key=openai_api_key,
+            tags=["query-agent", "abar-chatbot"]
+        )
         
         # Rate limiting settings (configurable via environment variables)
         self.last_request_time = 0
@@ -307,6 +318,39 @@ Reply with "relevant" if the message is related to products, prices, brands, and
         
         # This should never be reached, but just in case
         raise Exception("Unexpected error in API retry logic")
+    
+    async def _call_langchain_llm(self, messages: List, max_tokens: int = 1500, temperature: float = 0.3):
+        """Make LangChain LLM call for better tracing in LangSmith"""
+        try:
+            # Apply rate limiting (same as before)
+            await self._rate_limit_delay()
+            
+            # Convert dict messages to LangChain message objects if needed
+            langchain_messages = []
+            for msg in messages:
+                if isinstance(msg, dict):
+                    if msg["role"] == "system":
+                        langchain_messages.append(SystemMessage(content=msg["content"]))
+                    elif msg["role"] == "user":
+                        langchain_messages.append(HumanMessage(content=msg["content"]))
+                    elif msg["role"] == "assistant":
+                        langchain_messages.append(AIMessage(content=msg["content"]))
+                else:
+                    # Already a LangChain message object
+                    langchain_messages.append(msg)
+            
+            # Create a temporary LLM with specific parameters for this call
+            temp_llm = self.llm.bind(max_tokens=max_tokens, temperature=temperature)
+            
+            # Make the call (this will be traced in LangSmith)
+            response = await temp_llm.ainvoke(langchain_messages)
+            
+            # Return in format similar to OpenAI response for compatibility
+            return {"content": response.content}
+            
+        except Exception as e:
+            logger.error(f"Error in LangChain LLM call: {str(e)}")
+            raise e
     
     def _get_db_session(self):
         """Get database session"""
@@ -833,9 +877,8 @@ Current message to classify: "{user_message}"
 
 Classification:"""
             
-            # Call OpenAI for classification with retry logic
-            response = await self._call_openai_with_retry(
-                model="gpt-4o-mini",
+            # Call LangChain for classification (will be traced in LangSmith)
+            response = await self._call_langchain_llm(
                 messages=[
                     {"role": "system", "content": classification_prompt},
                     {"role": "user", "content": f"{context}\nCurrent message: {user_message}"}
@@ -844,7 +887,7 @@ Classification:"""
                 max_tokens=10  # Short response expected
             )
             
-            classification_result = response.choices[0].message.content.strip().lower()
+            classification_result = response["content"].strip().lower()
             
             # Log the classification
             logger.info(f"Message classification for '{user_message[:50]}...': {classification_result}")
@@ -1477,15 +1520,14 @@ Be helpful, understanding, and respond exactly like a friendly human employee wo
             try:
                 final_api_start_time = time.time()
                 
-                final_response = await self._call_openai_with_retry(
-                    model="gpt-4o-mini",
+                final_response = await self._call_langchain_llm(
                     messages=messages,
                     temperature=0.3,
                     max_tokens=400
                 )
                 
                 final_api_duration = int((time.time() - final_api_start_time) * 1000)
-                response_text = final_response.choices[0].message.content
+                response_text = final_response["content"]
                 
                 # Log final response generation
                 if LOGGING_AVAILABLE and journey_id:
@@ -1496,7 +1538,7 @@ Be helpful, understanding, and respond exactly like a friendly human employee wo
                         response=response_text or "No response generated",
                         model="gpt-4o-mini",
                         duration_ms=final_api_duration,
-                        tokens_used={"total_tokens": final_response.usage.total_tokens if final_response.usage else None}
+                        tokens_used={"total_tokens": None}  # LangChain response doesn't include token usage directly
                     )
                 
                 if response_text:
