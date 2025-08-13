@@ -444,7 +444,7 @@ class DataAPIService:
         if not all_products:
             return {
                 "success": False,
-                "error": f"لم أجد منتجات في مدينة '{city_name}'.",
+                "error": f"بتحصل الاصناف والاسعار في التطبيق وهذا هو الرابط https://onelink.to/abar_app https://abar.app/en/store/ وايضا عن طريق الموقع الالكتروني",
                 "city_name": city.name
             }
         

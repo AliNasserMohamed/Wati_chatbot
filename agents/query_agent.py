@@ -610,7 +610,7 @@ Reply with "relevant" if the message is related to products, prices, brands, and
                 if not products:
                     return {
                         "success": False,
-                        "error": f"لم أجد منتجات للعلامة التجارية '{brand_name}' في مدينة '{city_name}'. يرجى التحقق من الأسماء أو جرب علامة تجارية أخرى.",
+                        "error": f"بتحصل الاصناف والاسعار في التطبيق وهذا هو الرابط https://onelink.to/abar_app https://abar.app/en/store/ وايضا عن طريق الموقع الالكتروني",
                         "original_brand": brand_name,
                         "original_city": city_name
                     }
@@ -655,11 +655,9 @@ Reply with "relevant" if the message is related to products, prices, brands, and
                     brands = data_api.search_brands_in_city(db, brand_name, city_name)
                 
                 if not brands:
-                    error_msg = f"لم أجد علامة تجارية باسم '{brand_name}' في مدينة '{city_name}'. يرجى التحقق من الاسم أو جرب علامة تجارية أخرى."
-                    
                     return {
                         "success": False,
-                        "error": error_msg,
+                        "error": f"بتحصل الاصناف والاسعار في التطبيق وهذا هو الرابط https://onelink.to/abar_app https://abar.app/en/store/ وايضا عن طريق الموقع الالكتروني",
                         "original_brand": brand_name,
                         "original_city": city_name
                     }
@@ -772,7 +770,7 @@ Reply with "relevant" if the message is related to products, prices, brands, and
                         "city_name": city_name,
                         "item_type": item_type,
                         "item_name": item_name,
-                        "message": f"للأسف، العلامة التجارية '{item_name}' غير متوفرة في {city_name}"
+                        "message": f"بتحصل الاصناف والاسعار في التطبيق وهذا هو الرابط https://onelink.to/abar_app https://abar.app/en/store/ وايضا عن طريق الموقع الالكتروني"
                     }
                 
                 elif item_type == "product":
@@ -819,7 +817,7 @@ Reply with "relevant" if the message is related to products, prices, brands, and
                             "city_name": city_name,
                             "item_type": item_type,
                             "item_name": item_name,
-                            "message": f"للأسف، المنتج '{item_name}' غير متوفر في {city_name}"
+                            "message": f"بتحصل الاصناف والاسعار في التطبيق وهذا هو الرابط https://onelink.to/abar_app https://abar.app/en/store/ وايضا عن طريق الموقع الالكتروني"
                         }
                 
                 return {"success": False, "error": "نوع العنصر غير صحيح. يجب أن يكون 'brand' أو 'product'"}
@@ -1075,6 +1073,12 @@ When user wants to place an order, make a purchase, or asks how to order, ALWAYS
 - DO NOT say "للأسف" (unfortunately) or similar words
 - Keep it simple and direct
 
+🚨 CRITICAL RULE - NEVER TELL CUSTOMERS DELIVERY IS NOT AVAILABLE:
+- NEVER tell customers "we don't deliver to your area" or "delivery not available"
+- NEVER say "your city is not serviced" or "not available in your location"
+- ALWAYS use the unified response about the app and website
+- This applies to ALL situations: cities, brands, products - everything
+
 🚨 SPECIFIC BUSINESS RULES - CRITICAL:
 
 1. APARTMENT DOOR DELIVERY:
@@ -1264,6 +1268,12 @@ Be helpful, understanding, and respond exactly like a friendly human employee wo
 - لا تضيف تفسيرات أو اعتذارات أو نصوص إضافية
 - لا تقل "للأسف" أو كلمات مشابهة
 - اجعل الرد بسيط ومباشر
+
+🚨 تعليمات حاسمة - لا تخبر العملاء أن التوصيل غير متاح:
+- NEVER tell customers "لا يوجد توصيل" or "التوصيل غير متاح"
+- NEVER say "لا نخدم منطقتك" or "غير متوفر في مدينتك"
+- ALWAYS use the unified response about the app and website
+- This applies to ALL situations: cities, brands, products - everything
 
 🚨 قواعد العمل المحددة - مهمة جداً:
 
