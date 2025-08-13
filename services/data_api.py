@@ -90,9 +90,12 @@ class DataAPIService:
                 query_normalized == city_name_en_lower):
                 city_data["match_type"] = "exact"
                 exact_matches.append(city_data)
-            else:
+            # Check for partial matches (search term must be contained in city name)
+            elif (query_normalized in city_name_lower or 
+                  query_normalized in city_name_en_lower):
                 city_data["match_type"] = "partial"
                 partial_matches.append(city_data)
+            # If no match at all, don't include this city
         
         # Return exact matches first, then partial matches
         return exact_matches + partial_matches
