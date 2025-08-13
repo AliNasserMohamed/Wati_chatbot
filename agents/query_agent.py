@@ -566,8 +566,9 @@ Reply with "relevant" if the message is related to products, prices, brands, and
                 if not brands:
                     return {
                         "success": False,
-                        "error": f"لم أجد مدينة باسم '{city_name}' أو لا توجد علامات تجارية متاحة في هذه المدينة.",
-                        "original_input": city_name
+                        "error": f" يمكنك تصفح جميع الأصناف والأسعار في التطبيق:\n\n📱 **حمل تطبيق أبار:** https://onelink.to/abar_app\n\n🌐 **أو عن طريق الموقع الإلكتروني:** https://abar.app/en/store/\n\nالتطبيق يعرض لك جميع العلامات التجارية المتوفرة في منطقتك مع الأسعار والعروض الخاصة! 🚚💧",
+                        "original_input": city_name,
+                        "show_app_links": True
                     }
                 
                 # Return brands with city information
@@ -694,8 +695,9 @@ Reply with "relevant" if the message is related to products, prices, brands, and
                 if not cities:
                     return {
                         "success": False,
-                        "error": f"لم أجد أي مدينة تحتوي على '{query}'. يرجى التحقق من الاسم أو جرب كلمات مختلفة.",
-                        "query": query
+                        "error": f"يمكنك تصفح جميع الأصناف والأسعار في التطبيق:\n\n📱 **حمل تطبيق أبار:** https://onelink.to/abar_app\n\n🌐 **أو عن طريق الموقع الإلكتروني:** https://abar.app/en/store/\n\nالتطبيق يعرض لك جميع العلامات التجارية المتوفرة في منطقتك مع الأسعار والعروض الخاصة! 🚚💧",
+                        "query": query,
+                        "show_app_links": True
                     }
                 
                 # Filter to return city information with match type for better UX
@@ -779,9 +781,10 @@ Reply with "relevant" if the message is related to products, prices, brands, and
                     if not brands:
                         return {
                             "success": False,
-                            "error": f"لم أجد مدينة باسم '{city_name}'. يرجى التحقق من الاسم.",
+                            "error": f" يمكنك تصفح جميع الأصناف والأسعار في التطبيق:\n\n📱 **حمل تطبيق أبار:** https://onelink.to/abar_app\n\n🌐 **أو عن طريق الموقع الإلكتروني:** https://abar.app/en/store/\n\nالتطبيق يعرض لك جميع العلامات التجارية المتوفرة في منطقتك مع الأسعار والعروض الخاصة! 🚚💧",
                             "item_type": item_type,
-                            "item_name": item_name
+                            "item_name": item_name,
+                            "show_app_links": True
                         }
                     
                     found_products = []

@@ -415,8 +415,9 @@ class DataAPIService:
         if not city:
             return {
                 "success": False,
-                "error": f"لم أجد مدينة باسم '{city_name}'. يرجى التحقق من الاسم.",
-                "original_city": city_name
+                "error": f" يمكنك تصفح جميع الأصناف والأسعار في التطبيق:\n\n📱 **حمل تطبيق أبار:** https://onelink.to/abar_app\n\n🌐 **أو عن طريق الموقع الإلكتروني:** https://abar.app/en/store/\n\nالتطبيق يعرض لك جميع العلامات التجارية المتوفرة في منطقتك مع الأسعار والعروض الخاصة! 🚚💧",
+                "original_city": city_name,
+                "show_app_links": True
             }
         
         # Get all products from all brands in this city
