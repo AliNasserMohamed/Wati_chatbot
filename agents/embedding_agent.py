@@ -489,7 +489,7 @@ Return only one of: `reply`, `skip`, or `continue`.
             
             # Log the evaluation for debugging
             print(f"🤖 ChatGPT evaluation result: '{evaluation}'")
-            print(f"🤖 Raw ChatGPT response: '{response.choices[0].message.content}'")
+            print(f"🤖 Raw ChatGPT response: '{response.content}'")
             print(f"🤖 User message: '{user_message}'")
             print(f"🤖 Matched question: '{matched_question}'")
             print(f"🤖 Matched answer: '{matched_answer[:100]}...'")
