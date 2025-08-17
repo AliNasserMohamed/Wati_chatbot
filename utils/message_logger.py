@@ -61,9 +61,9 @@ class MessageJourneyLogger:
         
         self.logger.info("🚀 MessageJourneyLogger initialized")
     
-    def start_journey(self, 
+    def start_journey(self,
                       phone_number: str, 
-                      message_text: str,
+                      message_text: Optional[str],
                       wati_message_id: Optional[str] = None,
                       message_type: str = "text",
                       webhook_data: Optional[Dict] = None) -> str:
@@ -89,7 +89,13 @@ class MessageJourneyLogger:
         
         # Log the start of journey
         self.logger.info(f"📥 JOURNEY_START | ID: {journey_id} | Phone: {phone_number} | Type: {message_type}")
-        self.logger.info(f"📝 MESSAGE_RECEIVED | ID: {journey_id} | Text: '{message_text[:100]}{'...' if len(message_text) > 100 else ''}'")
+        
+        # Handle None message_text for non-text messages (images, audio, etc.)
+        if message_text is not None:
+            text_preview = message_text[:100] + ('...' if len(message_text) > 100 else '')
+            self.logger.info(f"📝 MESSAGE_RECEIVED | ID: {journey_id} | Text: '{text_preview}'")
+        else:
+            self.logger.info(f"📝 MESSAGE_RECEIVED | ID: {journey_id} | Text: [Non-text message: {message_type}]")
         
         if wati_message_id:
             self.logger.info(f"🆔 WATI_MESSAGE_ID | ID: {journey_id} | Wati ID: {wati_message_id}")
@@ -165,7 +171,7 @@ class MessageJourneyLogger:
     
     def log_classification(self,
                           journey_id: str,
-                          message_text: str,
+                          message_text: Optional[str],
                           classified_type: str,
                           detected_language: str,
                           confidence: Optional[float] = None,
@@ -179,7 +185,7 @@ class MessageJourneyLogger:
                 "classified_type": classified_type,
                 "detected_language": detected_language,
                 "confidence": confidence,
-                "message_length": len(message_text)
+                "message_length": len(message_text) if message_text is not None else 0
             },
             duration_ms=duration_ms
         )
