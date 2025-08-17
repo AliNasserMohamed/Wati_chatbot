@@ -433,12 +433,15 @@ Reply with "relevant" if the message is related to products, prices, brands, and
                             normalized_system_city = district_lookup.normalize_city_name(system_city_name)
                             
                             if normalized_system_city == normalized_district_city:
+                                print(f"🎯 QueryAgent: District-to-City mapping successful:")
+                                print(f"   📍 District: '{district_name}' (for context only)")
+                                print(f"   🏙️ Business City: '{city['name']}' (ID: {city['id']}) - THIS will be used for brands/products")
                                 return {
                                     "city_id": city["id"],
-                                    "city_name": city["name"],
+                                    "city_name": city["name"],  # ← CITY name (e.g., "الأحساء") - used for business logic
                                     "city_name_en": city["name_en"],
                                     "found_in": "current_message_district",
-                                    "district_name": district_name  # Add district info for context
+                                    "district_name": district_name  # ← DISTRICT name (e.g., "الحمراء الأول") - context only
                                 }
                 
                 
@@ -489,12 +492,15 @@ Reply with "relevant" if the message is related to products, prices, brands, and
                                 normalized_system_city = district_lookup.normalize_city_name(system_city_name)
                                 
                                 if normalized_system_city == normalized_district_city:
+                                    print(f"🎯 QueryAgent: District-to-City mapping from history:")
+                                    print(f"   📍 District: '{district_name}' (context only)")
+                                    print(f"   🏙️ Business City: '{city['name']}' (ID: {city['id']}) - THIS will be used for brands/products")
                                     return {
                                         "city_id": city["id"],
-                                        "city_name": city["name"],
+                                        "city_name": city["name"],  # ← CITY name - used for business logic
                                         "city_name_en": city["name_en"],
                                         "found_in": "conversation_history_district",
-                                        "district_name": district_name  # Add district info for context
+                                        "district_name": district_name  # ← DISTRICT name - context only
                                     }
                 
                 
@@ -1018,7 +1024,7 @@ Classification:"""
             brand_context = self._extract_brand_from_context(
                 user_message, 
                 conversation_history, 
-                city_context.get("city_name") if city_context else None
+                city_context.get("city_name") if city_context else None  # ← Uses CITY name for brand search
             )
             
             # Prepare conversation history
@@ -1029,8 +1035,13 @@ Classification:"""
             brand_info = ""
             
             if city_context:
-                found_where = "current message" if city_context['found_in'] == "current_message" else "conversation history"
-                city_info = f"\n\nIMPORTANT CONTEXT: The customer is from {city_context['city_name_en']} ({city_context['city_name']}) - detected from {found_where}. You already know their city, so you can show products and brands for this city without asking again."
+                if 'district' in city_context.get('found_in', ''):
+                    found_where = "current message district" if 'current_message_district' in city_context['found_in'] else "conversation history district"
+                    district_name = city_context.get('district_name', 'unknown district')
+                    city_info = f"\n\nIMPORTANT CONTEXT: The customer mentioned {district_name} district which maps to {city_context['city_name_en']} ({city_context['city_name']}) - detected from {found_where}. Use the CITY name ({city_context['city_name']}) for all brand/product searches, but you can acknowledge their district for context."
+                else:
+                    found_where = "current message" if city_context['found_in'] == "current_message" else "conversation history"
+                    city_info = f"\n\nIMPORTANT CONTEXT: The customer is from {city_context['city_name_en']} ({city_context['city_name']}) - detected from {found_where}. You already know their city, so you can show products and brands for this city without asking again."
             
             if brand_context:
                 found_where = "current message" if brand_context['found_in'] == "current_message" else "conversation history"
@@ -1069,10 +1080,24 @@ SMART BRAND HANDLING:
 - Do not ask for information that already exists in conversation history
 - Use extracted information from history even if it's from older messages
 
+🚨 DISTRICT-TO-CITY MAPPING SYSTEM - CRITICAL:
+- The system automatically detects DISTRICT NAMES (neighborhoods) in user messages
+- Districts are automatically mapped to their corresponding CITIES for all business operations
+- When customer mentions districts like "حي الحمراء الأول", "منطقة المعلمين", "الحي الشمالي" etc.:
+  → System maps them to corresponding cities (e.g., "الحمراء الأول" → "الأحساء")
+  → ALL business operations (brands/products search) use the CITY name, NOT district name
+  → District names are kept for context and customer communication only
+- You can acknowledge the district for customer context: "I found your request for الحمراء الأول district"
+- But ALWAYS use the mapped CITY for actual searches: get_brands_by_city_name("الأحساء")
+- NEVER search for brands/products using district names directly
+- MIXED QUERIES: If customer mentions BOTH city and district (e.g., "جدة حي الحمراء الأول"), direct city name takes priority over district mapping
+
 CITY DETECTION PRIORITY - WITH STRONG FOCUS ON HISTORY:
-1. Check if city is mentioned in current user message
-2. 🚨 Search thoroughly through conversation history (last 10 messages) for any city mentions
-3. Only if NO city found in current message OR history - ask for city
+1. Check if city is mentioned in current user message (direct city names have priority)
+2. Check if district is mentioned (system will map to city automatically)
+3. 🚨 Search thoroughly through conversation history (last 10 messages) for any city mentions
+4. Search thoroughly through conversation history for any district mentions
+5. Only if NO city/district found in current message OR history - ask for city
 - Use this phrase to ask about city: "Which city are you in? I need to know your location."
 
 BRAND DETECTION PRIORITY - WITH STRONG FOCUS ON HISTORY:
@@ -1213,8 +1238,13 @@ Be helpful, understanding, and respond exactly like a friendly human employee wo
                 brand_info_ar = ""
                 
                 if city_context:
-                    found_where_ar = "الرسالة الحالية" if city_context['found_in'] == "current_message" else "تاريخ المحادثة"
-                    city_info_ar = f"\n\nسياق مهم: العميل من {city_context['city_name']} ({city_context['city_name_en']}) - تم اكتشافها من {found_where_ar}. أنت تعرف مدينتهم بالفعل، لذا يمكنك عرض المنتجات والعلامات التجارية لهذه المدينة بدون السؤال مرة أخرى."
+                    if 'district' in city_context.get('found_in', ''):
+                        found_where_ar = "الرسالة الحالية (حي)" if 'current_message_district' in city_context['found_in'] else "تاريخ المحادثة (حي)"
+                        district_name = city_context.get('district_name', 'حي غير معروف')
+                        city_info_ar = f"\n\nسياق مهم: العميل ذكر حي {district_name} والذي يربط بمدينة {city_context['city_name']} ({city_context['city_name_en']}) - تم اكتشافه من {found_where_ar}. استخدم اسم المدينة ({city_context['city_name']}) لجميع عمليات البحث عن العلامات التجارية/المنتجات، ولكن يمكنك الاعتراف بحيهم للسياق."
+                    else:
+                        found_where_ar = "الرسالة الحالية" if city_context['found_in'] == "current_message" else "تاريخ المحادثة"
+                        city_info_ar = f"\n\nسياق مهم: العميل من {city_context['city_name']} ({city_context['city_name_en']}) - تم اكتشافها من {found_where_ar}. أنت تعرف مدينتهم بالفعل، لذا يمكنك عرض المنتجات والعلامات التجارية لهذه المدينة بدون السؤال مرة أخرى."
                 
                 if brand_context:
                     found_where_ar = "الرسالة الحالية" if brand_context['found_in'] == "current_message" else "تاريخ المحادثة"
@@ -1263,10 +1293,24 @@ Be helpful, understanding, and respond exactly like a friendly human employee wo
 - إذا قال العميل "نعم" بعد أن سألت عن منتج: قدم السعر والتفاصيل
 - إذا سأل العميل عن السعر بدون ذكر العلامة التجارية: اسأل عن العلامة التجارية أولاً
 
+🚨 نظام ربط الأحياء بالمدن - مهم جداً:
+- النظام يتعرف تلقائياً على أسماء الأحياء (المناطق) في رسائل العملاء
+- الأحياء تُربط تلقائياً بمدنها المقابلة لجميع العمليات التجارية
+- عندما يذكر العميل أحياء مثل "حي الحمراء الأول"، "منطقة المعلمين"، "الحي الشمالي" إلخ:
+  ← النظام يربطها بمدنها المقابلة (مثل: "الحمراء الأول" ← "الأحساء")
+  ← جميع العمليات التجارية (البحث عن العلامات التجارية/المنتجات) تستخدم اسم المدينة وليس اسم الحي
+  ← أسماء الأحياء تُحفظ للسياق والتواصل مع العميل فقط
+- يمكنك الاعتراف بالحي للعميل: "وجدت طلبك لحي الحمراء الأول"
+- لكن استخدم دائماً المدينة المربوطة للبحث الفعلي: get_brands_by_city_name("الأحساء")
+- لا تبحث عن العلامات التجارية/المنتجات باستخدام أسماء الأحياء مباشرة أبداً
+- الاستعلامات المختلطة: إذا ذكر العميل مدينة وحي معاً (مثل: "جدة حي الحمراء الأول")، اسم المدينة المباشر له أولوية على ربط الحي
+
 أولوية اكتشاف المدينة - مع التركيز القوي على التاريخ:
-1. تحقق إذا كانت المدينة مذكورة في رسالة العميل الحالية
-2. 🚨 ابحث بعناية فائقة في تاريخ المحادثة (آخر 5 رسائل) عن أي ذكر لأسماء المدن
-3. فقط إذا لم تجد مدينة في الرسالة الحالية أو في تاريخ المحادثة - اسأل عن المدينة
+1. تحقق إذا كانت المدينة مذكورة في رسالة العميل الحالية (أسماء المدن المباشرة لها أولوية)
+2. تحقق إذا كان الحي مذكور (النظام سيربطه بالمدينة تلقائياً)
+3. 🚨 ابحث بعناية فائقة في تاريخ المحادثة (آخر 10 رسائل) عن أي ذكر لأسماء المدن
+4. ابحث بعناية فائقة في تاريخ المحادثة عن أي ذكر لأسماء الأحياء
+5. فقط إذا لم تجد مدينة/حي في الرسالة الحالية أو في تاريخ المحادثة - اسأل عن المدينة
 - استخدم هذه العبارة للسؤال عن المدينة: "انت متواجد باي مدينة طال عمرك؟"
 
 أولوية اكتشاف العلامة التجارية - مع التركيز القوي على المحادثة :
