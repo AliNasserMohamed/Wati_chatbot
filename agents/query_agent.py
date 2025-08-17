@@ -419,6 +419,7 @@ class QueryAgent:
                 # PRIORITY 2: Check for district in last message (current user message)
                 if user_message:
                     district_match = district_lookup.find_district_in_message(user_message, db)
+                    print(f"🏘️ QueryAgent: District match: {district_match}")
                     if district_match:
                         district_name = district_match['district']
                         city_name = district_match['city']
