@@ -1036,14 +1036,17 @@ Classification:"""
                 if 'district' in city_context.get('found_in', ''):
                     found_where = "current message district" if 'current_message_district' in city_context['found_in'] else "conversation history district"
                     district_name = city_context.get('district_name', 'unknown district')
-                    city_info = f"\n\nIMPORTANT CONTEXT: The customer mentioned {district_name} district which maps to {city_context['city_name_en']} ({city_context['city_name']}) - detected from {found_where}. Use the CITY name ({city_context['city_name']}) for all brand/product searches, but you can acknowledge their district for context."
+                    city_info = f"\n\nIMPORTANT CONTEXT: The customer mentioned {district_name} district which maps to {city_context['city_name_en']} ({city_context['city_name']}) - detected from {found_where}. Use the CITY name ({city_context['city_name']}) for all brand/product searches, but you can acknowledge their district for context. 🚨 MANDATORY: Since you know the city, immediately call get_brands_by_city_name('{city_context['city_name']}') to show available brands."
                 else:
                     found_where = "current message" if city_context['found_in'] == "current_message" else "conversation history"
-                    city_info = f"\n\nIMPORTANT CONTEXT: The customer is from {city_context['city_name_en']} ({city_context['city_name']}) - detected from {found_where}. You already know their city, so you can show products and brands for this city without asking again."
+                    city_info = f"\n\nIMPORTANT CONTEXT: The customer is from {city_context['city_name_en']} ({city_context['city_name']}) - detected from {found_where}. You already know their city, so you can show products and brands for this city without asking again. 🚨 MANDATORY: Since you know the city, immediately call get_brands_by_city_name('{city_context['city_name']}') to show available brands."
             
             if brand_context:
                 found_where = "current message" if brand_context['found_in'] == "current_message" else "conversation history"
-                brand_info = f"\n\nBRAND CONTEXT: The customer mentioned '{brand_context['brand_title']}' - detected from {found_where}. If you know both city and brand, you can directly show products for this brand in this city."
+                if city_context:
+                    brand_info = f"\n\nBRAND CONTEXT: The customer mentioned '{brand_context['brand_title']}' - detected from {found_where}. 🚨 MANDATORY: Since you know both city ({city_context['city_name']}) and brand ({brand_context['brand_title']}), immediately call get_products_by_brand_and_city_name('{brand_context['brand_title']}', '{city_context['city_name']}') to show products."
+                else:
+                    brand_info = f"\n\nBRAND CONTEXT: The customer mentioned '{brand_context['brand_title']}' - detected from {found_where}. You know the brand but need to ask for the city first, then show products."
             
             if user_language == 'en':
                 system_message = {
@@ -1077,6 +1080,13 @@ Classification:"""
                     - Search through the last 10 messages for any mention of city names or brand names
                     - Do not ask for information that already exists in conversation history
                     - Use extracted information from history even if it's from older messages
+
+                    🚨 MANDATORY FUNCTION CALLING - CRITICAL:
+                    - When you know the city but need to show brands: IMMEDIATELY call get_brands_by_city_name function
+                    - When you know both city and brand but need products: IMMEDIATELY call get_products_by_brand_and_city_name function
+                    - NEVER say "let me check" or "one moment" without actually calling the function
+                    - If system provides city context, use the function calls immediately in the same response
+                    - Do NOT provide generic responses - always use functions to get real data
 
                     🚨 DISTRICT-TO-CITY MAPPING SYSTEM - CRITICAL:
                     - The system automatically detects DISTRICT NAMES (neighborhoods) in user messages
@@ -1248,14 +1258,17 @@ Classification:"""
                     if 'district' in city_context.get('found_in', ''):
                         found_where_ar = "الرسالة الحالية (حي)" if 'current_message_district' in city_context['found_in'] else "تاريخ المحادثة (حي)"
                         district_name = city_context.get('district_name', 'حي غير معروف')
-                        city_info_ar = f"\n\nسياق مهم: العميل ذكر حي {district_name} والذي يربط بمدينة {city_context['city_name']} ({city_context['city_name_en']}) - تم اكتشافه من {found_where_ar}. استخدم اسم المدينة ({city_context['city_name']}) لجميع عمليات البحث عن العلامات التجارية/المنتجات، ولكن يمكنك الاعتراف بحيهم للسياق."
+                        city_info_ar = f"\n\nسياق مهم: العميل ذكر حي {district_name} والذي يربط بمدينة {city_context['city_name']} ({city_context['city_name_en']}) - تم اكتشافه من {found_where_ar}. استخدم اسم المدينة ({city_context['city_name']}) لجميع عمليات البحث عن العلامات التجارية/المنتجات، ولكن يمكنك الاعتراف بحيهم للسياق. 🚨 إجباري: بما أنك تعرف المدينة، استدعي فوراً get_brands_by_city_name('{city_context['city_name']}') لعرض العلامات التجارية المتاحة."
                     else:
                         found_where_ar = "الرسالة الحالية" if city_context['found_in'] == "current_message" else "تاريخ المحادثة"
-                        city_info_ar = f"\n\nسياق مهم: العميل من {city_context['city_name']} ({city_context['city_name_en']}) - تم اكتشافها من {found_where_ar}. أنت تعرف مدينتهم بالفعل، لذا يمكنك عرض المنتجات والعلامات التجارية لهذه المدينة بدون السؤال مرة أخرى."
+                        city_info_ar = f"\n\nسياق مهم: العميل من {city_context['city_name']} ({city_context['city_name_en']}) - تم اكتشافها من {found_where_ar}. أنت تعرف مدينتهم بالفعل، لذا يمكنك عرض المنتجات والعلامات التجارية لهذه المدينة بدون السؤال مرة أخرى. 🚨 إجباري: بما أنك تعرف المدينة، استدعي فوراً get_brands_by_city_name('{city_context['city_name']}') لعرض العلامات التجارية المتاحة."
                 
                 if brand_context:
                     found_where_ar = "الرسالة الحالية" if brand_context['found_in'] == "current_message" else "تاريخ المحادثة"
-                    brand_info_ar = f"\n\nسياق العلامة التجارية: العميل ذكر '{brand_context['brand_title']}' - تم اكتشافها من {found_where_ar}. إذا كنت تعرف المدينة والعلامة التجارية، يمكنك عرض منتجات هذه العلامة في هذه المدينة مباشرة."
+                    if city_context:
+                        brand_info_ar = f"\n\nسياق العلامة التجارية: العميل ذكر '{brand_context['brand_title']}' - تم اكتشافها من {found_where_ar}. 🚨 إجباري: بما أنك تعرف المدينة ({city_context['city_name']}) والعلامة التجارية ({brand_context['brand_title']})، استدعي فوراً get_products_by_brand_and_city_name('{brand_context['brand_title']}', '{city_context['city_name']}') لعرض المنتجات."
+                    else:
+                        brand_info_ar = f"\n\nسياق العلامة التجارية: العميل ذكر '{brand_context['brand_title']}' - تم اكتشافها من {found_where_ar}. أنت تعرف العلامة التجارية لكن تحتاج لسؤال عن المدينة أولاً، ثم عرض المنتجات."
                 
                 system_message = {
                     "role": "system",
@@ -1279,6 +1292,13 @@ Classification:"""
                     - ابحث في آخر 5 رسائل للعميل والمساعد عن أي ذكر لأسماء المدن أو العلامات التجارية
                     - لا تسأل عن معلومات موجودة بالفعل في تاريخ المحادثة
                     - استخدم المعلومات المستخرجة من التاريخ حتى لو كانت من رسائل قديمة
+
+                    🚨 استدعاء الوظائف الإجباري - مهم جداً:
+                    - عندما تعرف المدينة لكن تحتاج لعرض العلامات التجارية: استدعي فوراً وظيفة get_brands_by_city_name
+                    - عندما تعرف المدينة والعلامة التجارية لكن تحتاج للمنتجات: استدعي فوراً وظيفة get_products_by_brand_and_city_name
+                    - لا تقل أبداً "دعني أتحقق" أو "لحظة واحدة" بدون استدعاء الوظيفة فعلاً
+                    - إذا وفر النظام سياق المدينة، استخدم استدعاءات الوظائف فوراً في نفس الرد
+                    - لا تقدم ردود عامة - استخدم دائماً الوظائف للحصول على بيانات حقيقية
 
                     سير العمل المحسن - استخراج السياق الذكي:
                     🚨 اتبع دائماً هذا التسلسل مع الانتباه الشديد لتاريخ المحادثة: المدينة → العلامة التجارية → المنتجات → الرد
