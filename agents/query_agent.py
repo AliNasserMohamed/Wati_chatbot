@@ -382,8 +382,12 @@ Reply with "relevant" if the message is related to products, prices, brands, and
         return cleaned_text
     
     def _extract_city_from_context(self, user_message: str, conversation_history: List[Dict] = None) -> Optional[Dict[str, Any]]:
-        """Extract city information from current message and conversation history"""
+        """Extract city information from current message and conversation history
+        Now includes district-to-city mapping functionality"""
         try:
+            # Import district lookup functionality
+            from database.district_utils import district_lookup
+            
             db = self._get_db_session()
             try:
                 all_cities = data_api.get_all_cities(db)
@@ -391,49 +395,108 @@ Reply with "relevant" if the message is related to products, prices, brands, and
                 # PRIORITY 1: Check current user message first
                 if user_message:
                     current_content = user_message.lower()
+                    
+                    # PRIORITY 1.1: Check for direct city name mentions FIRST
                     for city in all_cities:
                         city_name_ar = city.get("name", "").lower()
                         city_name_en = city.get("name_en", "").lower()
                         
                         if city_name_ar and city_name_ar in current_content:
+                            print(f"🏙️ QueryAgent: Found direct city '{city['name']}'")
                             return {
                                 "city_id": city["id"],
                                 "city_name": city["name"],
                                 "city_name_en": city["name_en"],
-                                "found_in": "current_message"
+                                "found_in": "current_message_city"
                             }
                         elif city_name_en and city_name_en in current_content:
+                            print(f"🏙️ QueryAgent: Found direct city '{city['name']}' (English)")
                             return {
                                 "city_id": city["id"],
                                 "city_name": city["name"],
                                 "city_name_en": city["name_en"],
-                                "found_in": "current_message"
+                                "found_in": "current_message_city"
                             }
+                    
+                    # PRIORITY 1.2: Check for district mentions SECOND (if no direct city found)
+                    district_match = district_lookup.find_district_in_message(user_message, db)
+                    if district_match:
+                        district_name = district_match['district']
+                        city_name = district_match['city']
+                        
+                        print(f"🏘️ QueryAgent: Found district '{district_name}' -> city '{city_name}'")
+                        
+                        # Find the city details in our cities list (normalize for comparison)
+                        normalized_district_city = district_lookup.normalize_city_name(city_name)
+                        for city in all_cities:
+                            system_city_name = city.get("name", "").strip()
+                            normalized_system_city = district_lookup.normalize_city_name(system_city_name)
+                            
+                            if normalized_system_city == normalized_district_city:
+                                return {
+                                    "city_id": city["id"],
+                                    "city_name": city["name"],
+                                    "city_name_en": city["name_en"],
+                                    "found_in": "current_message_district",
+                                    "district_name": district_name  # Add district info for context
+                                }
+                
                 
                 # PRIORITY 2: Check conversation history if no city in current message
                 if conversation_history:
+                    # PRIORITY 2.1: Check conversation history for direct city names FIRST
                     for message in reversed(conversation_history[-10:]):  # Check last 10 messages
-                        content = message.get("content", "").lower()
+                        content = message.get("content", "")
+                        content_lower = content.lower()
                         
                         # Check if any city name appears in the message
                         for city in all_cities:
                             city_name_ar = city.get("name", "").lower()
                             city_name_en = city.get("name_en", "").lower()
                             
-                            if city_name_ar and city_name_ar in content:
+                            if city_name_ar and city_name_ar in content_lower:
+                                print(f"🏙️ QueryAgent: Found city in history '{city['name']}'")
                                 return {
                                     "city_id": city["id"],
                                     "city_name": city["name"],
                                     "city_name_en": city["name_en"],
-                                    "found_in": "conversation_history"
+                                    "found_in": "conversation_history_city"
                                 }
-                            elif city_name_en and city_name_en in content:
+                            elif city_name_en and city_name_en in content_lower:
+                                print(f"🏙️ QueryAgent: Found city in history '{city['name']}' (English)")
                                 return {
                                     "city_id": city["id"],
                                     "city_name": city["name"],
                                     "city_name_en": city["name_en"],
-                                    "found_in": "conversation_history"
+                                    "found_in": "conversation_history_city"
                                 }
+                    
+                    # PRIORITY 2.2: Check conversation history for district mentions SECOND
+                    for message in reversed(conversation_history[-10:]):  # Check last 10 messages
+                        content = message.get("content", "")
+                        
+                        district_match = district_lookup.find_district_in_message(content, db)
+                        if district_match:
+                            district_name = district_match['district']
+                            city_name = district_match['city']
+                            
+                            print(f"🏘️ QueryAgent: Found district in history '{district_name}' -> city '{city_name}'")
+                            
+                            # Find the city details in our cities list (normalize for comparison)
+                            normalized_district_city = district_lookup.normalize_city_name(city_name)
+                            for city in all_cities:
+                                system_city_name = city.get("name", "").strip()
+                                normalized_system_city = district_lookup.normalize_city_name(system_city_name)
+                                
+                                if normalized_system_city == normalized_district_city:
+                                    return {
+                                        "city_id": city["id"],
+                                        "city_name": city["name"],
+                                        "city_name_en": city["name_en"],
+                                        "found_in": "conversation_history_district",
+                                        "district_name": district_name  # Add district info for context
+                                    }
+                
                 
                 return None
             finally:

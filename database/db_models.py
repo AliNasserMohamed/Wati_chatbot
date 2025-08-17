@@ -168,12 +168,24 @@ class Product(Base):
     # Composite unique constraint to allow same product in different brands
     __table_args__ = (UniqueConstraint('external_id', 'brand_id', name='uq_product_external_brand'),)
 
+class District(Base):
+    __tablename__ = "districts"
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(200), nullable=False, index=True)  # District name in Arabic (حي)
+    city_name = Column(String(200), nullable=False, index=True)  # City name in Arabic (المدينة)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+    
+    # Add unique constraint to prevent duplicate district-city combinations
+    __table_args__ = (UniqueConstraint('name', 'city_name', name='uq_district_city'),)
+
 # Sync log to track data updates
 class DataSyncLog(Base):
     __tablename__ = "data_sync_logs"
     
     id = Column(Integer, primary_key=True, autoincrement=True)
-    sync_type = Column(String(50), nullable=False)  # 'cities', 'brands', 'products', 'brand_details'
+    sync_type = Column(String(50), nullable=False)  # 'cities', 'brands', 'products', 'brand_details', 'districts'
     status = Column(String(20), nullable=False)  # 'success', 'failed', 'partial'
     records_processed = Column(Integer, default=0)
     error_message = Column(Text, nullable=True)
