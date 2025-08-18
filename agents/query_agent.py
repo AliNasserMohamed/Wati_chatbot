@@ -84,6 +84,12 @@ class QueryAgent:
         # Classification prompts for message relevance
         self.classification_prompt_ar = """أنت مصنف رسائل ذكي لشركة توصيل المياه. مهمتك تحديد ما إذا كانت الرسالة متعلقة بخدمات الشركة أم لا.
 
+        سيتم تقديم:
+        1. تاريخ المحادثة الحديث (إذا كان متوفراً)
+        2. الرسالة الحالية التي تحتاج للتصنيف
+
+        راجع تاريخ المحادثة لفهم السياق بشكل كامل قبل تصنيف الرسالة الحالية.
+
         الرسائل المتعلقة بالخدمة تشمل فقط:
         ✅ أسئلة عن المدن المتاحة للتوصيل
         ✅ أسئلة عن العلامات التجارية للمياه
@@ -91,9 +97,10 @@ class QueryAgent:
         ✅ طلبات معرفة التوفر في مدينة معينة أو حي معين
         ✅ أسئلة عن أحجام المياه والعبوات
         ✅ ذكر أسماء العلامات التجارية مثل (نستله، أكوافينا، العين، القصيم، المراعي، وغيرها)
-        ✅ الرد بـ "نعم" أو "أي" عندما نسأل عن منتج معين
+        ✅ الرد بـ "نعم" أو "أي" عندما نسأل عن منتج معين في سياق المحادثة
         ✅ أسئلة عن الأسعار الإجمالية أو قوائم الأسعار
         ✅ طلبات الطلب أو الشراء ("أريد أطلب"، "كيف أطلب"، "أريد أشتري"، "أبي أطلب")
+        ✅ الردود على أسئلة متعلقة بالمياه والعلامات التجارية في تاريخ المحادثة
 
         الرسائل غير المتعلقة بالخدمة تشمل:
         ❌ التحيات العامة ("أهلاً", "مرحبا", "السلام عليكم", "صباح الخير", "مساء الخير")  
@@ -117,6 +124,7 @@ class QueryAgent:
         - لا تعتبر التحيات والشكر متعلقة بالخدمة حتى لو كانت في سياق محادثة عن المياه
         - اعتبر ذكر أسماء العلامات التجارية للمياه متعلق بالخدمة فقط
         - اعتبر الرد بـ "نعم" أو "أي" متعلق بالخدمة إذا كان في سياق محادثة عن المنتجات فقط
+        - انتبه لتاريخ المحادثة: إذا كانت المحادثة عن المياه والعلامات التجارية، فحتى الردود البسيطة قد تكون متعلقة
 
         أجب بـ "relevant" إذا كانت الرسالة متعلقة بالمنتجات والأسعار والعلامات التجارية والمدن فقط، أو "not_relevant" لأي شيء آخر."""
 
@@ -382,8 +390,51 @@ class QueryAgent:
         
         return cleaned_text
     
-    def _extract_city_from_context(self, user_message: str, conversation_history: List[Dict] = None) -> Optional[Dict[str, Any]]:
-        """Extract city information from current message and conversation history
+    async def _verify_city_extraction(self, user_message: str, conversation_history: List[Dict] = None, extracted_city: str = None, extraction_source: str = "message") -> bool:
+        """Use ChatGPT to verify if the extracted city/district is correct based on the user's message and conversation history"""
+        try:
+            # Prepare context from conversation history
+            context = ""
+            if conversation_history:
+                recent_messages = conversation_history[-5:]  # Last 5 messages for context
+                context = "\n".join([f"{msg.get('role', 'user')}: {msg.get('content', '')}" for msg in recent_messages])
+                context = f"تاريخ المحادثة الحديث:\n{context}\n"
+            
+            # Verification prompt
+            verification_prompt = f"""أنت خبير في فهم النصوص العربية واستخراج أسماء المدن والأحياء. مهمتك التحقق من صحة استخراج المدينة أو الحي.
+
+{context}
+الرسالة الحالية: "{user_message}"
+
+استخرجنا "{extracted_city}" من {extraction_source}.
+
+هل استخراج "{extracted_city}" صحيح ومبرر من الرسالة أو سياق المحادثة؟
+
+أجب بـ "صحيح" إذا كان الاستخراج مبرر ومنطقي، أو "خطأ" إذا كان خطأ أو غير مبرر."""
+
+            # Call LangChain for verification
+            response = await self._call_langchain_llm(
+                messages=[
+                    {"role": "system", "content": "أنت خبير في فهم النصوص واستخراج المعلومات الجغرافية."},
+                    {"role": "user", "content": verification_prompt}
+                ],
+                temperature=0.1,
+                max_tokens=10
+            )
+            
+            verification_result = response["content"].strip().lower()
+            is_correct = "صحيح" in verification_result
+            
+            print(f"🤖 City extraction verification for '{extracted_city}': {verification_result} -> {'✅' if is_correct else '❌'}")
+            return is_correct
+            
+        except Exception as e:
+            logger.error(f"Error in city extraction verification: {str(e)}")
+            # On error, default to accepting the extraction
+            return True
+
+    async def _extract_city_from_context(self, user_message: str, conversation_history: List[Dict] = None) -> Optional[Dict[str, Any]]:
+        """Extract city information from current message and conversation history with AI verification
         Priority: 1) City in last message, 2) District in last message, 3) City in history, 4) District in history"""
         try:
             
@@ -401,20 +452,36 @@ class QueryAgent:
                         
                         if city_name_ar and city_name_ar in current_content:
                             print(f"🏙️ QueryAgent: Found direct city '{city['name']}' in last message")
-                            return {
-                                "city_id": city["id"],
-                                "city_name": city["name"],
-                                "city_name_en": city["name_en"],
-                                "found_in": "current_message_city"
-                            }
+                            
+                            # Verify extraction with ChatGPT
+                            is_verified = await self._verify_city_extraction(
+                                user_message, conversation_history, 
+                                city['name'], "الرسالة الحالية"
+                            )
+                            
+                            if is_verified:
+                                return {
+                                    "city_id": city["id"],
+                                    "city_name": city["name"],
+                                    "city_name_en": city["name_en"],
+                                    "found_in": "current_message_city"
+                                }
                         elif city_name_en and city_name_en in current_content:
                             print(f"🏙️ QueryAgent: Found direct city '{city['name']}' (English) in last message")
-                            return {
-                                "city_id": city["id"],
-                                "city_name": city["name"],
-                                "city_name_en": city["name_en"],
-                                "found_in": "current_message_city"
-                            }
+                            
+                            # Verify extraction with ChatGPT
+                            is_verified = await self._verify_city_extraction(
+                                user_message, conversation_history, 
+                                city['name'], "الرسالة الحالية"
+                            )
+                            
+                            if is_verified:
+                                return {
+                                    "city_id": city["id"],
+                                    "city_name": city["name"],
+                                    "city_name_en": city["name_en"],
+                                    "found_in": "current_message_city"
+                                }
                 
                 # PRIORITY 2: Check for district in last message (current user message)
                 if user_message:
@@ -426,23 +493,30 @@ class QueryAgent:
                         
                         print(f"🏘️ QueryAgent: Found district '{district_name}' -> city '{city_name}' in last message")
                         
-                        # Find the city details in our cities list (normalize for comparison)
-                        normalized_district_city = district_lookup.normalize_city_name(city_name)
-                        for city in all_cities:
-                            system_city_name = city.get("name", "").strip()
-                            normalized_system_city = district_lookup.normalize_city_name(system_city_name)
-                            
-                            if normalized_system_city == normalized_district_city:
-                                print(f"🎯 QueryAgent: District-to-City mapping from last message:")
-                                print(f"   📍 District: '{district_name}' (user is from this district)")
-                                print(f"   🏙️ Business City: '{city['name']}' (ID: {city['id']}) - THIS will be used for brands/products")
-                                return {
-                                    "city_id": city["id"],
-                                    "city_name": city["name"],  # ← CITY name (e.g., "الأحساء") - used for business logic
-                                    "city_name_en": city["name_en"],
-                                    "found_in": "current_message_district",
-                                    "district_name": district_name  # ← DISTRICT name (e.g., "الحمراء الأول") - context only
-                                }
+                        # Verify district extraction with ChatGPT
+                        is_verified = await self._verify_city_extraction(
+                            user_message, conversation_history, 
+                            district_name, "الرسالة الحالية (حي)"
+                        )
+                        
+                        if is_verified:
+                            # Find the city details in our cities list (normalize for comparison)
+                            normalized_district_city = district_lookup.normalize_city_name(city_name)
+                            for city in all_cities:
+                                system_city_name = city.get("name", "").strip()
+                                normalized_system_city = district_lookup.normalize_city_name(system_city_name)
+                                
+                                if normalized_system_city == normalized_district_city:
+                                    print(f"🎯 QueryAgent: District-to-City mapping from last message:")
+                                    print(f"   📍 District: '{district_name}' (user is from this district)")
+                                    print(f"   🏙️ Business City: '{city['name']}' (ID: {city['id']}) - THIS will be used for brands/products")
+                                    return {
+                                        "city_id": city["id"],
+                                        "city_name": city["name"],  # ← CITY name (e.g., "الأحساء") - used for business logic
+                                        "city_name_en": city["name_en"],
+                                        "found_in": "current_message_district",
+                                        "district_name": district_name  # ← DISTRICT name (e.g., "الحمراء الأول") - context only
+                                    }
                 
                 # PRIORITY 3: Check for city in conversation history
                 if conversation_history:
@@ -457,20 +531,36 @@ class QueryAgent:
                             
                             if city_name_ar and city_name_ar in content_lower:
                                 print(f"🏙️ QueryAgent: Found city in history '{city['name']}'")
-                                return {
-                                    "city_id": city["id"],
-                                    "city_name": city["name"],
-                                    "city_name_en": city["name_en"],
-                                    "found_in": "conversation_history_city"
-                                }
+                                
+                                # Verify extraction with ChatGPT
+                                is_verified = await self._verify_city_extraction(
+                                    user_message, conversation_history, 
+                                    city['name'], "تاريخ المحادثة"
+                                )
+                                
+                                if is_verified:
+                                    return {
+                                        "city_id": city["id"],
+                                        "city_name": city["name"],
+                                        "city_name_en": city["name_en"],
+                                        "found_in": "conversation_history_city"
+                                    }
                             elif city_name_en and city_name_en in content_lower:
                                 print(f"🏙️ QueryAgent: Found city in history '{city['name']}' (English)")
-                                return {
-                                    "city_id": city["id"],
-                                    "city_name": city["name"],
-                                    "city_name_en": city["name_en"],
-                                    "found_in": "conversation_history_city"
-                                }
+                                
+                                # Verify extraction with ChatGPT
+                                is_verified = await self._verify_city_extraction(
+                                    user_message, conversation_history, 
+                                    city['name'], "تاريخ المحادثة"
+                                )
+                                
+                                if is_verified:
+                                    return {
+                                        "city_id": city["id"],
+                                        "city_name": city["name"],
+                                        "city_name_en": city["name_en"],
+                                        "found_in": "conversation_history_city"
+                                    }
                 
                 # PRIORITY 4: Check for district in conversation history
                 if conversation_history:
@@ -484,23 +574,30 @@ class QueryAgent:
                             
                             print(f"🏘️ QueryAgent: Found district in history '{district_name}' -> city '{city_name}'")
                             
-                            # Find the city details in our cities list (normalize for comparison)
-                            normalized_district_city = district_lookup.normalize_city_name(city_name)
-                            for city in all_cities:
-                                system_city_name = city.get("name", "").strip()
-                                normalized_system_city = district_lookup.normalize_city_name(system_city_name)
-                                
-                                if normalized_system_city == normalized_district_city:
-                                    print(f"🎯 QueryAgent: District-to-City mapping from history:")
-                                    print(f"   📍 District: '{district_name}' (user is from this district)")
-                                    print(f"   🏙️ Business City: '{city['name']}' (ID: {city['id']}) - THIS will be used for brands/products")
-                                    return {
-                                        "city_id": city["id"],
-                                        "city_name": city["name"],  # ← CITY name - used for business logic
-                                        "city_name_en": city["name_en"],
-                                        "found_in": "conversation_history_district",
-                                        "district_name": district_name  # ← DISTRICT name - context only
-                                    }
+                            # Verify district extraction with ChatGPT
+                            is_verified = await self._verify_city_extraction(
+                                user_message, conversation_history, 
+                                district_name, "تاريخ المحادثة (حي)"
+                            )
+                            
+                            if is_verified:
+                                # Find the city details in our cities list (normalize for comparison)
+                                normalized_district_city = district_lookup.normalize_city_name(city_name)
+                                for city in all_cities:
+                                    system_city_name = city.get("name", "").strip()
+                                    normalized_system_city = district_lookup.normalize_city_name(system_city_name)
+                                    
+                                    if normalized_system_city == normalized_district_city:
+                                        print(f"🎯 QueryAgent: District-to-City mapping from history:")
+                                        print(f"   📍 District: '{district_name}' (user is from this district)")
+                                        print(f"   🏙️ Business City: '{city['name']}' (ID: {city['id']}) - THIS will be used for brands/products")
+                                        return {
+                                            "city_id": city["id"],
+                                            "city_name": city["name"],  # ← CITY name - used for business logic
+                                            "city_name_en": city["name_en"],
+                                            "found_in": "conversation_history_district",
+                                            "district_name": district_name  # ← DISTRICT name - context only
+                                        }
 
                 return None
             finally:
@@ -509,11 +606,55 @@ class QueryAgent:
             logger.error(f"Error extracting city from context: {str(e)}")
             return None
 
-    def _extract_brand_from_context(self, user_message: str, conversation_history: List[Dict] = None, city_name: str = None) -> Optional[Dict[str, Any]]:
-        """Extract brand information from current message and conversation history
+    async def _verify_brand_extraction(self, user_message: str, conversation_history: List[Dict] = None, extracted_brand: str = None, extraction_source: str = "message") -> bool:
+        """Use ChatGPT to verify if the extracted brand is correct based on the user's message and conversation history"""
+        try:
+            # Prepare context from conversation history
+            context = ""
+            if conversation_history:
+                recent_messages = conversation_history[-5:]  # Last 5 messages for context
+                context = "\n".join([f"{msg.get('role', 'user')}: {msg.get('content', '')}" for msg in recent_messages])
+                context = f"تاريخ المحادثة الحديث:\n{context}\n"
+            
+            # Verification prompt
+            verification_prompt = f"""أنت خبير في فهم النصوص العربية واستخراج أسماء العلامات التجارية للمياه. مهمتك التحقق من صحة استخراج العلامة التجارية.
+
+{context}
+الرسالة الحالية: "{user_message}"
+
+استخرجنا علامة تجارية "{extracted_brand}" من {extraction_source}.
+
+هل استخراج "{extracted_brand}" صحيح ومبرر من الرسالة أو سياق المحادثة؟
+
+أجب بـ "صحيح" إذا كان الاستخراج مبرر ومنطقي، أو "خطأ" إذا كان خطأ أو غير مبرر."""
+
+            # Call LangChain for verification
+            response = await self._call_langchain_llm(
+                messages=[
+                    {"role": "system", "content": "أنت خبير في فهم النصوص واستخراج أسماء العلامات التجارية."},
+                    {"role": "user", "content": verification_prompt}
+                ],
+                temperature=0.1,
+                max_tokens=10
+            )
+            
+            verification_result = response["content"].strip().lower()
+            is_correct = "صحيح" in verification_result
+            
+            print(f"🤖 Brand extraction verification for '{extracted_brand}': {verification_result} -> {'✅' if is_correct else '❌'}")
+            return is_correct
+            
+        except Exception as e:
+            logger.error(f"Error in brand extraction verification: {str(e)}")
+            # On error, default to accepting the extraction
+            return True
+
+    async def _extract_brand_from_context(self, user_message: str, conversation_history: List[Dict] = None, city_name: str = None) -> Optional[Dict[str, Any]]:
+        """Extract brand information from current message and conversation history with AI verification and improved matching
         IMPORTANT: Only returns brands if city_name is provided (city must be known first)
         IMPORTANT: Ignores size terms like ابو ربع, ابو نص, ابو ريال as they are NOT brand names
         IMPORTANT: Removes water prefixes like مياه, موية, مياة before brand names
+        ENHANCED: Searches for identical brand after normalizing, then partial matching
         """
         # Do not extract brands without knowing the city first
         if not city_name:
@@ -533,35 +674,67 @@ class QueryAgent:
                 # Get brands only for the specific city using city name
                 brands = data_api.get_brands_by_city_name(db, city_name)
                 
-                # PRIORITY 1: Check current user message first
+                # PRIORITY 1: Check current user message first - EXACT MATCH
                 if user_message:
                     # Clean the user message by removing water prefixes
                     cleaned_message = self._clean_brand_name(user_message)
                     current_content = cleaned_message.lower()
                     
+                    # First try exact matching after normalization
+                    for brand in brands:
+                        brand_title = brand.get("title", "").lower().strip()
+                        
+                        if brand_title and brand_title == current_content:
+                            # Verify extraction with ChatGPT
+                            is_verified = await self._verify_brand_extraction(
+                                user_message, conversation_history,
+                                brand["title"], "الرسالة الحالية (مطابقة تامة)"
+                            )
+                            
+                            if is_verified:
+                                return {
+                                    "brand_title": brand["title"],
+                                    "found_in": "current_message"
+                                }
+                    
+                    # If no exact match, try partial matching
                     for brand in brands:
                         brand_title = brand.get("title", "").lower()
                         
-                        if brand_title and (brand_title in current_content or brand_title in user_message.lower()):
-                            return {
-                                "brand_title": brand["title"],
-                                "found_in": "current_message"
-                            }
+                        if brand_title and (brand_title in current_content or current_content in brand_title):
+                            # Verify extraction with ChatGPT
+                            is_verified = await self._verify_brand_extraction(
+                                user_message, conversation_history,
+                                brand["title"], "الرسالة الحالية (مطابقة جزئية)"
+                            )
+                            
+                            if is_verified:
+                                return {
+                                    "brand_title": brand["title"],
+                                    "found_in": "current_message"
+                                }
                 
                 # PRIORITY 2: Check conversation history if no brand in current message
                 if conversation_history:
                     for message in reversed(conversation_history[-10:]):  # Check last 10 messages
                         content = message.get("content", "").lower()
                         
-                        # Check if any brand name appears in the message
+                        # First try exact matching
                         for brand in brands:
-                            brand_title = brand.get("title", "").lower()
+                            brand_title = brand.get("title", "").lower().strip()
                             
                             if brand_title and brand_title in content:
-                                return {
-                                    "brand_title": brand["title"],
-                                    "found_in": "conversation_history"
-                                }
+                                # Verify extraction with ChatGPT
+                                is_verified = await self._verify_brand_extraction(
+                                    user_message, conversation_history,
+                                    brand["title"], "تاريخ المحادثة"
+                                )
+                                
+                                if is_verified:
+                                    return {
+                                        "brand_title": brand["title"],
+                                        "found_in": "conversation_history"
+                                    }
                 
                 return None
             finally:
@@ -1016,10 +1189,10 @@ Classification:"""
         
         try:
             # Check if we already have city information from current message or conversation history
-            city_context = self._extract_city_from_context(user_message, conversation_history)
+            city_context = await self._extract_city_from_context(user_message, conversation_history)
             
             # Check if we have brand information
-            brand_context = self._extract_brand_from_context(
+            brand_context = await self._extract_brand_from_context(
                 user_message, 
                 conversation_history, 
                 city_context.get("city_name") if city_context else None  # ← Uses CITY name for brand search
