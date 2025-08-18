@@ -325,14 +325,26 @@ class ChromaManager:
                 formatted_results = []
                 if results and results["documents"]:
                     for i, doc in enumerate(results["documents"][0]):
+                        # Skip if document is None or empty
+                        if not doc:
+                            continue
+                            
                         # Convert distance to similarity for cosine distance
                         distance = results["distances"][0][i] if "distances" in results else 1.0
                         similarity = 1.0 - distance
                         
+                        # Get metadata safely - handle None values
+                        metadata = results["metadatas"][0][i] if i < len(results["metadatas"][0]) else {}
+                        if metadata is None:
+                            metadata = {}
+                        
+                        # Get ID safely
+                        doc_id = results["ids"][0][i] if i < len(results["ids"][0]) else f"doc_{i}"
+                        
                         formatted_results.append({
                             "document": doc,
-                            "metadata": results["metadatas"][0][i],
-                            "id": results["ids"][0][i],
+                            "metadata": metadata,
+                            "id": doc_id,
                             "distance": distance,
                             "similarity": similarity
                         })
@@ -343,7 +355,11 @@ class ChromaManager:
                 print(f"🔍 ChromaDB Search: '{query[:50]}...'")
                 print(f"   Found {len(formatted_results)} results")
                 for i, result in enumerate(formatted_results, 1):
-                    doc_type = result["metadata"].get("type", "answer")
+                    # Safely get metadata with null checking
+                    metadata = result.get("metadata", {})
+                    if metadata is None:
+                        metadata = {}
+                    doc_type = metadata.get("type", "answer")
                     print(f"   Result {i}: [{doc_type.upper()}] Similarity={result['similarity']:.4f}")
                 
                 return formatted_results

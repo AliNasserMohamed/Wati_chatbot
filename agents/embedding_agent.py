@@ -275,57 +275,36 @@ class EmbeddingAgent:
             print(f"🌐 Language mismatch: user={user_language}, answer={answer_language} - proceeding to classification")
             return {'action': 'continue'}
         
-        # Format conversation history for context - enhanced for better decision making
+        # Format conversation history for context
         conversation_context = ""
-        history_analysis = ""
-        
-        if conversation_history and len(conversation_history) > 0:
-            # Get more messages for better context (up to 10 messages)
-            recent_messages = conversation_history[-10:] if len(conversation_history) >= 10 else conversation_history
+        if conversation_history:
+            # Get the latest 5 messages for context
+            recent_messages = conversation_history[-5:] if len(conversation_history) >= 5 else conversation_history
             
             if language == 'ar':
-                conversation_context = f"\n\nسياق المحادثة (آخر {len(recent_messages)} رسائل):\n"
+                conversation_context = "\n\nسياق المحادثة (آخر 3 رسائل):\n"
                 for i, msg in enumerate(recent_messages, 1):
                     role = "العميل" if msg.get('role') == 'user' else "الوكيل"
                     conversation_context += f"{i}. {role}: {msg.get('content', '')}\n"
-                    
-                # Add analysis instructions
-                history_analysis = f"\n\nتحليل السياق المطلوب:\n- راجع المحادثة بعناية لفهم السياق الكامل\n- انتبه إلى ما تم مناقشته سابقاً بين العميل والوكيل\n- اعتبر إذا كانت الرسالة الحالية مرتبطة بموضوع سابق في المحادثة\n- اعتبر إذا كان العميل يتابع سؤال سابق أو يطلب معلومات إضافية\n- اعتبر إذا كان الوكيل قد أجاب على سؤال مشابه من قبل\n"
             else:
-                conversation_context = f"\n\nConversation context (last {len(recent_messages)} messages):\n"
+                conversation_context = "\n\nConversation context (last 3 messages):\n"
                 for i, msg in enumerate(recent_messages, 1):
                     role = "Customer" if msg.get('role') == 'user' else "Agent"
                     conversation_context += f"{i}. {role}: {msg.get('content', '')}\n"
-                    
-                # Add analysis instructions
-                history_analysis = f"\n\nContext analysis required:\n- Carefully review the conversation to understand the complete context\n- Pay attention to what has been discussed previously between customer and agent\n- Consider if the current message relates to a previous topic in the conversation\n- Consider if the customer is following up on a previous question or asking for additional information\n- Consider if the agent has already answered a similar question before\n"
-        else:
-            if language == 'ar':
-                conversation_context = "\n\nلا يوجد سياق محادثة سابق.\n"
-            else:
-                conversation_context = "\n\nNo previous conversation context available.\n"
         
         if language == 'ar':
             evaluation_prompt = f"""أنت مقيم صارم جداً لجودة الردود في خدمة العملاء لشركة أبار لتوصيل المياه.
 
-مهمتك الوحيدة: تصنيف رسالة العميل بدقة إلى واحدة من ثلاث حالات بناءً على الرسالة الحالية والسياق التاريخي للمحادثة.
+مهمتك الوحيدة: تصنيف رسالة العميل بدقة إلى واحدة من ثلاث حالات.
 
 - رسالة العميل الحالية: "{user_message}"
 - السؤال المشابه من قاعدة البيانات : "{matched_question}"
 - الرد المحفوظ: "{matched_answer}"
 
+-المحادثة السابقة:
 {conversation_context}
 
-{history_analysis}
-
-🚨 تعليمات مهمة جداً حول استخدام سياق المحادثة:
-- راجع المحادثة السابقة بعناية فائقة قبل اتخاذ القرار
-- إذا كان العميل قد سأل سؤالاً سابقاً وأجبنا عليه، ولكنه يعيد السؤال بطريقة مختلفة، فكر في السياق
-- إذا كان العميل يتابع موضوع سابق، اعتبر ذلك في القرار
-- إذا كان الوكيل قد أرسل رداً معيناً من قبل، لا تكرره إلا إذا كان مناسباً حقاً
-- انتبه لتدفق المحادثة والسياق العام
-
-التصنيف يجب أن يعتمد على القواعد التالية (مع مراعاة سياق المحادثة):
+التصنيف يجب أن يعتمد على القواعد التالية:
 
 🟢 "reply":
 -✅reply  إذا كانت رسالة العميل الحالية مشابهة لسؤال موجود في قاعدة البيانات ، وكان لدينا رد محفوظ له — سواء كانت تحية أو استفسار أو طلب — يجب اختيار 
@@ -334,36 +313,24 @@ class EmbeddingAgent:
   - مثل: (السلام عليكم، مرحبا، أهلاً، هلا، هلا وغلا، صباح الخير، مساء الخير، شكراً، يعطيك العافية، جزاك الله خير، الله يوفقكم، شكرا لك، مشكور)
   - أو نفس التحيات مع علامات ترقيم مثل: (هلا...، مرحبا.، السلام عليكم!!، شكرا...) يجب اختيار reply
 
-- لكن تأكد أولاً من سياق المحادثة: إذا كان هذا الرد قد أُرسل مؤخراً، قد تحتاج لاختيار "continue" بدلاً من ذلك
-
 🟡 "skip":
 - إذا كانت الرسالة قصيرة ولا تتطلب رد مثل: (تمام، طيب، أوك، أوكي، تمام التمام، خلاص)
-- أو إذا كان العميل يؤكد فهمه لشيء تم شرحه له في المحادثة
 
 🔴 "continue":
 - إذا لم تكن تحية أو شكر بسيط
 - ولم نجد لها تطابقًا واضحًا في قاعدة البيانات (أي لم تكن مشابهة لسؤال موجود لدينا)
 - أو كانت تحتوي على تحية أو شكر لكن مرفقة بسؤال أو طلب
-- إذا كان السياق يشير إلى أن العميل يحتاج لمساعدة أكثر تخصصاً
-- إذا كان العميل يتابع موضوعاً لم نحله بالكامل في المحادثة السابقة
 
-❗️ملحوظة مهمة جداً (مع مراعاة السياق):
-- إذا وُجد تطابق في قاعدة البيانات وكان هناك رد محفوظ، اختر "reply" - إلا إذا كان السياق يشير لعكس ذلك
-- إذا كانت الرسالة فقط "شكراً" أو "السلام عليكم"، اختر "reply" - إلا إذا كان مكرراً في المحادثة
+❗️ملحوظة:
+- إذا وُجد تطابق في قاعدة البيانات وكان هناك رد محفوظ، اختر "reply"
+- إذا كانت الرسالة فقط "شكراً" أو "السلام عليكم"، اختر "reply"
 - إذا كانت مثل "تمام" أو "أوك"، اختر "skip"
 - إذا كانت تحتوي على سؤال أو استفسار ولم نجد لها تطابقاً في قاعدة البيانات، اختر "continue"
-
-❗️ملحوظه مهمة جدا جدا (مع تحليل السياق):
-- اذا كان السؤال عن ماركة مياه معينة او منتج معين او سعر منتج معين او السوال عن الاسعار او الماركات في مدينة معينة اختر "continue"
+ ❗️ملحوظه مهمة جدا جدا 
+- اذا كان السؤاال عن ماركة مياه معينة او منتج معين او سعر منتج معين او السوال عن الاسعار او الماركات في مدينة معينةاختر "continue"
 - إذا أخبرنا العميل بهذا الرد مسبقاً "بتحصل الاصناف والاسعار في التطبيق وهذا هو الرابط https://onelink.to/abar_app https://abar.app/en/store/ وايضا عن طريق الموقع الالكتروني"
-فلا يجب الرد بهذا الرد مرة ثانية ويجب اختيار continue
-- إذا كان العميل يتابع سؤالاً سابقاً أو يطلب توضيحاً أكثر، اعتبر السياق في القرار
-
-🧠 تفكير بناءً على السياق:
-- هل هذه الرسالة مرتبطة بشيء تم مناقشته من قبل؟
-- هل العميل راضٍ عن الإجابة السابقة أم يحتاج المزيد؟
-- هل الرد المحفوظ مناسب في هذا السياق المحدد؟
-- هل تكرار نفس الرد سيفيد العميل أم لا؟
+فلا يجب الرد بهذا الرد مرة ثانية ويجب اختيار continue 
+-
 
 اخرج فقط واحدة من: reply أو skip أو continue
 """
@@ -371,7 +338,7 @@ class EmbeddingAgent:
         else:
             evaluation_prompt = f"""You are a very strict response quality evaluator for Abar water delivery customer service.
 
-Your task: Determine the appropriate action based on the customer message and the complete conversation history context, not just the current message alone.
+Your task: Determine the appropriate action based on the customer message and whether it matches any known question in the database.
 
 Inputs:
 - Current customer message: "{user_message}"
@@ -379,16 +346,7 @@ Inputs:
 - Stored response: "{matched_answer}"
 {conversation_context}
 
-{history_analysis}
-
-🚨 CRITICAL INSTRUCTIONS for using conversation history:
-- Carefully review the previous conversation before making any decision
-- If the customer asked a question before and we answered it, but they're asking again differently, consider the context
-- If the customer is following up on a previous topic, factor that into your decision
-- If the agent has already sent a specific response before, don't repeat it unless truly appropriate
-- Pay attention to the conversation flow and overall context
-
-Rules (with conversation context awareness):
+Rules:
 
 ✅ "reply":
 - If the customer message is semantically similar to a known question in the database (even if it contains more than a greeting or thanks), reply using the stored answer.
@@ -396,34 +354,22 @@ Rules (with conversation context awareness):
     - Greetings: ("Hello", "Hi", "Peace be upon you", "Good morning", "Good evening")
     - Thanks: ("Thanks", "Thank you", "God bless you", "Much appreciated")
 
-- BUT first check conversation context: If this response was sent recently, you might need to choose "continue" instead
-
 🚫 "skip":
 - If the message is something like: ("ok", "okay", "fine", "great", "alright", "noted", "sure") — it does not require a reply.
-- Or if the customer is confirming understanding of something explained in the conversation
 
 🔁 "continue":
 - If the message contains anything beyond a simple greeting or thanks and does not match any known question in the database.
-- If the context suggests the customer needs more specialized help
-- If the customer is following up on a topic we haven't fully resolved in the previous conversation
 - Examples:
     - "Hi, I have a question" → continue
     - "Thank you, but I need help" → continue
     - "How do I order?" → continue
     - "Can I speak to someone?" → continue
 
-📌 Enhanced Summary with Context Awareness:
-- If there's a semantic match with a known question → **reply** (unless context suggests otherwise)
-- If it's ONLY a greeting or thanks → **reply** (unless it's repetitive in conversation)
+📌 Summary:
+- If there's a semantic match with a known question → **reply**
+- If it's ONLY a greeting or thanks → **reply**
 - If it's a short acknowledgment → **skip**
-- If context shows customer needs more help or is following up → **continue**
 - Everything else → **continue**
-
-🧠 Contextual Thinking Required:
-- Is this message related to something discussed before?
-- Is the customer satisfied with the previous answer or needs more?
-- Is the stored response appropriate in this specific context?
-- Would repeating the same response benefit the customer or not?
 
 Return only one value: reply, skip, or continue
 """
@@ -435,29 +381,19 @@ Return only one value: reply, skip, or continue
             # Build the complete messages for the API call
             system_content ="""You are an extremely strict evaluator for customer service response quality at Abar Water Delivery.
 
-Your ONLY task: Decide how to handle a customer's message based on its content, whether it matches any known question in the company database, AND most importantly, the complete conversation history context.
-
-🚨 CRITICAL: You must analyze the full conversation history before making any decision. The conversation context is just as important as the current message.
+Your ONLY task: Decide how to handle a customer's message based on its content and whether it matches any known question in the company database.
 
 Inputs provided:
 - Customer message: the message sent by the user.
 - Matched question from vector database (if any): the most semantically similar known question.
 - Stored answer: the saved response for that matched question (if available).
-- Conversation context: previous messages exchanged between customer and agent.
-
-🧠 CONTEXTUAL ANALYSIS REQUIRED:
-- Review the entire conversation flow before deciding
-- Check if we've already answered similar questions
-- See if the customer is following up on a previous topic
-- Determine if repeating the same response would be helpful or redundant
-- Consider the customer's satisfaction level based on their previous responses
-- Look for patterns in the conversation that might indicate what the customer really needs
+- Conversation context: last few messages exchanged.
 
 You must classify the message into **only one** of the following:
 
  reply:
-- If the message is **semantically similar** to a known question in the database AND we have a saved answer — AND the conversation context supports using this response.
-- OR if the message is a **pure standalone greeting or thanks**, with no additional text — AND it hasn't been repeatedly used in the conversation.
+- If the message is **semantically similar** to a known question in the database AND we have a saved answer — regardless of whether the message is a greeting, request, or question.
+- OR if the message is a **pure standalone greeting or thanks**, with no additional text.
   - Valid examples: "السلام عليكم", "شكراً", "يعطيك العافية", "مرحبا", "أهلا", "الله يوفقكم"
 
  skip:
@@ -478,15 +414,9 @@ You must classify the message into **only one** of the following:
 - DO NOT skip if the message contains any intent or need for help.
 
 Final instruction:
-Be extremely conservative AND context-aware. Use `reply` ONLY when:
-- The message is a 100% pure greeting/thanks AND it's not repetitive in the conversation, OR
-- It has a clear semantic match in the database with a saved answer AND the conversation context supports using this response.
-
-🎯 Key Decision Framework:
-1. Is this a pure greeting/thanks? → Check if it's repetitive → reply or continue
-2. Does it match a database question? → Check conversation context → reply or continue  
-3. Is it an acknowledgment? → Check if related to previous explanation → skip
-4. Everything else? → continue
+Be extremely conservative. Use `reply` ONLY when:
+- The message is a 100% pure greeting/thanks, OR
+- It has a clear semantic match in the database with a saved answer.
 
 Return only one of: `reply`, `skip`, or `continue`.
 """
