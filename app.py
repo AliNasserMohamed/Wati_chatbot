@@ -1459,6 +1459,100 @@ async def stop_scheduler():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+# User Management API Endpoints
+@app.delete("/api/users/messages")
+async def clear_user_messages(request: Request, db=Depends(get_db)):
+    """
+    Clear all messages for a specific phone number
+    
+    Request Body:
+        {
+            "phone_number": "201142765209",
+            "delete_user": false
+        }
+    
+    Returns:
+        JSON response with operation results
+    """
+    try:
+        # Parse JSON payload
+        data = await request.json()
+        phone_number = data.get("phone_number")
+        delete_user = data.get("delete_user", False)
+        
+        # Validate required fields
+        if not phone_number:
+            raise HTTPException(status_code=400, detail="phone_number is required in JSON payload")
+        
+        print(f"🗑️ API request to clear messages for: {phone_number} (delete_user: {delete_user})")
+        
+        # Use the DatabaseManager method we created
+        result = DatabaseManager.clear_user_messages_by_phone(db, phone_number, delete_user)
+        
+        if result["success"]:
+            print(f"✅ Successfully cleared messages for {phone_number}")
+            return {
+                "success": True,
+                "message": f"Successfully cleared messages for {phone_number}",
+                "data": result
+            }
+        else:
+            print(f"❌ Failed to clear messages for {phone_number}: {result.get('error', 'Unknown error')}")
+            raise HTTPException(
+                status_code=404 if result.get('error') == 'User not found' else 500,
+                detail=result.get('error', 'Unknown error')
+            )
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Exception clearing messages: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/users/messages/count")
+async def get_user_message_count(request: Request, db=Depends(get_db)):
+    """
+    Get message count for a specific phone number
+    
+    Request Body:
+        {
+            "phone_number": "201142765209"
+        }
+    
+    Returns:
+        JSON response with message counts
+    """
+    try:
+        # Parse JSON payload
+        data = await request.json()
+        phone_number = data.get("phone_number")
+        
+        # Validate required fields
+        if not phone_number:
+            raise HTTPException(status_code=400, detail="phone_number is required in JSON payload")
+        
+        print(f"📊 API request to get message count for: {phone_number}")
+        
+        # Use the DatabaseManager method we created
+        result = DatabaseManager.get_user_message_count(db, phone_number)
+        
+        if result["user_found"]:
+            print(f"✅ Found message data for {phone_number}: {result['total_messages']} total messages")
+            return {
+                "success": True,
+                "message": f"Message count retrieved for {phone_number}",
+                "data": result
+            }
+        else:
+            print(f"❌ No user found for {phone_number}")
+            raise HTTPException(status_code=404, detail="User not found")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Exception getting message count for {phone_number}: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 # Internal Data API Endpoints
 @app.get("/api/cities")
 async def get_cities(search: str = None, db=Depends(get_db)):
