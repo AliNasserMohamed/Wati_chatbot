@@ -72,12 +72,11 @@ class QueryAgent:
         
         # Define available functions for the LLM
         self.available_functions = {
-            "get_all_cities": self.get_all_cities,
+            "get_all_cities": lambda user_language='ar': self.get_all_cities(user_language),
             "get_brands_by_city_name": self.get_brands_by_city_name,
             "get_products_by_brand_and_city_name": self.get_products_by_brand_and_city_name,
             "search_cities": self.search_cities,
             "search_brands_in_city": self.search_brands_in_city,
-            "check_city_availability": self.check_city_availability,
             "get_cheapest_products_by_city_name": self.get_cheapest_products_by_city_name
         }
         
@@ -170,22 +169,29 @@ class QueryAgent:
         self.function_definitions = [
             {
                 "name": "get_all_cities",
-                "description": "Get complete list of all cities we serve with water delivery. Use this when user asks about available cities, locations we serve, or wants to see all cities. Returns city names in Arabic and English.",
+                "description": "Get complete list of all cities we serve with water delivery. Use this when user asks about available cities, locations we serve, or wants to see all cities. Returns language-appropriate city names only (Arabic cities for Arabic conversations, English cities for English conversations).",
                 "parameters": {
                     "type": "object",
-                    "properties": {},
+                    "properties": {
+                        "user_language": {
+                            "type": "string",
+                            "description": "Language of the conversation ('ar' for Arabic, 'en' for English). Determines which city names to return.",
+                            "enum": ["ar", "en"],
+                            "default": "ar"
+                        }
+                    },
                     "required": []
                 }
             },
             {
                 "name": "get_brands_by_city_name",
-                "description": "STEP 1 in workflow: Get all water brands available in a specific city using city name. This handles fuzzy matching for incomplete or misspelled city names. Use this when customer mentions a city and you want to show available brands.",
+                "description": "STEP 1 in workflow: Get all water brands available in a specific city using city name. This handles fuzzy matching for incomplete or misspelled city names. Use this when customer mentions a city and you want to show available brands. Returns language-appropriate brand names only (Arabic brands for Arabic requests, English brands for English requests).",
                 "parameters": {
                     "type": "object",
                     "properties": {
                         "city_name": {
                             "type": "string",
-                            "description": "Name of the city in Arabic or English (e.g., 'الرياض', 'Riyadh', 'جدة', 'Jeddah'). Supports partial matches and fuzzy matching."
+                            "description": "Name of the city in Arabic or English (e.g., 'الرياض', 'Riyadh', 'جدة', 'Jeddah'). Supports partial matches and fuzzy matching. Language detection will be applied to return appropriate brand names."
                         }
                     },
                     "required": ["city_name"]
@@ -193,17 +199,17 @@ class QueryAgent:
             },
             {
                 "name": "get_products_by_brand_and_city_name",
-                "description": "STEP 2 in workflow: Get all water products for a specific brand in a specific city using names. This handles fuzzy matching for incomplete or misspelled brand/city names. Use this when customer has specified both a brand and city.",
+                "description": "STEP 2 in workflow: Get all water products for a specific brand in a specific city using names. This handles fuzzy matching for incomplete or misspelled brand/city names. Use this when customer has specified both a brand and city. Returns language-appropriate product strings with prices and contextual message.",
                 "parameters": {
                     "type": "object",
                     "properties": {
                         "brand_name": {
                             "type": "string",
-                            "description": "Name of the brand in Arabic or English (e.g., 'نستله', 'Nestle', 'أكوافينا', 'Aquafina'). Supports partial matches."
+                            "description": "Name of the brand in Arabic or English (e.g., 'نستله', 'Nestle', 'أكوافينا', 'Aquafina'). Supports partial matches. Language detection will be applied to return appropriate product format."
                         },
                         "city_name": {
                             "type": "string",
-                            "description": "Name of the city in Arabic or English (e.g., 'الرياض', 'Riyadh', 'جدة', 'Jeddah'). Supports partial matches."
+                            "description": "Name of the city in Arabic or English (e.g., 'الرياض', 'Riyadh', 'جدة', 'Jeddah'). Supports partial matches. Language detection will be applied to return appropriate product format."
                         }
                     },
                     "required": ["brand_name", "city_name"]
@@ -225,13 +231,13 @@ class QueryAgent:
             },
             {
                 "name": "search_brands_in_city",
-                "description": "Search for brands by name within a specific city only. Use this when customer mentions a brand name that might be incomplete or misspelled and you know their city.",
+                "description": "Search for brands by name within a specific city only. Use this when customer mentions a brand name that might be incomplete or misspelled and you know their city. This function can also be used to check if a specific brand is available in a city or not - if the brand exists in the city, it will be returned in the results; if not, you'll get an empty result indicating the brand is not available in that city.",
                 "parameters": {
                     "type": "object",
                     "properties": {
                         "brand_name": {
                             "type": "string",
-                            "description": "Brand name to search for (Arabic or English). Supports partial matches."
+                            "description": "Brand name to search for (Arabic or English). Supports partial matches and can be used for availability checking."
                         },
                         "city_name": {
                             "type": "string",
@@ -239,29 +245,6 @@ class QueryAgent:
                         }
                     },
                     "required": ["brand_name", "city_name"]
-                }
-            },
-            {
-                "name": "check_city_availability",
-                "description": "Check if a product or brand is available in a specific city. Use this when user asks about product/brand availability in their city after you know both the city and the product/brand name.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "city_name": {
-                            "type": "string",
-                            "description": "Name of the city in Arabic or English"
-                        },
-                        "item_type": {
-                            "type": "string",
-                            "description": "Type of item being checked: 'brand' or 'product'",
-                            "enum": ["brand", "product"]
-                        },
-                        "item_name": {
-                            "type": "string",
-                            "description": "Name of the brand or product to check availability for"
-                        }
-                    },
-                    "required": ["city_name", "item_type", "item_name"]
                 }
             },
             {
@@ -814,22 +797,44 @@ class QueryAgent:
         user_msg_lower = user_message.lower()
         return any(keyword.lower() in user_msg_lower for keyword in price_keywords)
     
-    def get_all_cities(self) -> Dict[str, Any]:
-        """Get complete list of all cities we serve"""
+    def get_all_cities(self, user_language: str = 'ar') -> Dict[str, Any]:
+        """Get complete list of all cities we serve
+        Returns language-specific city names with contextual message
+        """
         try:
             db = self._get_db_session()
             try:
                 cities = data_api.get_all_cities(db)
-                # Filter to return only city ID, Arabic name, and English name
-                filtered_cities = [
-                    {
-                        "id": city["id"],
-                        "name": city["name"],        # Arabic name
-                        "name_en": city["name_en"]   # English name
-                    }
-                    for city in cities
-                ]
-                return {"success": True, "data": filtered_cities}
+                
+                # Filter cities to include only language-appropriate names
+                filtered_cities = []
+                for city in cities:
+                    if user_language == 'ar':
+                        # Arabic conversation - return Arabic city names
+                        if city.get("name"):  # Only include cities with Arabic names
+                            filtered_cities.append(city["name"])
+                    else:
+                        # English conversation - return English city names, fallback to Arabic
+                        city_name = city.get("name_en", "") or city.get("name", "")
+                        if city_name:  # Only include cities with names
+                            filtered_cities.append(city_name)
+                
+                # Remove duplicates and sort
+                filtered_cities = sorted(list(set(filtered_cities)))
+                
+                # Create response message
+                if user_language == 'ar':
+                    response_message = " هذه هي المدن التي نخدمها ونوصل لها : "
+                else:
+                    response_message = "These are the cities we serve:"
+                
+                return {
+                    "success": True, 
+                    "data": filtered_cities,  # Simple list of city names in appropriate language
+                    "language": user_language,
+                    "response_message": response_message,
+                    "total_cities": len(filtered_cities)
+                }
             finally:
                 db.close()
         except Exception as e:
@@ -837,8 +842,16 @@ class QueryAgent:
             return {"error": f"Failed to get cities: {str(e)}"}
     
     def get_brands_by_city_name(self, city_name: str) -> Dict[str, Any]:
-        """Get brands available in a specific city using city name with fuzzy matching"""
+        """Get brands available in a specific city using city name with fuzzy matching
+        Returns language-specific brand names and city information in response message
+        """
+        from utils.language_utils import language_handler
+        
         try:
+            # Detect input language to determine response format
+            detected_language = language_handler.detect_language(city_name)
+            print(f"🌐 Detected language for city '{city_name}': {detected_language}")
+            
             db = self._get_db_session()
             try:
                 brands = data_api.get_brands_by_city_name(db, city_name)
@@ -850,21 +863,42 @@ class QueryAgent:
                         "show_app_links": True
                     }
                 
-                # Return brands with city information
-                filtered_brands = [
-                    {
-                        "title": brand["title"],                    # Brand name in Arabic
-                        "title_en": brand.get("title_en", ""),     # Brand name in English
-                        "city_name": brand["city_name"],           # City name in Arabic
-                        "city_name_en": brand.get("city_name_en", "")  # City name in English
-                    }
-                    for brand in brands
-                ]
+                # Extract city information (same for all brands)
+                city_ar = brands[0]["city_name"] if brands else city_name
+                city_en = brands[0].get("city_name_en", "") if brands else ""
+                
+                # Filter brands to include only language-appropriate titles
+                filtered_brands = []
+                for brand in brands:
+                    if detected_language == 'ar':
+                        # Arabic request - return only Arabic brand names
+                        if brand.get("title"):  # Only include brands with Arabic titles
+                            filtered_brands.append(brand["title"])
+                    else:
+                        # English request - return only English brand names, fallback to Arabic
+                        brand_name = brand.get("title_en", "") or brand.get("title", "")
+                        if brand_name:  # Only include brands with names
+                            filtered_brands.append(brand_name)
+                
+                # Remove duplicates and sort
+                filtered_brands = sorted(list(set(filtered_brands)))
+                
+                # Create response message
+                if detected_language == 'ar':
+                    response_message = f"هذه هي العلامات التجارية المتاحة في {city_ar}:"
+                    city_info = city_ar
+                else:
+                    city_display = city_en if city_en else city_ar
+                    response_message = f"These are the brands available in {city_display}:"
+                    city_info = city_display
                 
                 return {
                     "success": True, 
-                    "data": filtered_brands,
-                    "city_found": brands[0]["city_name"] if brands else city_name
+                    "data": filtered_brands,  # Simple list of brand names in detected language
+                    "city_found": city_info,
+                    "language": detected_language,
+                    "response_message": response_message,
+                    "total_brands": len(filtered_brands)
                 }
             finally:
                 db.close()
@@ -873,8 +907,16 @@ class QueryAgent:
             return {"error": f"Failed to get brands: {str(e)}"}
     
     def get_products_by_brand_and_city_name(self, brand_name: str, city_name: str) -> Dict[str, Any]:
-        """Get products for a specific brand in a specific city using names with fuzzy matching"""
+        """Get products for a specific brand in a specific city using names with fuzzy matching
+        Returns language-specific product strings with prices and contextual message
+        """
+        from utils.language_utils import language_handler
+        
         try:
+            # Detect input language to determine response format
+            detected_language = language_handler.detect_language(brand_name + " " + city_name)
+            print(f"🌐 Detected language for brand '{brand_name}' in city '{city_name}': {detected_language}")
+            
             # Clean the brand name by removing water prefixes
             cleaned_brand_name = self._clean_brand_name(brand_name)
             
@@ -894,22 +936,46 @@ class QueryAgent:
                         "original_city": city_name
                     }
                 
-                # Return products with brand and pricing information
-                filtered_products = [
-                    {
-                        "product_title": product["product_title"],                      # Product name
-                        "product_contract_price": product["product_contract_price"],    # Price
-                        "product_packing": product["product_packing"],                  # Amount/packaging
-                        "brand_title": product["brand_title"],                          # Brand name
-                        "brand_title_en": product.get("brand_title_en", "")            # Brand name in English
-                    }
-                    for product in products
-                ]
+                # Extract brand and city information
+                brand_ar = products[0]["brand_title"] if products else brand_name
+                brand_en = products[0].get("brand_title_en", "") if products else ""
+                city_ar = products[0]["city_name"] if products else city_name
+                city_en = products[0].get("city_name_en", "") if products else ""
+                
+                # Create simple product strings with prices
+                filtered_products = []
+                for product in products:
+                    price = product["product_contract_price"]
+                    title = product["product_title"]
+                    
+                    if detected_language == 'ar':
+                        # Arabic format: "Product Title - XX.XX ريال"
+                        product_string = f"{title} - {price} ريال"
+                    else:
+                        # English format: "Product Title - XX.XX SAR"
+                        product_string = f"{title} - {price} SAR"
+                    
+                    filtered_products.append(product_string)
+                
+                # Create response message
+                if detected_language == 'ar':
+                    response_message = f"منتجات {brand_ar} المتاحة في {city_ar}:"
+                    brand_found = brand_ar
+                    city_found = city_ar
+                else:
+                    brand_display = brand_en if brand_en else brand_ar
+                    city_display = city_en if city_en else city_ar
+                    response_message = f"{brand_display} products available in {city_display}:"
+                    brand_found = brand_display
+                    city_found = city_display
                 
                 return {
                     "success": True, 
-                    "data": filtered_products,
-                    "brand_found": products[0]["brand_title"] if products else brand_name,
+                    "data": filtered_products,  # Simple list of product strings with prices
+                    "language": detected_language,
+                    "response_message": response_message,
+                    "brand_found": brand_found,
+                    "city_found": city_found,
                     "total_products": len(filtered_products)
                 }
             finally:
@@ -1022,91 +1088,6 @@ class QueryAgent:
             return {"success": False, "error": f"حدث خطأ أثناء البحث عن المدن: {str(e)}"}
     
 
-    def check_city_availability(self, city_name: str, item_type: str, item_name: str) -> Dict[str, Any]:
-        """Check if a brand or product is available in a specific city using name-based approach"""
-        try:
-            db = self._get_db_session()
-            try:
-                if item_type == "brand":
-                    # Check if brand exists in this city using name-based search
-                    brands = data_api.search_brands_in_city(db, item_name, city_name)
-                    if brands:
-                        return {
-                            "success": True,
-                            "available": True,
-                            "city_name": city_name,
-                            "item_type": item_type,
-                            "item_name": item_name,
-                            "brand_info": {
-                                "title": brands[0]["title"],
-                                "title_en": brands[0].get("title_en", "")
-                            }
-                        }
-                    
-                    return {
-                        "success": True,
-                        "available": False,
-                        "city_name": city_name,
-                        "item_type": item_type,
-                        "item_name": item_name,
-                        "message": f"بتحصل الاصناف والاسعار في التطبيق وهذا هو الرابط https://onelink.to/abar_app https://abar.app/en/store/ وايضا عن طريق الموقع الالكتروني"
-                    }
-                
-                elif item_type == "product":
-                    # Check if product exists by searching brands and their products
-                    brands = data_api.get_brands_by_city_name(db, city_name)
-                    if not brands:
-                        return {
-                            "success": False,
-                            "error": f"بتحصل الاصناف والاسعار في التطبيق وهذا هو الرابط https://onelink.to/abar_app https://abar.app/en/store/ وايضا عن طريق الموقع الالكتروني",
-                            "item_type": item_type,
-                            "item_name": item_name,
-                            "show_app_links": True
-                        }
-                    
-                    found_products = []
-                    
-                    # Search through each brand's products
-                    for brand in brands:
-                        # Try to get products using the existing method that requires brand name and city name
-                        # We'll search through all brands to find products matching the item_name
-                        products = data_api.get_products_by_brand_and_city_name(db, brand["title"], city_name)
-                        for product in products:
-                            if item_name.lower() in product["product_title"].lower():
-                                found_products.append({
-                                    "brand_name": product["brand_title"],
-                                    "product_title": product["product_title"],
-                                    "product_contract_price": product["product_contract_price"],
-                                    "product_packing": product["product_packing"]
-                                })
-                    
-                    if found_products:
-                        return {
-                            "success": True,
-                            "available": True,
-                            "city_name": city_name,
-                            "item_type": item_type,
-                            "item_name": item_name,
-                            "products": found_products
-                        }
-                    else:
-                        return {
-                            "success": True,
-                            "available": False,
-                            "city_name": city_name,
-                            "item_type": item_type,
-                            "item_name": item_name,
-                            "message": f"بتحصل الاصناف والاسعار في التطبيق وهذا هو الرابط https://onelink.to/abar_app https://abar.app/en/store/ وايضا عن طريق الموقع الالكتروني"
-                        }
-                
-                return {"success": False, "error": "نوع العنصر غير صحيح. يجب أن يكون 'brand' أو 'product'"}
-                
-            finally:
-                db.close()
-                
-        except Exception as e:
-            logger.error(f"Error checking availability for {item_name} in {city_name}: {str(e)}")
-            return {"error": f"حدث خطأ في التحقق من التوفر: {str(e)}"}
 
     def get_cheapest_products_by_city_name(self, city_name: str) -> Dict[str, Any]:
         """Get cheapest products in each size for a specific city using city name with fuzzy matching"""

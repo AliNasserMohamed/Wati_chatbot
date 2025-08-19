@@ -148,72 +148,162 @@ class DataAPIService:
     
     @staticmethod
     def search_brands_in_city(db: Session, brand_name: str, city_name: str) -> List[Dict[str, Any]]:
-        """Search brands by name within a specific city only (not global search)"""
-        # Find the city first
-        city = db.query(City).filter(
-            or_(
-                City.name.ilike(f"%{city_name}%"),
-                City.name_en.ilike(f"%{city_name}%"),
-                City.title.ilike(f"%{city_name}%")
-            )
-        ).first()
+        """Search brands by name within a specific city only (not global search)
+        Prioritizes exact matches first, then partial matches
+        """
+        from database.district_utils import DistrictLookup
+        
+        # Normalize inputs for better matching
+        normalized_brand_name = DistrictLookup.normalize_city_name(brand_name).lower()
+        normalized_city_name = DistrictLookup.normalize_city_name(city_name).lower()
+        
+        # Find the city first - prioritize exact matches
+        city = None
+        
+        # Try exact match first (normalized)
+        for city_candidate in db.query(City).all():
+            city_ar_normalized = DistrictLookup.normalize_city_name(city_candidate.name).lower()
+            city_en_normalized = city_candidate.name_en.lower() if city_candidate.name_en else ""
+            
+            if (city_ar_normalized == normalized_city_name or 
+                city_en_normalized == normalized_city_name):
+                city = city_candidate
+                break
+        
+        # If no exact match, try partial match
+        if not city:
+            city = db.query(City).filter(
+                or_(
+                    City.name.ilike(f"%{city_name}%"),
+                    City.name_en.ilike(f"%{city_name}%"),
+                    City.title.ilike(f"%{city_name}%")
+                )
+            ).first()
         
         if not city:
             return []
         
-        # Search brands only within this city
-        matching_brands = []
-        for brand in city.brands:
-            if (brand.title and brand_name.lower() in brand.title.lower()) or \
-               (brand.title_en and brand_name.lower() in brand.title_en.lower()):
-                matching_brands.append({
-                    "id": brand.id,
-                    "external_id": brand.external_id,
-                    "title": brand.title,
-                    "title_en": brand.title_en,
-                    "image_url": brand.image_url,
-                    "city_id": city.id,
-                    "city_name": city.name,
-                    "city_name_en": city.name_en
-                })
+        # Search brands only within this city - PRIORITIZE EXACT MATCHES FIRST
+        exact_matches = []
+        partial_matches = []
         
-        return matching_brands
+        for brand in city.brands:
+            if not brand.title:
+                continue
+                
+            # Normalize brand title for comparison
+            normalized_brand_title = DistrictLookup.normalize_city_name(brand.title).lower()
+            normalized_brand_title_en = brand.title_en.lower() if brand.title_en else ""
+            
+            brand_info = {
+                "id": brand.id,
+                "external_id": brand.external_id,
+                "title": brand.title,
+                "title_en": brand.title_en,
+                "image_url": brand.image_url,
+                "city_id": city.id,
+                "city_name": city.name,
+                "city_name_en": city.name_en
+            }
+            
+            # Check for EXACT matches first (normalized)
+            if (normalized_brand_title == normalized_brand_name or 
+                normalized_brand_title_en == normalized_brand_name):
+                exact_matches.append(brand_info)
+            # Then check for PARTIAL matches
+            elif (normalized_brand_name in normalized_brand_title or 
+                  normalized_brand_name in normalized_brand_title_en):
+                partial_matches.append(brand_info)
+        
+        print(f"🔍 Brand search results for '{brand_name}' in '{city_name}':")
+        print(f"   ✅ Exact matches: {len(exact_matches)}")
+        print(f"   🔍 Partial matches: {len(partial_matches)}")
+        
+        # Return exact matches first, then partial matches
+        return exact_matches + partial_matches
     
     @staticmethod 
     def get_products_by_brand_and_city_name(db: Session, brand_name: str, city_name: str) -> List[Dict[str, Any]]:
-        """Get products by brand name and city name with fuzzy matching"""
-        # Find the brand in the specified city
-        brand = (db.query(Brand)
-                .join(City.brands)
-                .filter(
-                    or_(
-                        Brand.title.ilike(f"%{brand_name}%"),
-                        Brand.title_en.ilike(f"%{brand_name}%")
-                    ),
-                    or_(
-                        City.name.ilike(f"%{city_name}%"),
-                        City.name_en.ilike(f"%{city_name}%"),
-                        City.title.ilike(f"%{city_name}%")
-                    )
-                ).first())
+        """Get products by brand name and city name with EXACT matching prioritized"""
+        from database.district_utils import DistrictLookup
         
-        if not brand:
+        # Normalize inputs for exact matching
+        normalized_brand_name = DistrictLookup.normalize_city_name(brand_name).lower()
+        normalized_city_name = DistrictLookup.normalize_city_name(city_name).lower()
+        
+        print(f"🔍 Searching for products: brand='{brand_name}' city='{city_name}'")
+        print(f"   Normalized: brand='{normalized_brand_name}' city='{normalized_city_name}'")
+        
+        # STEP 1: Find the city first with EXACT matching
+        target_city = None
+        
+        # Try exact city match first (normalized)
+        for city_candidate in db.query(City).all():
+            city_ar_normalized = DistrictLookup.normalize_city_name(city_candidate.name).lower()
+            city_en_normalized = city_candidate.name_en.lower() if city_candidate.name_en else ""
+            
+            if (city_ar_normalized == normalized_city_name or 
+                city_en_normalized == normalized_city_name):
+                target_city = city_candidate
+                print(f"   ✅ Found EXACT city match: '{city_candidate.name}'")
+                break
+        
+        # If no exact city match, try partial match as fallback
+        if not target_city:
+            target_city = db.query(City).filter(
+                or_(
+                    City.name.ilike(f"%{city_name}%"),
+                    City.name_en.ilike(f"%{city_name}%"),
+                    City.title.ilike(f"%{city_name}%")
+                )
+            ).first()
+            if target_city:
+                print(f"   🔍 Found PARTIAL city match: '{target_city.name}'")
+        
+        if not target_city:
+            print(f"   ❌ No city found for '{city_name}'")
             return []
         
-        # Get the city information
-        city = (db.query(City)
-                .join(City.brands)
-                .filter(Brand.id == brand.id)
-                .filter(
-                    or_(
-                        City.name.ilike(f"%{city_name}%"),
-                        City.name_en.ilike(f"%{city_name}%"),
-                        City.title.ilike(f"%{city_name}%")
-                    )
-                ).first())
+        # STEP 2: Find the brand in this specific city with EXACT matching
+        target_brand = None
         
-        # Get products for this brand
-        products = DatabaseManager.get_products_by_brand(db, brand.id)
+        # Try exact brand match first (normalized)
+        for brand in target_city.brands:
+            if not brand.title:
+                continue
+                
+            brand_ar_normalized = DistrictLookup.normalize_city_name(brand.title).lower()
+            brand_en_normalized = brand.title_en.lower() if brand.title_en else ""
+            
+            if (brand_ar_normalized == normalized_brand_name or 
+                brand_en_normalized == normalized_brand_name):
+                target_brand = brand
+                print(f"   ✅ Found EXACT brand match: '{brand.title}'")
+                break
+        
+        # If no exact brand match, try partial match as fallback
+        if not target_brand:
+            for brand in target_city.brands:
+                if not brand.title:
+                    continue
+                    
+                brand_ar_normalized = DistrictLookup.normalize_city_name(brand.title).lower()
+                brand_en_normalized = brand.title_en.lower() if brand.title_en else ""
+                
+                if (normalized_brand_name in brand_ar_normalized or 
+                    normalized_brand_name in brand_en_normalized):
+                    target_brand = brand
+                    print(f"   🔍 Found PARTIAL brand match: '{brand.title}'")
+                    break
+        
+        if not target_brand:
+            print(f"   ❌ No brand '{brand_name}' found in city '{target_city.name}'")
+            return []
+        
+        # STEP 3: Get products for this exact brand
+        products = DatabaseManager.get_products_by_brand(db, target_brand.id)
+        print(f"   📦 Found {len(products)} products for {target_brand.title} in {target_city.name}")
+        
         return [
             {
                 "product_id": product.id,
@@ -222,12 +312,12 @@ class DataAPIService:
                 "product_title_en": product.title_en,
                 "product_packing": product.packing,
                 "product_contract_price": product.contract_price,
-                "brand_id": brand.id,
-                "brand_title": brand.title,
-                "brand_title_en": brand.title_en,
-                "city_id": city.id if city else None,
-                "city_name": city.name if city else None,
-                "city_name_en": city.name_en if city else None
+                "brand_id": target_brand.id,
+                "brand_title": target_brand.title,
+                "brand_title_en": target_brand.title_en,
+                "city_id": target_city.id,
+                "city_name": target_city.name,
+                "city_name_en": target_city.name_en
             }
             for product in products
         ]

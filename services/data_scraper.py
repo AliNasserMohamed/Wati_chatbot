@@ -31,6 +31,50 @@ class DataScraperService:
         # Cities to exclude from scraping (specific Riyadh regions)
         self.excluded_city_ids = {6, 7, 8, 9}  # شمال، جنوب، غرب، شرق الرياض
     
+    def _clean_and_normalize_brand_name(self, brand_name: str) -> str:
+        """
+        Clean and normalize brand names during scraping:
+        1. Remove 'مياه' prefix from brand names
+        2. Apply Arabic text normalization
+        """
+        from database.district_utils import DistrictLookup
+        
+        if not brand_name or not brand_name.strip():
+            return brand_name
+            
+        # Remove water prefixes
+        water_prefixes = ["مياه", "موية", "مياة", "ميه"]
+        cleaned_name = brand_name.strip()
+        
+        for prefix in water_prefixes:
+            # Check if brand name starts with the prefix followed by space
+            if cleaned_name.startswith(prefix + " "):
+                cleaned_name = cleaned_name[len(prefix):].strip()
+                break
+            # Check if brand name starts with the prefix without space
+            elif cleaned_name.startswith(prefix) and len(cleaned_name) > len(prefix):
+                # Make sure it's actually a prefix, not part of the brand name
+                next_char_idx = len(prefix)
+                if next_char_idx < len(cleaned_name) and cleaned_name[next_char_idx] in [' ', '\u0020']:
+                    cleaned_name = cleaned_name[next_char_idx:].strip()
+                    break
+        
+        # Apply normalization
+        normalized_name = DistrictLookup.normalize_city_name(cleaned_name)
+        
+        return normalized_name
+    
+    def _normalize_scraped_name(self, name: str) -> str:
+        """
+        Normalize city/brand names during scraping using our normalization function
+        """
+        from database.district_utils import DistrictLookup
+        
+        if not name or not name.strip():
+            return name
+            
+        return DistrictLookup.normalize_city_name(name)
+    
     async def fetch_cities_arabic(self) -> Dict[str, Any]:
         """Fetch all cities from external API in Arabic"""
         url = f"{self.base_url}/get-cities"
@@ -190,19 +234,25 @@ class DataScraperService:
                     continue
                 
                 if external_city_id and city_title_ar:
+                    # NORMALIZE city names during scraping
+                    normalized_city_ar = self._normalize_scraped_name(city_title_ar)
+                    normalized_city_en = self._normalize_scraped_name(city_title_en) if city_title_en else city_title_en
+                    
+                    logger.info(f"📝 City normalization: '{city_title_ar}' -> '{normalized_city_ar}'")
+                    
                     # Create city with external ID as the primary key
                     city = City(
                         id=external_city_id,  # Use external ID as primary key
                         external_id=external_city_id,  # Keep external_id for compatibility
-                        name=city_title_ar,  # Arabic name
-                        name_en=city_title_en,  # English name
-                        title=city_title_ar,  # Alternative title field
+                        name=normalized_city_ar,  # Normalized Arabic name
+                        name_en=normalized_city_en,  # Normalized English name
+                        title=normalized_city_ar,  # Alternative title field
                         lat=city_lat,
                         lng=city_lng
                     )
                     db.add(city)
                     processed_count += 1
-                    logger.info(f"✅ Created city: ID={external_city_id}, {city_title_ar} ({city_title_en})")
+                    logger.info(f"✅ Created city: ID={external_city_id}, {normalized_city_ar} ({normalized_city_en})")
             
             db.commit()
             
@@ -283,17 +333,21 @@ class DataScraperService:
                                 # Add delay between processing different brands to avoid overwhelming the server
                                 await asyncio.sleep(1)
                                 
+                                # CLEAN and NORMALIZE brand title during scraping
+                                cleaned_brand_title = self._clean_and_normalize_brand_name(brand_title)
+                                logger.info(f"📝 Brand cleaning: '{brand_title}' -> '{cleaned_brand_title}'")
+                                
                                 # Create brand with external ID as primary key (if not exists)
                                 if contract_id not in all_brands:
                                     brand = Brand(
                                         id=contract_id,  # Use external ID as primary key
                                         external_id=contract_id,  # Keep for compatibility
-                                        title=brand_title,
+                                        title=cleaned_brand_title,  # Use cleaned and normalized title
                                         image_url=brand_image
                                     )
                                     db.add(brand)
                                     all_brands[contract_id] = brand
-                                    logger.info(f"✅ Created brand: ID={contract_id}, {brand_title} (verified has products)")
+                                    logger.info(f"✅ Created brand: ID={contract_id}, {cleaned_brand_title} (verified has products)")
                                 
                                 # Store city-brand relationship for bulk insert
                                 relationship = (city.id, contract_id)
@@ -652,17 +706,21 @@ class DataScraperService:
                                 # Add delay between processing different brands to avoid overwhelming the server
                                 await asyncio.sleep(1)
                                 
+                                # CLEAN and NORMALIZE brand title during scraping
+                                cleaned_brand_title = self._clean_and_normalize_brand_name(brand_title)
+                                logger.info(f"📝 Brand cleaning: '{brand_title}' -> '{cleaned_brand_title}'")
+                                
                                 # Create brand with external ID as primary key (if not exists)
                                 if contract_id not in all_brands:
                                     brand = Brand(
                                         id=contract_id,  # Use external ID as primary key
                                         external_id=contract_id,  # Keep for compatibility
-                                        title=brand_title,
+                                        title=cleaned_brand_title,  # Use cleaned and normalized title
                                         image_url=brand_image
                                     )
                                     db.add(brand)
                                     all_brands[contract_id] = brand
-                                    logger.info(f"✅ Created brand: ID={contract_id}, {brand_title} (verified has products)")
+                                    logger.info(f"✅ Created brand: ID={contract_id}, {cleaned_brand_title} (verified has products)")
                                 
                                 # Store city-brand relationship for bulk insert
                                 relationship = (city.id, contract_id)
