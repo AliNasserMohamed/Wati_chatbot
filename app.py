@@ -17,6 +17,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from starlette.responses import Response
 from starlette.requests import ClientDisconnect
 from typing import Optional, List
+from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 import uvicorn
 import json
@@ -68,6 +69,14 @@ app = FastAPI(
     description="API for handling WhatsApp messages for Abar water delivery app",
     version="1.0.0"
 )
+
+# Pydantic Models for API Requests
+class ClearMessagesRequest(BaseModel):
+    phone_number: str = Field(..., description="Phone number to clear messages for", example="201142765209")
+    delete_user: bool = Field(False, description="Whether to also delete the user record completely")
+
+class MessageCountRequest(BaseModel):
+    phone_number: str = Field(..., description="Phone number to get message count for", example="201142765209")
 
 # Global exception handler
 @app.exception_handler(Exception)
@@ -1460,29 +1469,24 @@ async def stop_scheduler():
         raise HTTPException(status_code=500, detail=str(e))
 
 # User Management API Endpoints
-@app.delete("/api/users/messages")
-async def clear_user_messages(request: Request, db=Depends(get_db)):
+@app.delete("/api/users/messages", 
+    summary="Clear User Messages",
+    description="Clear all messages for a specific phone number. Optionally delete the user record as well.",
+    response_description="Operation results with deletion counts"
+)
+async def clear_user_messages(
+    payload: ClearMessagesRequest,
+    db=Depends(get_db)
+):
     """
     Clear all messages for a specific phone number
     
-    Request Body:
-        {
-            "phone_number": "201142765209",
-            "delete_user": false
-        }
-    
-    Returns:
-        JSON response with operation results
+    - **phone_number**: The phone number to clear messages for
+    - **delete_user**: Whether to also delete the user record completely (default: false)
     """
     try:
-        # Parse JSON payload
-        data = await request.json()
-        phone_number = data.get("phone_number")
-        delete_user = data.get("delete_user", False)
-        
-        # Validate required fields
-        if not phone_number:
-            raise HTTPException(status_code=400, detail="phone_number is required in JSON payload")
+        phone_number = payload.phone_number
+        delete_user = payload.delete_user
         
         print(f"🗑️ API request to clear messages for: {phone_number} (delete_user: {delete_user})")
         
@@ -1509,27 +1513,22 @@ async def clear_user_messages(request: Request, db=Depends(get_db)):
         print(f"❌ Exception clearing messages: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/api/users/messages/count")
-async def get_user_message_count(request: Request, db=Depends(get_db)):
+@app.post("/api/users/messages/count",
+    summary="Get User Message Count",
+    description="Get the total count of messages (user messages + bot replies) for a specific phone number.",
+    response_description="Message counts and user information"
+)
+async def get_user_message_count(
+    payload: MessageCountRequest,
+    db=Depends(get_db)
+):
     """
     Get message count for a specific phone number
     
-    Request Body:
-        {
-            "phone_number": "201142765209"
-        }
-    
-    Returns:
-        JSON response with message counts
+    - **phone_number**: The phone number to get message count for
     """
     try:
-        # Parse JSON payload
-        data = await request.json()
-        phone_number = data.get("phone_number")
-        
-        # Validate required fields
-        if not phone_number:
-            raise HTTPException(status_code=400, detail="phone_number is required in JSON payload")
+        phone_number = payload.phone_number
         
         print(f"📊 API request to get message count for: {phone_number}")
         
