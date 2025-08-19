@@ -176,6 +176,119 @@ class DatabaseManager:
         
         return "\n".join(conversation_lines)
     
+    @staticmethod
+    def clear_user_messages_by_phone(db: Session, phone_number: str, delete_user_record: bool = False) -> Dict[str, Union[str, int, bool]]:
+        """
+        Clear all messages for a specific phone number
+        
+        Args:
+            db: Database session
+            phone_number: The phone number to clear messages for
+            delete_user_record: Whether to also delete the user record (default: False)
+        
+        Returns:
+            Dictionary with operation results
+        """
+        results = {
+            "phone_number": phone_number,
+            "user_found": False,
+            "bot_replies_deleted": 0,
+            "user_messages_deleted": 0,
+            "user_deleted": False,
+            "success": False,
+            "error": None
+        }
+        
+        try:
+            # Find user by phone number
+            user = db.query(User).filter(User.phone_number == phone_number).first()
+            
+            if not user:
+                results["error"] = "User not found"
+                return results
+                
+            results["user_found"] = True
+            user_id = user.id
+            
+            # Get all user messages
+            user_messages = db.query(UserMessage).filter(UserMessage.user_id == user_id).all()
+            
+            # Delete bot replies first (to maintain referential integrity)
+            total_bot_replies = 0
+            for message in user_messages:
+                bot_replies_count = db.query(BotReply).filter(BotReply.message_id == message.id).delete()
+                total_bot_replies += bot_replies_count
+            
+            results["bot_replies_deleted"] = total_bot_replies
+            
+            # Delete user messages
+            messages_deleted = db.query(UserMessage).filter(UserMessage.user_id == user_id).delete()
+            results["user_messages_deleted"] = messages_deleted
+            
+            # Optionally delete user record
+            if delete_user_record:
+                db.delete(user)
+                results["user_deleted"] = True
+                
+            db.commit()
+            results["success"] = True
+            
+        except Exception as e:
+            results["error"] = str(e)
+            db.rollback()
+            
+        return results
+    
+    @staticmethod
+    def get_user_message_count(db: Session, phone_number: str) -> Dict[str, Union[str, int, bool]]:
+        """
+        Get message count for a specific phone number
+        
+        Args:
+            db: Database session
+            phone_number: The phone number to check
+        
+        Returns:
+            Dictionary with message counts
+        """
+        result = {
+            "phone_number": phone_number,
+            "user_found": False,
+            "user_messages_count": 0,
+            "bot_replies_count": 0,
+            "total_messages": 0,
+            "user_created": None,
+            "last_activity": None
+        }
+        
+        try:
+            # Find user by phone number
+            user = db.query(User).filter(User.phone_number == phone_number).first()
+            
+            if not user:
+                return result
+                
+            result["user_found"] = True
+            result["user_created"] = user.created_at.strftime("%Y-%m-%d %H:%M:%S") if user.created_at else None
+            result["last_activity"] = user.updated_at.strftime("%Y-%m-%d %H:%M:%S") if user.updated_at else None
+            
+            # Count user messages
+            user_messages_count = db.query(UserMessage).filter(UserMessage.user_id == user.id).count()
+            result["user_messages_count"] = user_messages_count
+            
+            # Count bot replies
+            bot_replies_count = db.query(BotReply).join(UserMessage).filter(
+                UserMessage.user_id == user.id
+            ).count()
+            result["bot_replies_count"] = bot_replies_count
+            
+            result["total_messages"] = user_messages_count + bot_replies_count
+            
+        except Exception as e:
+            result["error"] = str(e)
+            
+        return result
+    
     # New methods for managing Cities, Brands, and Products
     @staticmethod
     def upsert_city(db: Session, external_id: int, name: str, name_en: str = None, 
