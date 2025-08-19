@@ -10,26 +10,37 @@ class DistrictLookup:
     @staticmethod
     def normalize_city_name(city_name: str) -> str:
         """
-        Normalize Arabic city names by removing hamza from alif characters only
-        Keep standalone hamza (ء) but normalize alif variations
+        Comprehensive Arabic text normalization for better city extraction
+        Removes hamza and normalizes common Arabic character variations
         """
         if not city_name:
             return city_name
             
-        normalized = city_name.strip()
+        normalized = city_name.strip().lower()
         
-        # Only remove hamza from alif characters, keep standalone hamza
-        hamza_replacements = {
+        # Comprehensive Arabic character normalization
+        normalizations = {
+            # Remove standalone hamza
+            'ء': '',
+            # Alif variations
             'أ': 'ا',  # alif with hamza above -> alif
             'إ': 'ا',  # alif with hamza below -> alif
             'آ': 'ا',  # alif with madda -> alif
-            'ؤ': 'و',  # waw with hamza -> waw
+            # Yeh variations  
+            'ى': 'ي',  # alif maksura -> yeh
             'ئ': 'ي',  # yeh with hamza -> yeh
+            # Waw variations
+            'ؤ': 'و',  # waw with hamza -> waw
+            # Teh marbuta
+            'ة': 'ه',  # teh marbuta -> heh
         }
         
-        # Apply hamza removal
-        for hamza, replacement in hamza_replacements.items():
-            normalized = normalized.replace(hamza, replacement)
+        # Apply all normalizations
+        for original, replacement in normalizations.items():
+            normalized = normalized.replace(original, replacement)
+        
+        # Remove extra whitespace
+        normalized = ' '.join(normalized.split())
                 
         return normalized
     
@@ -133,10 +144,20 @@ class DistrictLookup:
             
             message_lower = message.lower()
             
+            # Apply normalization to user message for better matching
+            normalized_message = DistrictLookup.normalize_city_name(message)
+            
             # PHASE 1: Look for exact district name matches first
             for district in districts_sorted:
                 district_name = district.name.strip()
-                if district_name.lower() in message_lower:
+                # Normalize district name for comparison
+                normalized_district_name = DistrictLookup.normalize_city_name(district_name)
+                
+                if normalized_district_name.lower() in normalized_message.lower():
+                    print(f"🎯 District match found:")
+                    print(f"   Original district: '{district_name}'")
+                    print(f"   Normalized district: '{normalized_district_name}'")
+                    print(f"   User message normalized: '{normalized_message}'")
                     return {
                         'district': district_name,
                         'city': DistrictLookup.normalize_city_name(district.city_name)
@@ -158,17 +179,23 @@ class DistrictLookup:
                         potential_district = ' '.join(words)
                         potential_district_clean = potential_district.lower().strip('،؟!.')
                         
-                        # Look for partial matches
+                        # Normalize potential district for better matching
+                        normalized_potential_district = DistrictLookup.normalize_city_name(potential_district_clean)
+                        
+                        # Look for partial matches with normalization
                         for district in all_districts:
-                            district_name = district.name.strip().lower()
+                            district_name = district.name.strip()
+                            normalized_district_name = DistrictLookup.normalize_city_name(district_name).lower()
                             
                             # Check if the potential district is a substring of the actual district
                             # or vice versa (handles "الحمراء" matching "الحمراء الأول")
-                            if (potential_district_clean in district_name or 
-                                district_name in potential_district_clean or
-                                any(word in district_name for word in potential_district_clean.split() if len(word) > 2)):
+                            if (normalized_potential_district in normalized_district_name or 
+                                normalized_district_name in normalized_potential_district or
+                                any(word in normalized_district_name for word in normalized_potential_district.split() if len(word) > 2)):
                                 
-                                print(f"🔍 Partial match: '{potential_district_clean}' matched '{district.name}'")
+                                print(f"🔍 Partial match with normalization:")
+                                print(f"   Original potential: '{potential_district_clean}' -> Normalized: '{normalized_potential_district}'")
+                                print(f"   Original district: '{district_name}' -> Normalized: '{normalized_district_name}'")
                                 return {
                                     'district': district.name.strip(),
                                     'city': DistrictLookup.normalize_city_name(district.city_name)
