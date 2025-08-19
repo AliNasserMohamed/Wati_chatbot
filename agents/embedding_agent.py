@@ -295,7 +295,7 @@ class EmbeddingAgent:
         if language == 'ar':
             evaluation_prompt = f"""أنت مقيم صارم جداً لجودة الردود في خدمة العملاء لشركة أبار لتوصيل المياه.
 
-مهمتك الوحيدة: تصنيف رسالة العميل بدقة إلى واحدة من ثلاث حالات.
+مهمتك الوحيدة: تصنيف رسالة العميل بدقة إلى واحدة من ثلاث حالات مع مراعاة سياق المحادثة السابقة.
 
 - رسالة العميل الحالية: "{user_message}"
 - السؤال المشابه من قاعدة البيانات : "{matched_question}"
@@ -304,7 +304,7 @@ class EmbeddingAgent:
 -المحادثة السابقة:
 {conversation_context}
 
-التصنيف يجب أن يعتمد على القواعد التالية:
+التصنيف يجب أن يعتمد على القواعد التالية مع مراعاة سياق المحادثة:
 
 🟢 "reply":
 -✅reply  إذا كانت رسالة العميل الحالية مشابهة لسؤال موجود في قاعدة البيانات ، وكان لدينا رد محفوظ له — سواء كانت تحية أو استفسار أو طلب — يجب اختيار 
@@ -321,8 +321,12 @@ class EmbeddingAgent:
 - ولم نجد لها تطابقًا واضحًا في قاعدة البيانات (أي لم تكن مشابهة لسؤال موجود لدينا)
 - أو كانت تحتوي على تحية أو شكر لكن مرفقة بسؤال أو طلب
 
+❗️قواعد مراعاة سياق المحادثة:
+- **الردود المتكررة**: إذا أرسلنا نفس النوع من الرد (مثل روابط التطبيق أو معلومات الأسعار) خلال آخر 3-5 رسائل، اختر "continue"
+- **السياق التطويري**: إذا كان العميل يسأل عن شيء محدد بعد أن حصل على رد عام، اختر "continue" للحصول على معلومات أكثر تفصيلاً
+
 ❗️ملحوظة:
-- إذا وُجد تطابق في قاعدة البيانات وكان هناك رد محفوظ، اختر "reply"
+- إذا وُجد تطابق في قاعدة البيانات وكان هناك رد محفوظ ولم نرسله مؤخراً، اختر "reply"
 - إذا كانت الرسالة فقط "شكراً" أو "السلام عليكم"، اختر "reply"
 - إذا كانت مثل "تمام" أو "أوك"، اختر "skip"
 - إذا كانت تحتوي على سؤال أو استفسار ولم نجد لها تطابقاً في قاعدة البيانات، اختر "continue"
@@ -330,7 +334,7 @@ class EmbeddingAgent:
 - اذا كان السؤاال عن ماركة مياه معينة او منتج معين او سعر منتج معين او السوال عن الاسعار او الماركات في مدينة معينةاختر "continue"
 - إذا أخبرنا العميل بهذا الرد مسبقاً "بتحصل الاصناف والاسعار في التطبيق وهذا هو الرابط https://onelink.to/abar_app https://abar.app/en/store/ وايضا عن طريق الموقع الالكتروني"
 فلا يجب الرد بهذا الرد مرة ثانية ويجب اختيار continue 
--
+- **تحليل الروابط والمعلومات المتكررة**: إذا كان الرد المحفوظ يحتوي على روابط أو معلومات أرسلناها للعميل في آخر 3 رسائل، اختر "continue"
 
 اخرج فقط واحدة من: reply أو skip أو continue
 """
@@ -338,7 +342,7 @@ class EmbeddingAgent:
         else:
             evaluation_prompt = f"""You are a very strict response quality evaluator for Abar water delivery customer service.
 
-Your task: Determine the appropriate action based on the customer message and whether it matches any known question in the database.
+Your task: Determine the appropriate action based on the customer message, database match, and conversation history context.
 
 Inputs:
 - Current customer message: "{user_message}"
@@ -346,7 +350,7 @@ Inputs:
 - Stored response: "{matched_answer}"
 {conversation_context}
 
-Rules:
+Rules with conversation context consideration:
 
 ✅ "reply":
 - If the customer message is semantically similar to a known question in the database (even if it contains more than a greeting or thanks), reply using the stored answer.
@@ -365,10 +369,16 @@ Rules:
     - "How do I order?" → continue
     - "Can I speak to someone?" → continue
 
+🔄 **Conversation History Rules**:
+- **Repeated Response Types**: If we sent the same type of response (like app links or pricing info) within the last 3-5 messages, choose "continue"
+- **Contextual Follow-up**: If the customer asks for something specific after receiving a general response, choose "continue" for more detailed information
+- **Link/Information Analysis**: If the stored response contains links or information we already sent to the customer in the last 3 messages, choose "continue"
+
 📌 Summary:
-- If there's a semantic match with a known question → **reply**
+- If there's a semantic match with a known question AND we haven't sent similar response recently → **reply**
 - If it's ONLY a greeting or thanks → **reply**
 - If it's a short acknowledgment → **skip**
+- If we recently sent similar response or customer needs follow-up → **continue**
 - Everything else → **continue**
 
 Return only one value: reply, skip, or continue
