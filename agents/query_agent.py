@@ -380,47 +380,80 @@ class QueryAgent:
         return normalized_text
     
     async def _verify_city_extraction(self, user_message: str, conversation_history: List[Dict] = None, extracted_city: str = None, extraction_source: str = "message") -> bool:
-        """Use ChatGPT to verify if the extracted city/district is correct based on the user's message and conversation history"""
+        """Use ChatGPT to verify if the extracted city/district is correct based on the user's message and FULL conversation history"""
         try:
-            # Prepare context from conversation history
+            print(f"🔍 [CITY VERIFICATION] Starting verification for '{extracted_city}' from {extraction_source}")
+            
+            # Prepare FULL context from conversation history (both user and assistant messages)
             context = ""
             if conversation_history:
-                recent_messages = conversation_history[-5:]  # Last 5 messages for context
-                context = "\n".join([f"{msg.get('role', 'user')}: {msg.get('content', '')}" for msg in recent_messages])
+                recent_messages = conversation_history[-5:]  # Last 8 messages for better context
+                print(f"🔍 [CITY VERIFICATION] Using {len(recent_messages)} recent messages for context")
+                
+                context_lines = []
+                for msg in recent_messages:
+                    role = msg.get('role', 'unknown')
+                    content = msg.get('content', '')
+                    if role == 'user':
+                        context_lines.append(f"العميل: {content}")
+                    elif role == 'assistant':
+                        context_lines.append(f"المساعد: {content}")
+                    else:
+                        context_lines.append(f"{role}: {content}")
+                
+                context = "\n".join(context_lines)
                 context = f"تاريخ المحادثة الحديث:\n{context}\n"
+                print(f"🔍 [CITY VERIFICATION] Context prepared: {len(context)} characters")
             
-            # Verification prompt
+            # Enhanced verification prompt
             verification_prompt = f"""أنت خبير في فهم النصوص العربية واستخراج أسماء المدن والأحياء. مهمتك التحقق من صحة استخراج المدينة أو الحي.
 
 {context}
-الرسالة الحالية: "{user_message}"
+الرسالة الحالية للعميل: "{user_message}"
 
 استخرجنا "{extracted_city}" من {extraction_source}.
 
-هل استخراج "{extracted_city}" صحيح ومبرر من الرسالة أو سياق المحادثة؟
+🚨 قواعد مهمة للتحقق:
+1. يجب أن يكون العميل ذكر المدينة أو الحي بوضوح في رسالته أو أكد عليها
+2. إذا كان المساعد قد ذكر عدة مدن وقال العميل "نعم" أو "موافق" بدون تحديد مدينة معينة - هذا خطأ
+3. إذا كان المساعد يسأل "أي مدينة تريد؟" وأجاب العميل بشيء غامض - هذا خطأ
+4. فقط إذا ذكر العميل اسم المدينة بوضوح أو أكد على مدينة معينة - هذا صحيح
 
-أجب بـ "صحيح" إذا كان الاستخراج مبرر ومنطقي، أو "خطأ" إذا كان خطأ أو غير مبرر."""
+هل استخراج "{extracted_city}" صحيح ومبرر من رسائل العميل فقط؟
 
+أجب بـ "صحيح" إذا كان العميل ذكر المدينة بوضوح، أو "خطأ" إذا لم يذكرها أو كان غامض."""
+
+            print(f"🔍 [CITY VERIFICATION] Sending prompt to LLM for verification")
+            
             # Call LangChain for verification
             response = await self._call_langchain_llm(
                 messages=[
-                    {"role": "system", "content": "أنت خبير في فهم النصوص واستخراج المعلومات الجغرافية."},
+                    {"role": "system", "content": "أنت خبير في فهم النصوص واستخراج المعلومات الجغرافية. كن دقيقاً جداً في التحقق."},
                     {"role": "user", "content": verification_prompt}
                 ],
                 temperature=0.1,
-                max_tokens=10
+                max_tokens=20
             )
             
             verification_result = response["content"].strip().lower()
             is_correct = "صحيح" in verification_result
             
-            print(f"🤖 City extraction verification for '{extracted_city}': {verification_result} -> {'✅' if is_correct else '❌'}")
+            print(f"🔍 [CITY VERIFICATION] Raw LLM response: '{response['content']}'")
+            print(f"🔍 [CITY VERIFICATION] Verification result for '{extracted_city}': {verification_result} -> {'✅ APPROVED' if is_correct else '❌ REJECTED'}")
+            
+            if not is_correct:
+                print(f"🚨 [CITY VERIFICATION] City '{extracted_city}' was REJECTED - user did not explicitly mention this city")
+            else:
+                print(f"✅ [CITY VERIFICATION] City '{extracted_city}' was APPROVED - user explicitly mentioned this city")
+            
             return is_correct
             
         except Exception as e:
+            print(f"🔍 [CITY VERIFICATION] ERROR in verification: {str(e)}")
             logger.error(f"Error in city extraction verification: {str(e)}")
-            # On error, default to accepting the extraction
-            return True
+            # On error, default to rejecting the extraction for safety
+            print(f"🚨 [CITY VERIFICATION] Defaulting to REJECT due to error for safety")
+            return False
 
     async def _extract_city_from_context(self, user_message: str, conversation_history: List[Dict] = None) -> Optional[Dict[str, Any]]:
         """Extract city information from current message and conversation history with AI verification
@@ -608,47 +641,81 @@ class QueryAgent:
             return None
 
     async def _verify_brand_extraction(self, user_message: str, conversation_history: List[Dict] = None, extracted_brand: str = None, extraction_source: str = "message") -> bool:
-        """Use ChatGPT to verify if the extracted brand is correct based on the user's message and conversation history"""
+        """Use ChatGPT to verify if the extracted brand is correct based on the user's message and FULL conversation history"""
         try:
-            # Prepare context from conversation history
+            print(f"🔍 [BRAND VERIFICATION] Starting verification for '{extracted_brand}' from {extraction_source}")
+            
+            # Prepare FULL context from conversation history (both user and assistant messages)
             context = ""
             if conversation_history:
-                recent_messages = conversation_history[-5:]  # Last 5 messages for context
-                context = "\n".join([f"{msg.get('role', 'user')}: {msg.get('content', '')}" for msg in recent_messages])
+                recent_messages = conversation_history[-5:]  # Last 8 messages for better context
+                print(f"🔍 [BRAND VERIFICATION] Using {len(recent_messages)} recent messages for context")
+                
+                context_lines = []
+                for msg in recent_messages:
+                    role = msg.get('role', 'unknown')
+                    content = msg.get('content', '')
+                    if role == 'user':
+                        context_lines.append(f"العميل: {content}")
+                    elif role == 'assistant':
+                        context_lines.append(f"المساعد: {content}")
+                    else:
+                        context_lines.append(f"{role}: {content}")
+                
+                context = "\n".join(context_lines)
                 context = f"تاريخ المحادثة الحديث:\n{context}\n"
+                print(f"🔍 [BRAND VERIFICATION] Context prepared: {len(context)} characters")
             
-            # Verification prompt
+            # Enhanced verification prompt
             verification_prompt = f"""أنت خبير في فهم النصوص العربية واستخراج أسماء العلامات التجارية للمياه. مهمتك التحقق من صحة استخراج العلامة التجارية.
 
 {context}
-الرسالة الحالية: "{user_message}"
+الرسالة الحالية للعميل: "{user_message}"
 
 استخرجنا علامة تجارية "{extracted_brand}" من {extraction_source}.
 
-هل استخراج "{extracted_brand}" صحيح ومبرر من الرسالة أو سياق المحادثة؟
+🚨 قواعد مهمة للتحقق:
+1. يجب أن يكون العميل ذكر العلامة التجارية بوضوح في رسالته أو أكد عليها تحديداً
+2. إذا كان المساعد قد ذكر عدة علامات تجارية وقال العميل "نعم" أو "موافق" بدون تحديد علامة معينة - هذا خطأ
+3. إذا كان المساعد يسأل "أي علامة تريد؟" وأجاب العميل بشيء غامض - هذا خطأ  
+4. فقط إذا ذكر العميل اسم العلامة التجارية بوضوح أو أكد على علامة معينة - هذا صحيح
+5. لا تقبل العلامات التجارية التي ذكرها المساعد فقط في قائمة الخيارات
 
-أجب بـ "صحيح" إذا كان الاستخراج مبرر ومنطقي، أو "خطأ" إذا كان خطأ أو غير مبرر."""
+هل استخراج "{extracted_brand}" صحيح ومبرر من رسائل العميل فقط؟
 
+أجب بـ "صحيح" إذا كان العميل ذكر العلامة التجارية بوضوح، أو "خطأ" إذا لم يذكرها أو كان غامض."""
+
+            print(f"🔍 [BRAND VERIFICATION] Sending prompt to LLM for verification")
+            
             # Call LangChain for verification
             response = await self._call_langchain_llm(
                 messages=[
-                    {"role": "system", "content": "أنت خبير في فهم النصوص واستخراج أسماء العلامات التجارية."},
+                    {"role": "system", "content": "أنت خبير في فهم النصوص واستخراج أسماء العلامات التجارية. كن دقيقاً جداً في التحقق."},
                     {"role": "user", "content": verification_prompt}
                 ],
                 temperature=0.1,
-                max_tokens=10
+                max_tokens=20
             )
             
             verification_result = response["content"].strip().lower()
             is_correct = "صحيح" in verification_result
             
-            print(f"🤖 Brand extraction verification for '{extracted_brand}': {verification_result} -> {'✅' if is_correct else '❌'}")
+            print(f"🔍 [BRAND VERIFICATION] Raw LLM response: '{response['content']}'")
+            print(f"🔍 [BRAND VERIFICATION] Verification result for '{extracted_brand}': {verification_result} -> {'✅ APPROVED' if is_correct else '❌ REJECTED'}")
+            
+            if not is_correct:
+                print(f"🚨 [BRAND VERIFICATION] Brand '{extracted_brand}' was REJECTED - user did not explicitly mention this brand")
+            else:
+                print(f"✅ [BRAND VERIFICATION] Brand '{extracted_brand}' was APPROVED - user explicitly mentioned this brand")
+            
             return is_correct
             
         except Exception as e:
+            print(f"🔍 [BRAND VERIFICATION] ERROR in verification: {str(e)}")
             logger.error(f"Error in brand extraction verification: {str(e)}")
-            # On error, default to accepting the extraction
-            return True
+            # On error, default to rejecting the extraction for safety
+            print(f"🚨 [BRAND VERIFICATION] Defaulting to REJECT due to error for safety")
+            return False
 
     async def _extract_brand_from_context(self, user_message: str, conversation_history: List[Dict] = None, city_name: str = None) -> Optional[Dict[str, Any]]:
         """Extract brand information from current message and conversation history with AI verification and improved matching
