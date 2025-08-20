@@ -320,7 +320,8 @@ class EmbeddingAgent:
 - إذا لم تكن تحية أو شكر بسيط
 - ولم نجد لها تطابقًا واضحًا في قاعدة البيانات (أي لم تكن مشابهة لسؤال موجود لدينا)
 - أو كانت تحتوي على تحية أو شكر لكن مرفقة بسؤال أو طلب
-- اذا كان سياق المحادثة يشير ام العميل يستفسر عن المنتجات او اعلامات التجارية او المدن او الاسعار 
+- اذا كان سياق المحادثة يشير ام العميل يستفسر عن المنتجات او اعلامات التجارية او المدن او الاسعار
+- 🚨 إذا ذكر العميل علامات تجارية للمياه مثل "صحتك" أو "صحتين" - هذه علامات مياه حقيقية ويجب إرسالها للتصنيف 
 
 ❗️قواعد مراعاة سياق المحادثة:
 - **الردود المتكررة**: إذا أرسلنا نفس النوع من الرد (مثل روابط التطبيق أو معلومات الأسعار) خلال آخر 3-5 رسائل، اختر "continue"
@@ -362,6 +363,7 @@ Rules with conversation context consideration:
 
 🔁 "continue":
 - If the message contains anything beyond a simple greeting or thanks and does not match any known question in the database.
+- 🚨 If customer mentions water brand names like "صحتك" (Sahtak) or "صحتين" (Sahtain) - these are real water brands and should be sent to classification
 - Examples:
     - "Hi, I have a question" → continue
     - "Thank you, but I need help" → continue
@@ -411,7 +413,8 @@ You must classify the message into **only one** of the following:
 
    continue:
 - If the message contains **any other content** (question, request, statement, scheduling info), and we do **not** have a match from the database.
-  - Even if the message starts with a greeting or thanks, but continues with more — it’s continue.
+  - Even if the message starts with a greeting or thanks, but continues with more — it's continue.
+  - 🚨 If customer mentions water brand names like "صحتك" (Sahtak) or "صحتين" (Sahtain) - these are real water brands and should be sent to classification
   - Examples:
     - "السلام عليكم، عندي استفسار"
     - "أبي أطلب مياه"

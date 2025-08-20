@@ -224,103 +224,142 @@ class DataAPIService:
     
     @staticmethod 
     def get_products_by_brand_and_city_name(db: Session, brand_name: str, city_name: str) -> List[Dict[str, Any]]:
-        """Get products by brand name and city name with EXACT matching prioritized"""
+        """
+        Get products by brand name and city name with intelligent cascading search strategy:
+        1. Exact city + exact brand (highest priority)
+        2. Exact city + partial brand  
+        3. Partial city + exact brand
+        4. Partial city + partial brand (lowest priority)
+        """
         from database.district_utils import DistrictLookup
         
-        # Normalize inputs for exact matching
+        # Normalize inputs for matching
         normalized_brand_name = DistrictLookup.normalize_city_name(brand_name).lower()
         normalized_city_name = DistrictLookup.normalize_city_name(city_name).lower()
         
-        print(f"🔍 Searching for products: brand='{brand_name}' city='{city_name}'")
+        print(f"🔍 Cascading search for products: brand='{brand_name}' city='{city_name}'")
         print(f"   Normalized: brand='{normalized_brand_name}' city='{normalized_city_name}'")
         
-        # STEP 1: Find the city first with EXACT matching
-        target_city = None
-        
-        # Try exact city match first (normalized)
-        for city_candidate in db.query(City).all():
-            city_ar_normalized = DistrictLookup.normalize_city_name(city_candidate.name).lower()
-            city_en_normalized = city_candidate.name_en.lower() if city_candidate.name_en else ""
-            
-            if (city_ar_normalized == normalized_city_name or 
-                city_en_normalized == normalized_city_name):
-                target_city = city_candidate
-                print(f"   ✅ Found EXACT city match: '{city_candidate.name}'")
-                break
-        
-        # If no exact city match, try partial match as fallback
-        if not target_city:
-            target_city = db.query(City).filter(
-                or_(
-                    City.name.ilike(f"%{city_name}%"),
-                    City.name_en.ilike(f"%{city_name}%"),
-                    City.title.ilike(f"%{city_name}%")
-                )
-            ).first()
-            if target_city:
-                print(f"   🔍 Found PARTIAL city match: '{target_city.name}'")
-        
-        if not target_city:
-            print(f"   ❌ No city found for '{city_name}'")
-            return []
-        
-        # STEP 2: Find the brand in this specific city with EXACT matching
-        target_brand = None
-        
-        # Try exact brand match first (normalized)
-        for brand in target_city.brands:
-            if not brand.title:
-                continue
+        # Helper function to find exact city match
+        def find_exact_city(city_name_to_search: str):
+            normalized_search = DistrictLookup.normalize_city_name(city_name_to_search).lower()
+            for city_candidate in db.query(City).all():
+                city_ar_normalized = DistrictLookup.normalize_city_name(city_candidate.name).lower()
+                city_en_normalized = city_candidate.name_en.lower() if city_candidate.name_en else ""
                 
-            brand_ar_normalized = DistrictLookup.normalize_city_name(brand.title).lower()
-            brand_en_normalized = brand.title_en.lower() if brand.title_en else ""
-            
-            if (brand_ar_normalized == normalized_brand_name or 
-                brand_en_normalized == normalized_brand_name):
-                target_brand = brand
-                print(f"   ✅ Found EXACT brand match: '{brand.title}'")
-                break
+                if (city_ar_normalized == normalized_search or 
+                    city_en_normalized == normalized_search):
+                    return city_candidate
+            return None
         
-        # If no exact brand match, try partial match as fallback
-        if not target_brand:
-            for brand in target_city.brands:
+        # Helper function to find partial city matches
+        def find_partial_cities(city_name_to_search: str):
+            return db.query(City).filter(
+                or_(
+                    City.name.ilike(f"%{city_name_to_search}%"),
+                    City.name_en.ilike(f"%{city_name_to_search}%"),
+                    City.title.ilike(f"%{city_name_to_search}%")
+                )
+            ).all()
+        
+        # Helper function to find exact brand in city
+        def find_exact_brand_in_city(city, brand_name_to_search: str):
+            normalized_search = DistrictLookup.normalize_city_name(brand_name_to_search).lower()
+            for brand in city.brands:
                 if not brand.title:
                     continue
                     
                 brand_ar_normalized = DistrictLookup.normalize_city_name(brand.title).lower()
                 brand_en_normalized = brand.title_en.lower() if brand.title_en else ""
                 
-                if (normalized_brand_name in brand_ar_normalized or 
-                    normalized_brand_name in brand_en_normalized):
-                    target_brand = brand
-                    print(f"   🔍 Found PARTIAL brand match: '{brand.title}'")
-                    break
+                if (brand_ar_normalized == normalized_search or 
+                    brand_en_normalized == normalized_search):
+                    return brand
+            return None
         
-        if not target_brand:
-            print(f"   ❌ No brand '{brand_name}' found in city '{target_city.name}'")
-            return []
+        # Helper function to find partial brand in city
+        def find_partial_brand_in_city(city, brand_name_to_search: str):
+            normalized_search = DistrictLookup.normalize_city_name(brand_name_to_search).lower()
+            for brand in city.brands:
+                if not brand.title:
+                    continue
+                    
+                brand_ar_normalized = DistrictLookup.normalize_city_name(brand.title).lower()
+                brand_en_normalized = brand.title_en.lower() if brand.title_en else ""
+                
+                if (normalized_search in brand_ar_normalized or 
+                    normalized_search in brand_en_normalized):
+                    return brand
+            return None
         
-        # STEP 3: Get products for this exact brand
-        products = DatabaseManager.get_products_by_brand(db, target_brand.id)
-        print(f"   📦 Found {len(products)} products for {target_brand.title} in {target_city.name}")
+        # Helper function to get products from brand and return formatted result
+        def get_products_from_brand(city, brand, search_method: str):
+            products = DatabaseManager.get_products_by_brand(db, brand.id)
+            print(f"   ✅ {search_method}: Found {len(products)} products for '{brand.title}' in '{city.name}'")
+            
+            return [
+                {
+                    "product_id": product.id,
+                    "external_id": product.external_id,
+                    "product_title": product.title,
+                    "product_title_en": product.title_en,
+                    "product_packing": product.packing,
+                    "product_contract_price": product.contract_price,
+                    "brand_id": brand.id,
+                    "brand_title": brand.title,
+                    "brand_title_en": brand.title_en,
+                    "city_id": city.id,
+                    "city_name": city.name,
+                    "city_name_en": city.name_en
+                }
+                for product in products
+            ]
         
-        return [
-            {
-                "product_id": product.id,
-                "external_id": product.external_id,
-                "product_title": product.title,
-                "product_title_en": product.title_en,
-                "product_packing": product.packing,
-                "product_contract_price": product.contract_price,
-                "brand_id": target_brand.id,
-                "brand_title": target_brand.title,
-                "brand_title_en": target_brand.title_en,
-                "city_id": target_city.id,
-                "city_name": target_city.name,
-                "city_name_en": target_city.name_en
-            }
-            for product in products
-        ]
+        # PRIORITY 1: Exact city + exact brand
+        print("🎯 Priority 1: Searching exact city + exact brand")
+        exact_city = find_exact_city(city_name)
+        if exact_city:
+            print(f"   ✅ Found exact city: '{exact_city.name}'")
+            exact_brand = find_exact_brand_in_city(exact_city, brand_name)
+            if exact_brand:
+                products = get_products_from_brand(exact_city, exact_brand, "EXACT CITY + EXACT BRAND")
+                if products:  # Only return if products exist
+                    return products
+        
+        # PRIORITY 2: Exact city + partial brand
+        print("🎯 Priority 2: Searching exact city + partial brand")
+        if exact_city:  # We already found the exact city
+            partial_brand = find_partial_brand_in_city(exact_city, brand_name)
+            if partial_brand:
+                products = get_products_from_brand(exact_city, partial_brand, "EXACT CITY + PARTIAL BRAND")
+                if products:  # Only return if products exist
+                    return products
+        
+        # PRIORITY 3: Partial city + exact brand
+        print("🎯 Priority 3: Searching partial city + exact brand")
+        partial_cities = find_partial_cities(city_name)
+        if partial_cities:
+            print(f"   🔍 Found {len(partial_cities)} partial city matches")
+            for partial_city in partial_cities:
+                exact_brand = find_exact_brand_in_city(partial_city, brand_name)
+                if exact_brand:
+                    products = get_products_from_brand(partial_city, exact_brand, "PARTIAL CITY + EXACT BRAND")
+                    if products:  # Only return if products exist
+                        return products
+        
+        # PRIORITY 4: Partial city + partial brand
+        print("🎯 Priority 4: Searching partial city + partial brand")
+        if partial_cities:
+            for partial_city in partial_cities:
+                partial_brand = find_partial_brand_in_city(partial_city, brand_name)
+                if partial_brand:
+                    products = get_products_from_brand(partial_city, partial_brand, "PARTIAL CITY + PARTIAL BRAND")
+                    if products:  # Only return if products exist
+                        return products
+        
+        # No products found at any priority level
+        print(f"   ❌ No products found for brand '{brand_name}' in city '{city_name}' at any priority level")
+        return []
 
     @staticmethod
     def get_brands_by_city_external_id(db: Session, city_external_id: int) -> List[Dict[str, Any]]:
