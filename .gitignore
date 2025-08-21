@@ -84,3 +84,5 @@ Thumbs.db
 # Node modules (if any)
 node_modules/ 
 ~$Suadi_Districts.xlsx
+vectorstore/data/chroma.sqlite3
+database/data/chatbot.sqlite*
