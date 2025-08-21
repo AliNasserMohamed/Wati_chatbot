@@ -95,6 +95,7 @@ class QueryAgent:
         ✅ أسئلة عن المنتجات والأسعار
         ✅ طلبات معرفة التوفر في مدينة معينة أو حي معين
         ✅ أسئلة عن أحجام المياه والعبوات
+        ✅ أسئلة عن الدبات والقوارير والجوالين (عبوات المياه الكبيرة)
         ✅ ذكر أسماء العلامات التجارية مثل (نستله، أكوافينا، العين، القصيم، المراعي، وغيرها)
         ✅ الرد بـ "نعم" أو "أي" عندما نسأل عن منتج معين في سياق المحادثة
         ✅ أسئلة عن الأسعار الإجمالية أو قوائم الأسعار
@@ -139,6 +140,7 @@ class QueryAgent:
             ✅ Questions about products and prices
             ✅ Requests to check availability in specific cities
             ✅ Questions about water sizes and packaging
+            ✅ Questions about water gallons, jugs, and large water containers
             ✅ Mentioning brand names like (Nestle, Aquafina, Alain, Qassim, Almarai, etc.)
             ✅ Replying with "yes" when we ask about a specific product
             ✅ Questions about total prices or price lists
@@ -1406,7 +1408,9 @@ Output in JSON format only:
                     if attempt < max_attempts:
                         continue
                     else:
-                        return "عذراً، حدث خطأ في معالجة الاستعلام. الرجاء المحاولة مرة أخرى." if user_language == 'ar' else "Sorry, there was an error processing the query. Please try again."
+                        # Return empty string when all attempts fail instead of error message
+                        # This ensures no response is sent to customer and human agent can handle
+                        return ""
                 
                 # Validate response appropriateness
                 print(f"🔍 Validating response appropriateness for attempt {attempt}")
