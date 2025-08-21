@@ -339,12 +339,16 @@
                 const response = await fetch('/api/access-control/status');
                 const data = await response.json();
                 
+                console.log('Status API response:', data);
+                
                 currentAccessMode = data.restricted_access;
                 updateStatusDisplay(currentAccessMode);
                 
                 // Update last update time
                 const now = new Date();
                 document.getElementById('lastUpdate').textContent = now.toLocaleString('ar-SA');
+                
+                console.log('Current access mode set to:', currentAccessMode);
                 
             } catch (error) {
                 console.error('Error loading status:', error);
@@ -358,13 +362,17 @@
                 const response = await fetch('/api/access-control/allowed-numbers');
                 const data = await response.json();
                 
+                console.log('Allowed numbers API response:', data);
+                
                 const container = document.getElementById('allowedNumbers');
                 if (data.numbers && data.numbers.length > 0) {
                     container.innerHTML = data.numbers.map(number => 
                         `<span class="phone-number">+${number}</span>`
                     ).join('');
+                    console.log('Loaded', data.numbers.length, 'allowed numbers');
                 } else {
                     container.innerHTML = '<p class="text-muted">لا توجد أرقام مسموح لها حالياً</p>';
+                    console.log('No allowed numbers found');
                 }
                 
             } catch (error) {
@@ -376,6 +384,8 @@
 
         // Update status display
         function updateStatusDisplay(isRestricted) {
+            console.log('Updating status display with isRestricted:', isRestricted);
+            
             const statusIndicator = document.getElementById('statusIndicator');
             const statusText = document.getElementById('statusText');
             const toggleSwitch = document.getElementById('accessToggle');

@@ -304,12 +304,17 @@ class EmbeddingAgent:
 -المحادثة السابقة:
 {conversation_context}
 
+⚠️ **اختبار المعنى الدلالي المطلوب:**
+قبل اختيار "reply"، يجب أن تتأكد أن رسالة العميل والسؤال من قاعدة البيانات لهما **نفس المعنى والقصد** تماماً.
+- إذا كان المعنى مختلف أو القصد مختلف، اختر "continue" حتى لو كانت الكلمات متشابهة
+- إذا كان العميل يسأل عن شيء والسؤال في قاعدة البيانات عن شيء آخر، اختر "continue"
+- فقط إذا كان المعنى والقصد متطابق تماماً، يمكن اختيار "reply"
+
 التصنيف يجب أن يعتمد على القواعد التالية مع مراعاة سياق المحادثة:
 
 🟢 "reply":
--✅reply  إذا كانت رسالة العميل الحالية مشابهة لسؤال موجود في قاعدة البيانات ، وكان لدينا رد محفوظ له — سواء كانت تحية أو استفسار أو طلب — يجب اختيار 
-
-- أو إذا كانت الرسالة مجرد تحية أو شكر بسيط بدون أي محتوى إضافي (مع أو بدون علامات ترقيم مثل النقاط أو المسافات)
+- ✅ فقط إذا كانت رسالة العميل والسؤال من قاعدة البيانات لهما **نفس المعنى والقصد تماماً** وكان لدينا رد محفوظ مناسب
+- ✅ أو إذا كانت الرسالة مجرد تحية أو شكر بسيط بدون أي محتوى إضافي (مع أو بدون علامات ترقيم مثل النقاط أو المسافات)
   - مثل: (السلام عليكم، مرحبا، أهلاً، هلا، هلا وغلا، صباح الخير، مساء الخير، شكراً، يعطيك العافية، جزاك الله خير، الله يوفقكم، شكرا لك، مشكور)
   - أو نفس التحيات مع علامات ترقيم مثل: (هلا...، مرحبا.، السلام عليكم!!، شكرا...) يجب اختيار reply
 
@@ -350,10 +355,16 @@ Inputs:
 - Stored response: "{matched_answer}"
 {conversation_context}
 
+⚠️ **Required Semantic Meaning Check:**
+Before choosing "reply", you must ensure that the customer message and the database question have **exactly the same meaning and intent**.
+- If the meaning is different or the intent is different, choose "continue" even if the words are similar
+- If the customer is asking about one thing and the database question is about something else, choose "continue"
+- Only if the meaning and intent are exactly the same, you may choose "reply"
+
 Rules with conversation context consideration:
 
 ✅ "reply":
-- If the customer message is semantically similar to a known question in the database (even if it contains more than a greeting or thanks), reply using the stored answer.
+- ONLY if the customer message and database question have **exactly the same meaning and intent** and we have an appropriate stored response
 - OR if the message is **only** a simple genuine greeting or thanks, such as:
     - Greetings: ("Hello", "Hi", "Peace be upon you", "Good morning", "Good evening")
     - Thanks: ("Thanks", "Thank you", "God bless you", "Much appreciated")
@@ -392,7 +403,10 @@ Return only one value: reply, skip, or continue
             # Build the complete messages for the API call
             system_content ="""You are an extremely strict evaluator for customer service response quality at Abar Water Delivery.
 
-Your ONLY task: Decide how to handle a customer's message based on its content and whether it matches any known question in the company database.
+Your ONLY task: Decide how to handle a customer's message based on its content and whether it has the **exact same meaning** as any known question in the company database.
+
+⚠️ **CRITICAL SEMANTIC MEANING REQUIREMENT:**
+You must perform a strict semantic meaning check. The customer message and database question must have **exactly the same meaning and intent** - not just similar words or topics.
 
 Inputs provided:
 - Customer message: the message sent by the user.
@@ -403,7 +417,7 @@ Inputs provided:
 You must classify the message into **only one** of the following:
 
  reply:
-- If the message is **semantically similar** to a known question in the database AND we have a saved answer — regardless of whether the message is a greeting, request, or question.
+- ONLY if the message has **exactly the same meaning and intent** as a known question in the database AND we have a saved answer
 - OR if the message is a **pure standalone greeting or thanks**, with no additional text.
   - Valid examples: "السلام عليكم", "شكراً", "يعطيك العافية", "مرحبا", "أهلا", "الله يوفقكم"
 
@@ -428,7 +442,9 @@ You must classify the message into **only one** of the following:
 Final instruction:
 Be extremely conservative. Use `reply` ONLY when:
 - The message is a 100% pure greeting/thanks, OR
-- It has a clear semantic match in the database with a saved answer.
+- It has **exactly the same meaning and intent** as a question in the database with a saved answer.
+
+⚠️ Remember: Similar words ≠ Same meaning. The customer's intent must be identical to the database question's intent.
 
 Return only one of: `reply`, `skip`, or `continue`.
 """

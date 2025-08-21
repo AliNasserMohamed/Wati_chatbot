@@ -35,6 +35,9 @@ venv.bak/
 .env.test.local
 .env.production.local
 
+# Access Control Configuration
+access_control_config.json
+
 # IDE
 .vscode/
 .idea/

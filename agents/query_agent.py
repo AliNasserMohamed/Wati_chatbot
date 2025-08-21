@@ -115,10 +115,12 @@ class QueryAgent:
         ❌ شكاوي خدمة العملاء أو مشاكل الخدمة
         ❌ طلبات إلغاء أو تعديل طلبات موجودة
         ❌ استفسارات عن حالة الطلب أو تتبع الطلب
+        ❌ أسئلة عن مواعيد التوصيل أو وقت الوصول ("متى يوصل"، "كم يستغرق التوصيل"، "متى يجي المندوب")
+        ❌ أسئلة عن وقت وصول المندوب أو مدة التوصيل
 
         تعليمات خاصة وصارمة:
         - كن صارم جداً في التصنيف - فقط الأسئلة عن المدن والعلامات التجارية والمنتجات والأسعار تعتبر متعلقة
-        - أي رسالة تذكر "المندوب" أو "التوصيل" أو "الطلب لم يصل" أو "تأخر" تعتبر غير متعلقة
+        - أي رسالة تذكر "المندوب" أو "التوصيل" أو "الطلب لم يصل" أو "تأخر" أو "متى يوصل" أو "متى يجي" تعتبر غير متعلقة
         - أي شكوى أو مشكلة في الخدمة تعتبر غير متعلقة
         - لا تعتبر التحيات والشكر متعلقة بالخدمة حتى لو كانت في سياق محادثة عن المياه
         - اعتبر ذكر أسماء العلامات التجارية للمياه متعلق بالخدمة فقط
@@ -154,10 +156,12 @@ class QueryAgent:
             ❌ Customer service complaints or service problems
             ❌ Requests to cancel or modify existing orders
             ❌ Inquiries about order status or order tracking
+            ❌ Questions about delivery times or arrival times ("when will it arrive", "how long does delivery take", "when will the driver come")
+            ❌ Questions about driver arrival time or delivery duration
 
             Special strict instructions:
             - Be very strict in classification - only questions about cities, brands, products, and prices count as relevant
-            - Any message mentioning "delivery person", "driver", "delivery", "order not arrived", or "delayed" is not relevant
+            - Any message mentioning "delivery person", "driver", "delivery", "order not arrived", "delayed", "when will it arrive", or "how long" is not relevant
             - Any complaint or service problem is not relevant
             - Do not consider greetings and thanks as service-related even if they appear in water-related conversations
             - Consider mentioning water brand names as service-related only
@@ -1382,7 +1386,7 @@ Output in JSON format only:
         print(f"Processing query: {user_message} (Language: {user_language})")
         
         # Maximum number of attempts
-        max_attempts = 2
+        max_attempts = 1
         
         for attempt in range(1, max_attempts + 1):
             print(f"🔄 Response generation attempt {attempt}/{max_attempts}")
@@ -1495,6 +1499,12 @@ Output in JSON format only:
                 system_message = {
                     "role": "system",
                     "content": f"""You are a friendly customer service employee at Abar Water Delivery Company in Saudi Arabia.{city_info}{brand_info}
+
+                    📋 Important terminology for understanding Arabic customers (for understanding only - don't mention to customers):
+                    - "قوارير المياه" = "الجوالين" (same product - water gallons)
+                    - "حبة مياه" = "زجاجة مياه" (common term - means water bottle)
+                    - "مقاس" = size/volume (e.g., "مقاس 200 مل" means 200ml size)
+                    - Example: "احتاج كرتونة 48 حبة مقاس 200 مل" = "I need a carton of 48 bottles, 200ml size"
 
                     Your job is to help customers with:
                     1. Finding available cities for water delivery service
@@ -1722,6 +1732,12 @@ Output in JSON format only:
                 system_message = {
                     "role": "system",
                     "content": f"""أنت موظف خدمة عملاء ودود في شركة أبار لتوصيل المياه في السعودية.{city_info_ar}{brand_info_ar}
+
+                    📋 معلومات مهمة لفهم المصطلحات (للفهم فقط - لا تذكرها للعميل):
+                    - قوارير المياه = الجوالين (نفس المنتج)
+                    - "حبة مياه" = "زجاجة مياه" (مصطلح شائع)
+                    - "مقاس" = الحجم/السعة (مثل: "مقاس 200 مل" تعني حجم 200 مل)
+                    - مثال: "احتاج كرتونة 48 حبة مقاس 200 مل" = "احتاج كرتونة 48 زجاجة حجم 200 مل"
 
                     وظيفتك مساعدة العملاء في:
                     1. إيجاد المدن المتاحة لخدمة توصيل المياه

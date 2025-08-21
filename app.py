@@ -28,6 +28,43 @@ import aiohttp
 import urllib.parse
 import asyncio
 import time
+
+# Access control configuration management
+ACCESS_CONTROL_CONFIG_FILE = "access_control_config.json"
+
+def load_access_control_config():
+    """Load access control configuration from file"""
+    try:
+        if os.path.exists(ACCESS_CONTROL_CONFIG_FILE):
+            with open(ACCESS_CONTROL_CONFIG_FILE, 'r') as f:
+                config = json.load(f)
+                return config.get('restricted_access', False)
+        else:
+            # Default to unrestricted access if file doesn't exist
+            save_access_control_config(False)
+            return False
+    except Exception as e:
+        print(f"Error loading access control config: {e}")
+        return False
+
+def save_access_control_config(restricted_access: bool):
+    """Save access control configuration to file"""
+    try:
+        config = {
+            "restricted_access": restricted_access,
+            "last_updated": datetime.now().isoformat()
+        }
+        with open(ACCESS_CONTROL_CONFIG_FILE, 'w') as f:
+            json.dump(config, f, indent=2)
+        print(f"Access control config saved: restricted_access={restricted_access}")
+        return True
+    except Exception as e:
+        print(f"Error saving access control config: {e}")
+        return False
+
+def is_access_restricted():
+    """Check if access is currently restricted"""
+    return load_access_control_config()
 import threading
 from collections import defaultdict
 from typing import Dict, List, Any
@@ -952,8 +989,9 @@ async def process_message_async(data, phone_number, message_type, wati_message_i
             return
             
         else:
-#            if not is_allowed_user:
-#                return ""
+            # Check dynamic access control configuration
+            if is_access_restricted() and not is_allowed_user:
+                return ""
             # # Continue to classification agent
             message_journey_logger.add_step(
                 journey_id=journey_id,
@@ -983,9 +1021,8 @@ async def process_message_async(data, phone_number, message_type, wati_message_i
             
             print(f"🧠 Message classified as: {classified_message_type} in language: {detected_language}")
             
-            # SELECTIVE ACCESS CHECK: Allow INQUIRY and SERVICE_REQUEST for all users
+            # SELECTIVE ACCESS CHECK: Allow INQUIRY and SERVICE_REQUEST for all users  
             # Other categories only for allowed users
-            #if not is_allowed_user:
             # Check if regular user is trying to access restricted categories
             restricted_categories = [
                 MessageType.GREETING, 
@@ -2299,23 +2336,12 @@ async def get_access_control_status(request: Request):
         raise HTTPException(status_code=401, detail="Unauthorized")
     
     try:
-        # Read current source code to check if restrictions are enabled
-        with open(__file__, 'r', encoding='utf-8') as f:
-            content = f.read()
-        
-        # Check if the restriction lines are commented out
-        lines = content.split('\n')
-        restriction_enabled = False
-        
-        for i, line in enumerate(lines):
-            if 'if not is_allowed_user:' in line and 'return ""' in lines[i+1]:
-                # Check if the line is not commented
-                restriction_enabled = not line.strip().startswith('#')
-                break
+        # Get current access control setting from configuration
+        restricted_access = is_access_restricted()
         
         return {
             "status": "success",
-            "restricted_access": restriction_enabled,
+            "restricted_access": restricted_access,
             "message": "Access control status retrieved successfully"
         }
     except Exception as e:
@@ -2350,7 +2376,7 @@ async def get_allowed_numbers(request: Request):
 # API endpoint to toggle access control
 @app.post("/api/access-control/toggle")
 async def toggle_access_control(request: Request):
-    """Toggle access control on/off by commenting/uncommenting restriction lines (protected route)"""
+    """Toggle access control on/off using configuration file (protected route)"""
     if not check_authentication(request):
         raise HTTPException(status_code=401, detail="Unauthorized")
     
@@ -2358,48 +2384,19 @@ async def toggle_access_control(request: Request):
         body = await request.json()
         restricted_access = body.get('restricted_access', False)
         
-        # Read current source code
-        with open(__file__, 'r', encoding='utf-8') as f:
-            lines = f.readlines()
+        # Save the new configuration
+        success = save_access_control_config(restricted_access)
         
-        # Find the restriction lines and modify them
-        modified = False
-        for i, line in enumerate(lines):
-            if 'if not is_allowed_user:' in line:
-                if restricted_access:
-                    # Enable restrictions (uncomment if commented)
-                    if line.strip().startswith('#'):
-                        lines[i] = line.replace('#', '', 1)
-                        # Also uncomment the return statement on the next line
-                        if i + 1 < len(lines) and 'return ""' in lines[i + 1]:
-                            if lines[i + 1].strip().startswith('#'):
-                                lines[i + 1] = lines[i + 1].replace('#', '', 1)
-                        modified = True
-                else:
-                    # Disable restrictions (comment out)
-                    if not line.strip().startswith('#'):
-                        lines[i] = '#' + line
-                        # Also comment out the return statement on the next line
-                        if i + 1 < len(lines) and 'return ""' in lines[i + 1]:
-                            if not lines[i + 1].strip().startswith('#'):
-                                lines[i + 1] = '#' + lines[i + 1]
-                        modified = True
-                break
-        
-        if modified:
-            # Write the modified code back to the file
-            with open(__file__, 'w', encoding='utf-8') as f:
-                f.writelines(lines)
-            
+        if success:
             return {
                 "status": "success",
                 "restricted_access": restricted_access,
-                "message": f"Access control {'enabled' if restricted_access else 'disabled'} successfully. Changes will take effect immediately."
+                "message": f"Access control {'enabled' if restricted_access else 'disabled'} successfully. Changes are effective immediately."
             }
         else:
             return {
-                "status": "warning",
-                "message": "No changes were needed - access control is already in the desired state"
+                "status": "error",
+                "message": "Failed to save access control configuration"
             }
             
     except Exception as e:
