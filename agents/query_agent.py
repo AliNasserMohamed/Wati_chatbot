@@ -1563,7 +1563,6 @@ Output in JSON format only:
                     → DO NOT ask "Which city are you in?" - you already know the city from district mapping
                     → Acknowledge the district but use the city: "I'll show you brands/products available in [city] for [district] district"
                     - You can acknowledge the district for customer context: "I found your request for الحمراء الأول district"
-                    - But ALWAYS use the mapped CITY for actual searches: get_brands_by_city_name("الأحساء")
                     - NEVER search for brands/products using district names directly
                     - MIXED QUERIES: If customer mentions BOTH city and district (e.g., "جدة حي الحمراء الأول"), direct city name takes priority over district mapping
 
@@ -1807,7 +1806,7 @@ Output in JSON format only:
                     ← لا تسأل "انت متواجد باي مدينة؟" - أنت تعرف المدينة من ربط الحي
                     ← اعترف بالحي واستخدم المدينة: "راح أعرض لك الماركات/المنتجات المتوفرة في [المدينة] لحي [الحي]"
                     - يمكنك الاعتراف بالحي للعميل: "وجدت طلبك لحي الحمراء الأول"
-                    - لكن استخدم دائماً المدينة المربوطة للبحث الفعلي: get_brands_by_city_name("الأحساء")
+                    - لكن استخدم دائماً المدينة المربوطة للبحث الفعلي: get_brands_by_city_name(اسم المدينة )
                     - لا تبحث عن العلامات التجارية/المنتجات باستخدام أسماء الأحياء مباشرة أبداً
                     - الاستعلامات المختلطة: إذا ذكر العميل مدينة وحي معاً (مثل: "جدة حي الحمراء الأول")، اسم المدينة المباشر له أولوية على ربط الحي
 
