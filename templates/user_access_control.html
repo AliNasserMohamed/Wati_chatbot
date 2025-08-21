@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>إدارة الوصول للمستخدمين - آبار</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px 0;
+        }
+        
+        .container {
+            max-width: 1200px;
+        }
+        
+        .header-card {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(10px);
+            margin-bottom: 30px;
+        }
+        
+        .control-card {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 12px;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            margin-bottom: 20px;
+        }
+        
+        .status-card {
+            background: rgba(255, 255, 255, 0.9);
+            border-radius: 12px;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            margin-bottom: 20px;
+            transition: all 0.3s ease;
+        }
+        
+        .status-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+        }
+        
+        .toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 80px;
+            height: 40px;
+        }
+        
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: .4s;
+            border-radius: 20px;
+        }
+        
+        .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 32px;
+            width: 32px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+        
+        input:checked + .toggle-slider {
+            background-color: #28a745;
+        }
+        
+        input:focus + .toggle-slider {
+            box-shadow: 0 0 1px #28a745;
+        }
+        
+        input:checked + .toggle-slider:before {
+            transform: translateX(40px);
+        }
+        
+        .status-indicator {
+            display: inline-block;
+            width: 15px;
+            height: 15px;
+            border-radius: 50%;
+            margin-right: 10px;
+        }
+        
+        .status-enabled {
+            background-color: #28a745;
+        }
+        
+        .status-disabled {
+            background-color: #dc3545;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            border-radius: 8px;
+            padding: 12px 24px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+        
+        .btn-success {
+            background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
+            border: none;
+        }
+        
+        .btn-danger {
+            background: linear-gradient(135deg, #f56565 0%, #e53e3e 100%);
+            border: none;
+        }
+        
+        .phone-number {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-family: monospace;
+            font-size: 0.9rem;
+            margin: 5px;
+            display: inline-block;
+        }
+        
+        .loading {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(255, 255, 255, 0.95);
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+            z-index: 9999;
+            text-align: center;
+        }
+        
+        .alert {
+            border-radius: 8px;
+            border: none;
+        }
+        
+        .fade-in {
+            animation: fadeIn 0.5s ease-in;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .nav-buttons {
+            margin-top: 20px;
+        }
+        
+        .nav-buttons .btn {
+            margin: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header-card">
+            <div class="card-body text-center">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <div></div>
+                    <h1 class="display-4 mb-0">
+                        <i class="fas fa-users-cog text-primary me-3"></i>
+                        إدارة الوصول للمستخدمين
+                    </h1>
+                    <a href="/logout" class="btn btn-outline-danger">
+                        <i class="fas fa-sign-out-alt me-2"></i>
+                        تسجيل الخروج
+                    </a>
+                </div>
+                <p class="lead text-muted">التحكم في إعدادات الوصول والأمان للمستخدمين</p>
+                <div class="nav-buttons">
+                    <a href="/knowledge/admin" class="btn btn-outline-primary">
+                        <i class="fas fa-brain me-2"></i>
+                        إدارة المعرفة
+                    </a>
+                    <a href="/server/scrapped_data" class="btn btn-outline-success">
+                        <i class="fas fa-database me-2"></i>
+                        لوحة البيانات
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Control Panel -->
+        <div class="control-card">
+            <div class="card-body">
+                <h3 class="mb-4">
+                    <i class="fas fa-shield-alt text-warning me-2"></i>
+                    إعدادات التحكم في الوصول
+                </h3>
+                
+                <!-- Current Status -->
+                <div class="row mb-4">
+                    <div class="col-md-6">
+                        <div class="d-flex align-items-center mb-3">
+                            <span class="status-indicator" id="statusIndicator"></span>
+                            <span class="h5 mb-0">الحالة الحالية: </span>
+                            <span class="h5 mb-0 text-primary me-2" id="statusText">جاري التحميل...</span>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="d-flex align-items-center justify-content-end">
+                            <label class="me-3" for="accessToggle">
+                                <span id="toggleLabel">تفعيل القيود</span>
+                            </label>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="accessToggle" onchange="toggleAccess()">
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Description -->
+                <div class="alert alert-info" id="descriptionAlert">
+                    <i class="fas fa-info-circle me-2"></i>
+                    <span id="descriptionText">جاري تحميل المعلومات...</span>
+                </div>
+                
+                <!-- Action Buttons -->
+                <div class="text-center">
+                    <button class="btn btn-success me-2" onclick="refreshStatus()" id="refreshBtn">
+                        <i class="fas fa-sync-alt me-2"></i>
+                        تحديث الحالة
+                    </button>
+                    <button class="btn btn-primary" onclick="testAccess()" id="testBtn">
+                        <i class="fas fa-vial me-2"></i>
+                        اختبار الوصول
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Allowed Numbers Section -->
+        <div class="status-card">
+            <div class="card-body">
+                <h4 class="mb-3">
+                    <i class="fas fa-phone text-success me-2"></i>
+                    الأرقام المسموح لها بالوصول الكامل
+                </h4>
+                <div id="allowedNumbers">
+                    <div class="text-center">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">جاري التحميل...</span>
+                        </div>
+                        <p class="mt-2 text-muted">جاري تحميل الأرقام...</p>
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <small class="text-muted">
+                        <i class="fas fa-exclamation-triangle me-1"></i>
+                        هذه الأرقام لها صلاحية استخدام جميع وظائف البوت بما في ذلك البحث عن المنتجات والأسعار
+                    </small>
+                </div>
+            </div>
+        </div>
+
+        <!-- System Info -->
+        <div class="status-card">
+            <div class="card-body">
+                <h4 class="mb-3">
+                    <i class="fas fa-cogs text-info me-2"></i>
+                    معلومات النظام
+                </h4>
+                <div class="row">
+                    <div class="col-md-6">
+                        <p><strong>وقت آخر تحديث:</strong> <span id="lastUpdate">غير معروف</span></p>
+                        <p><strong>إصدار النظام:</strong> <span id="systemVersion">1.0.0</span></p>
+                    </div>
+                    <div class="col-md-6">
+                        <p><strong>حالة قاعدة البيانات:</strong> <span class="text-success">متصلة</span></p>
+                        <p><strong>حالة الخادم:</strong> <span class="text-success">يعمل</span></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Loading Indicator -->
+        <div class="loading" id="loading">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">جاري المعالجة...</span>
+            </div>
+            <p class="mt-2">جاري معالجة الطلب...</p>
+        </div>
+
+        <!-- Alert Messages -->
+        <div id="alertContainer"></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Global variables
+        let currentAccessMode = false;
+        
+        // Initialize page
+        document.addEventListener('DOMContentLoaded', function() {
+            loadCurrentStatus();
+            loadAllowedNumbers();
+        });
+
+        // Load current access status
+        async function loadCurrentStatus() {
+            try {
+                const response = await fetch('/api/access-control/status');
+                const data = await response.json();
+                
+                currentAccessMode = data.restricted_access;
+                updateStatusDisplay(currentAccessMode);
+                
+                // Update last update time
+                const now = new Date();
+                document.getElementById('lastUpdate').textContent = now.toLocaleString('ar-SA');
+                
+            } catch (error) {
+                console.error('Error loading status:', error);
+                showAlert('حدث خطأ أثناء تحميل حالة النظام', 'danger');
+            }
+        }
+
+        // Load allowed numbers
+        async function loadAllowedNumbers() {
+            try {
+                const response = await fetch('/api/access-control/allowed-numbers');
+                const data = await response.json();
+                
+                const container = document.getElementById('allowedNumbers');
+                if (data.numbers && data.numbers.length > 0) {
+                    container.innerHTML = data.numbers.map(number => 
+                        `<span class="phone-number">+${number}</span>`
+                    ).join('');
+                } else {
+                    container.innerHTML = '<p class="text-muted">لا توجد أرقام مسموح لها حالياً</p>';
+                }
+                
+            } catch (error) {
+                console.error('Error loading allowed numbers:', error);
+                document.getElementById('allowedNumbers').innerHTML = 
+                    '<p class="text-danger">حدث خطأ أثناء تحميل الأرقام</p>';
+            }
+        }
+
+        // Update status display
+        function updateStatusDisplay(isRestricted) {
+            const statusIndicator = document.getElementById('statusIndicator');
+            const statusText = document.getElementById('statusText');
+            const toggleSwitch = document.getElementById('accessToggle');
+            const toggleLabel = document.getElementById('toggleLabel');
+            const descriptionText = document.getElementById('descriptionText');
+            const descriptionAlert = document.getElementById('descriptionAlert');
+            
+            if (isRestricted) {
+                statusIndicator.className = 'status-indicator status-enabled';
+                statusText.textContent = 'مفعل (الوصول مقيد)';
+                toggleSwitch.checked = true;
+                toggleLabel.textContent = 'إلغاء القيود';
+                descriptionText.innerHTML = 
+                    '<strong>الوصول المقيد مفعل:</strong> فقط الأرقام المدرجة أدناه يمكنها استخدام جميع وظائف البوت. المستخدمون الآخرون سيحصلون على رسائل محدودة فقط.';
+                descriptionAlert.className = 'alert alert-warning';
+            } else {
+                statusIndicator.className = 'status-indicator status-disabled';
+                statusText.textContent = 'معطل (الوصول مفتوح)';
+                toggleSwitch.checked = false;
+                toggleLabel.textContent = 'تفعيل القيود';
+                descriptionText.innerHTML = 
+                    '<strong>الوصول المفتوح مفعل:</strong> جميع المستخدمين يمكنهم استخدام جميع وظائف البوت بدون قيود.';
+                descriptionAlert.className = 'alert alert-success';
+            }
+        }
+
+        // Toggle access control
+        async function toggleAccess() {
+            const newMode = !currentAccessMode;
+            const confirmMessage = newMode ? 
+                'هل أنت متأكد من تفعيل القيود؟ سيتمكن المستخدمون المسموح لهم فقط من استخدام البوت.' :
+                'هل أنت متأكد من إلغاء القيود؟ سيتمكن جميع المستخدمين من استخدام جميع وظائف البوت.';
+            
+            if (!confirm(confirmMessage)) {
+                // Reset toggle if user cancels
+                document.getElementById('accessToggle').checked = currentAccessMode;
+                return;
+            }
+            
+            showLoading(true);
+            
+            try {
+                const response = await fetch('/api/access-control/toggle', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        restricted_access: newMode
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.status === 'success') {
+                    currentAccessMode = newMode;
+                    updateStatusDisplay(currentAccessMode);
+                    showAlert(
+                        newMode ? 
+                        'تم تفعيل نظام القيود بنجاح! الآن فقط الأرقام المسموح لها يمكنها استخدام البوت.' :
+                        'تم إلغاء القيود بنجاح! الآن جميع المستخدمين يمكنهم استخدام البوت.',
+                        'success'
+                    );
+                } else {
+                    throw new Error(result.message || 'فشل في تغيير إعدادات الوصول');
+                }
+                
+            } catch (error) {
+                console.error('Error toggling access:', error);
+                showAlert(`حدث خطأ أثناء تغيير الإعدادات: ${error.message}`, 'danger');
+                // Reset toggle on error
+                document.getElementById('accessToggle').checked = currentAccessMode;
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // Refresh status
+        async function refreshStatus() {
+            showLoading(true);
+            await Promise.all([
+                loadCurrentStatus(),
+                loadAllowedNumbers()
+            ]);
+            showLoading(false);
+            showAlert('تم تحديث الحالة بنجاح!', 'info');
+        }
+
+        // Test access function
+        async function testAccess() {
+            showAlert('وظيفة الاختبار قريباً...', 'info');
+        }
+
+        // Show loading indicator
+        function showLoading(show) {
+            const loadingElement = document.getElementById('loading');
+            const buttons = document.querySelectorAll('#refreshBtn, #testBtn');
+            
+            if (show) {
+                loadingElement.style.display = 'block';
+                buttons.forEach(btn => btn.disabled = true);
+            } else {
+                loadingElement.style.display = 'none';
+                buttons.forEach(btn => btn.disabled = false);
+            }
+        }
+
+        // Show alert messages
+        function showAlert(message, type) {
+            const alertContainer = document.getElementById('alertContainer');
+            const alertId = 'alert-' + Date.now();
+            
+            const alertHTML = `
+                <div id="${alertId}" class="alert alert-${type} alert-dismissible fade show fade-in" role="alert">
+                    <i class="fas ${type === 'success' ? 'fa-check-circle' : 
+                                    type === 'danger' ? 'fa-exclamation-triangle' : 
+                                    type === 'warning' ? 'fa-exclamation-circle' : 
+                                    'fa-info-circle'} me-2"></i>
+                    ${message}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            `;
+            
+            alertContainer.innerHTML = alertHTML;
+            
+            // Auto-hide after 5 seconds
+            setTimeout(() => {
+                const alert = document.getElementById(alertId);
+                if (alert) {
+                    alert.remove();
+                }
+            }, 5000);
+        }
+
+        // Add keyboard shortcuts
+        document.addEventListener('keydown', function(e) {
+            // Ctrl + R to refresh
+            if (e.ctrlKey && e.key === 'r') {
+                e.preventDefault();
+                refreshStatus();
+            }
+        });
+    </script>
+</body>
+</html>

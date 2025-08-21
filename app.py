@@ -952,8 +952,8 @@ async def process_message_async(data, phone_number, message_type, wati_message_i
             return
             
         else:
-            if not is_allowed_user:
-                return ""
+#            if not is_allowed_user:
+#                return ""
             # # Continue to classification agent
             message_journey_logger.add_step(
                 journey_id=journey_id,
@@ -2282,6 +2282,128 @@ async def preload_models():
     except Exception as e:
         print(f"[Model Preload ERROR] {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+# User Access Control Interface
+@app.get("/admin/user-access-control", response_class=HTMLResponse)
+async def user_access_control_page(request: Request):
+    """Serve the HTML interface for user access control (protected route)"""
+    if not check_authentication(request):
+        return RedirectResponse(url="/login", status_code=302)
+    return templates.TemplateResponse("user_access_control.html", {"request": request})
+
+# API endpoint to get current access control status
+@app.get("/api/access-control/status")
+async def get_access_control_status(request: Request):
+    """Get current access control status (protected route)"""
+    if not check_authentication(request):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    
+    try:
+        # Read current source code to check if restrictions are enabled
+        with open(__file__, 'r', encoding='utf-8') as f:
+            content = f.read()
+        
+        # Check if the restriction lines are commented out
+        lines = content.split('\n')
+        restriction_enabled = False
+        
+        for i, line in enumerate(lines):
+            if 'if not is_allowed_user:' in line and 'return ""' in lines[i+1]:
+                # Check if the line is not commented
+                restriction_enabled = not line.strip().startswith('#')
+                break
+        
+        return {
+            "status": "success",
+            "restricted_access": restriction_enabled,
+            "message": "Access control status retrieved successfully"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error getting status: {str(e)}")
+
+# API endpoint to get allowed numbers
+@app.get("/api/access-control/allowed-numbers")
+async def get_allowed_numbers(request: Request):
+    """Get list of allowed phone numbers (protected route)"""
+    if not check_authentication(request):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    
+    try:
+        # Get allowed numbers from the code
+        allowed_numbers = [
+            "201142765209",
+            "966138686475",
+            "966505281144",  
+            "966541794866",
+            "201003754330",
+        ]
+        
+        return {
+            "status": "success",
+            "numbers": allowed_numbers,
+            "count": len(allowed_numbers),
+            "message": "Allowed numbers retrieved successfully"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error getting allowed numbers: {str(e)}")
+
+# API endpoint to toggle access control
+@app.post("/api/access-control/toggle")
+async def toggle_access_control(request: Request):
+    """Toggle access control on/off by commenting/uncommenting restriction lines (protected route)"""
+    if not check_authentication(request):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    
+    try:
+        body = await request.json()
+        restricted_access = body.get('restricted_access', False)
+        
+        # Read current source code
+        with open(__file__, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+        
+        # Find the restriction lines and modify them
+        modified = False
+        for i, line in enumerate(lines):
+            if 'if not is_allowed_user:' in line:
+                if restricted_access:
+                    # Enable restrictions (uncomment if commented)
+                    if line.strip().startswith('#'):
+                        lines[i] = line.replace('#', '', 1)
+                        # Also uncomment the return statement on the next line
+                        if i + 1 < len(lines) and 'return ""' in lines[i + 1]:
+                            if lines[i + 1].strip().startswith('#'):
+                                lines[i + 1] = lines[i + 1].replace('#', '', 1)
+                        modified = True
+                else:
+                    # Disable restrictions (comment out)
+                    if not line.strip().startswith('#'):
+                        lines[i] = '#' + line
+                        # Also comment out the return statement on the next line
+                        if i + 1 < len(lines) and 'return ""' in lines[i + 1]:
+                            if not lines[i + 1].strip().startswith('#'):
+                                lines[i + 1] = '#' + lines[i + 1]
+                        modified = True
+                break
+        
+        if modified:
+            # Write the modified code back to the file
+            with open(__file__, 'w', encoding='utf-8') as f:
+                f.writelines(lines)
+            
+            return {
+                "status": "success",
+                "restricted_access": restricted_access,
+                "message": f"Access control {'enabled' if restricted_access else 'disabled'} successfully. Changes will take effect immediately."
+            }
+        else:
+            return {
+                "status": "warning",
+                "message": "No changes were needed - access control is already in the desired state"
+            }
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error toggling access control: {str(e)}")
 
 # Scraped Data Interface
 @app.get("/server/scrapped_data", response_class=HTMLResponse)
