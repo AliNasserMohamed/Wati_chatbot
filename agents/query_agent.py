@@ -117,10 +117,12 @@ class QueryAgent:
         ❌ استفسارات عن حالة الطلب أو تتبع الطلب
         ❌ أسئلة عن مواعيد التوصيل أو وقت الوصول ("متى يوصل"، "كم يستغرق التوصيل"، "متى يجي المندوب")
         ❌ أسئلة عن وقت وصول المندوب أو مدة التوصيل
+        ❌ طلبات تعديل موقع التوصيل أو العنوان ("أبغى أعدل الموقع"، "أريد أغير العنوان"، "تعديل المكان")
 
         تعليمات خاصة وصارمة:
         - كن صارم جداً في التصنيف - فقط الأسئلة عن المدن والعلامات التجارية والمنتجات والأسعار تعتبر متعلقة
         - أي رسالة تذكر "المندوب" أو "التوصيل" أو "الطلب لم يصل" أو "تأخر" أو "متى يوصل" أو "متى يجي" تعتبر غير متعلقة
+        - أي رسالة تطلب "تعديل الموقع" أو "تغيير العنوان" أو "أعدل المكان" تعتبر غير متعلقة
         - أي شكوى أو مشكلة في الخدمة تعتبر غير متعلقة
         - لا تعتبر التحيات والشكر متعلقة بالخدمة حتى لو كانت في سياق محادثة عن المياه
         - اعتبر ذكر أسماء العلامات التجارية للمياه متعلق بالخدمة فقط
@@ -158,10 +160,12 @@ class QueryAgent:
             ❌ Inquiries about order status or order tracking
             ❌ Questions about delivery times or arrival times ("when will it arrive", "how long does delivery take", "when will the driver come")
             ❌ Questions about driver arrival time or delivery duration
+            ❌ Requests to edit delivery location or address ("I want to change the address", "edit location", "modify delivery address")
 
             Special strict instructions:
             - Be very strict in classification - only questions about cities, brands, products, and prices count as relevant
             - Any message mentioning "delivery person", "driver", "delivery", "order not arrived", "delayed", "when will it arrive", or "how long" is not relevant
+            - Any message requesting to "edit location", "change address", or "modify delivery location" is not relevant
             - Any complaint or service problem is not relevant
             - Do not consider greetings and thanks as service-related even if they appear in water-related conversations
             - Consider mentioning water brand names as service-related only
@@ -1225,7 +1229,8 @@ Classification:"""
             logger.info(f"Message classification for '{user_message[:50]}...': {classification_result}")
             
             # Determine relevance and cache the result
-            is_relevant = "relevant" in classification_result
+            # Fix: Check for exact match to avoid "not_relevant" being treated as relevant
+            is_relevant = classification_result == "relevant"
             
             # Cache the result (with size limit)
             if len(self.classification_cache) >= self.cache_max_size:
@@ -1421,8 +1426,8 @@ Output in JSON format only:
                         print(f"🔄 Retrying response generation...")
                         continue
                     else:
-                        print(f"⚠️ Max attempts reached, returning last response despite validation failure")
-                        return response
+                        print(f"⚠️ Max attempts reached and validation failed, not sending response")
+                        return ""
                         
             except Exception as e:
                 print(f"❌ Error in attempt {attempt}: {str(e)}")
