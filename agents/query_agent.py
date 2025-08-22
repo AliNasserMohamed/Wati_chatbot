@@ -1288,16 +1288,17 @@ Classification:"""
 راجع الرسائل الثلاث الأخيرة لفهم السياق:
 
 1️⃣ عندما يحتاج العميل توصيل مياه أو يسأل عن الأسعار/العلامات:
-   - يجب أن نعرف مدينته أولاً
    - إذا لم نعرف المدينة → السؤال "أي مدينة تريد؟" مناسب ✅
+   - إذا عرفنا المدينة → عرض العلامات المتاحة في المدينة مناسب ✅
    
-2️⃣ إذا عرفنا المدينة ولكن لا نعرف العلامة التجارية:
-   - السؤال عن العلامة التجارية مناسب ✅
-   - مثال: "أي ماركة تحتاج؟" أو "أي شركة تريد؟"
+2️⃣ إذا عرفنا المدينة والعميل يريد علامة معينة أو يسأل عن الأسعار:
+   - عرض المنتجات المتاحة للعلامة المحددة مناسب ✅
+   - أو السؤال "أي ماركة تحتاج؟" إذا لم يحدد العميل
    
-3️⃣ إذا عرفنا المدينة والعلامة ولكن لا نعرف حجم المنتج:
-   - السؤال عن المنتج أو الحجم مناسب ✅
-   - مثال: "أي حجم تريد؟" أو "أي منتج تحتاج؟"
+3️⃣ خدمة العملاء المفيدة:
+   - عرض الخيارات المتاحة أفضل من مجرد السؤال
+   - مثال: إذا عرفنا المدينة → اعرض العلامات المتاحة
+   - مثال: إذا عرفنا العلامة → اعرض المنتجات والأسعار
 
 قواعد التقييم الصارمة:
 
@@ -1314,8 +1315,9 @@ Classification:"""
 - يستخدم المعلومات الصحيحة حسب نوع السؤال
 - يتماشى مع سياق المحادثة
 - يقدم معلومات متعلقة بخدمات المياه عند الحاجة
-- يتبع التدفق المنطقي: مدينة → علامة تجارية → منتج/حجم
-- يسأل الأسئلة الصحيحة حسب ما نعرفه من السياق
+- يتبع التدفق المنطقي: مدينة → علامات متاحة أو منتجات
+- يعرض الخيارات المتاحة بدلاً من مجرد السؤال عنها
+- يقدم معلومات مفيدة حسب ما نعرفه من السياق
 
 أمثلة على أخطاء شائعة:
 - العميل يسأل عن رقم التواصل → الرد يتكلم عن الفروع ❌
@@ -1345,16 +1347,17 @@ Previous Conversation Context (Last 3 messages):
 Review the last 3 messages to understand context:
 
 1️⃣ When customer needs water delivery or asks about prices/brands:
-   - We must know their city first
    - If we don't know the city → Asking "Which city are you in?" is appropriate ✅
+   - If we know the city → Showing available brands in that city is appropriate ✅
    
-2️⃣ If we know the city but don't know the brand:
-   - Asking about the brand is appropriate ✅
-   - Example: "Which brand do you need?" or "Which company do you want?"
+2️⃣ If we know the city and customer wants specific brand or asks prices:
+   - Showing available products for the specified brand is appropriate ✅
+   - Or asking "Which brand do you need?" if customer hasn't specified
    
-3️⃣ If we know city and brand but don't know product size:
-   - Asking about product or size is appropriate ✅
-   - Example: "What size do you need?" or "Which product do you want?"
+3️⃣ Helpful Customer Service:
+   - Showing available options is better than just asking questions
+   - Example: If we know city → show available brands
+   - Example: If we know brand → show products and prices
 
 Strict Evaluation Rules:
 
@@ -1365,14 +1368,15 @@ Strict Evaluation Rules:
 - Provides information unrelated to customer's question
 - Contains duplicate links in the same message
 - Too generic and doesn't address the specific question
-- Violates logical conversation flow (asks about brand before city)
+- Asks about brand without knowing the city first
 🟢 Response is APPROPRIATE if:
 - Accurately answers the customer's specific question
 - Uses correct information based on question type
 - Aligns with conversation context
 - Provides relevant water service information when needed
-- Follows logical flow: city → brand → product/size
-- Asks the right questions based on what we know from context
+- Follows logical flow: city → available brands or products
+- Shows available options instead of just asking about them
+- Provides helpful information based on what we know from context
 
 Common Error Examples:
 - Customer asks about contact number → Response talks about branches ❌
