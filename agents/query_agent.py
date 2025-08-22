@@ -1281,8 +1281,23 @@ Classification:"""
 رسالة العميل: "{user_message}"
 الرد المُولد: "{generated_response}"
 
-السياق السابق للمحادثة:
+السياق السابق للمحادثة (آخر 3 رسائل):
 {conversation_context}
+
+🔄 فهم تدفق المحادثات لتوصيل المياه - مهم جداً:
+راجع الرسائل الثلاث الأخيرة لفهم السياق:
+
+1️⃣ عندما يحتاج العميل توصيل مياه أو يسأل عن الأسعار/العلامات:
+   - يجب أن نعرف مدينته أولاً
+   - إذا لم نعرف المدينة → السؤال "أي مدينة تريد؟" مناسب ✅
+   
+2️⃣ إذا عرفنا المدينة ولكن لا نعرف العلامة التجارية:
+   - السؤال عن العلامة التجارية مناسب ✅
+   - مثال: "أي ماركة تحتاج؟" أو "أي شركة تريد؟"
+   
+3️⃣ إذا عرفنا المدينة والعلامة ولكن لا نعرف حجم المنتج:
+   - السؤال عن المنتج أو الحجم مناسب ✅
+   - مثال: "أي حجم تريد؟" أو "أي منتج تحتاج؟"
 
 قواعد التقييم الصارمة:
 
@@ -1299,7 +1314,8 @@ Classification:"""
 - يستخدم المعلومات الصحيحة حسب نوع السؤال
 - يتماشى مع سياق المحادثة
 - يقدم معلومات متعلقة بخدمات المياه عند الحاجة
-- يسأل عن المدينة أو العلامة التجارية أو المنتجات أو الحجم عند الحاجة
+- يتبع التدفق المنطقي: مدينة → علامة تجارية → منتج/حجم
+- يسأل الأسئلة الصحيحة حسب ما نعرفه من السياق
 
 أمثلة على أخطاء شائعة:
 - العميل يسأل عن رقم التواصل → الرد يتكلم عن الفروع ❌
@@ -1322,8 +1338,23 @@ Your task: Determine if the generated response is appropriate and relevant to th
 Customer Message: "{user_message}"
 Generated Response: "{generated_response}"
 
-Previous Conversation Context:
+Previous Conversation Context (Last 3 messages):
 {conversation_context}
+
+🔄 Understanding Water Delivery Conversation Flow - Very Important:
+Review the last 3 messages to understand context:
+
+1️⃣ When customer needs water delivery or asks about prices/brands:
+   - We must know their city first
+   - If we don't know the city → Asking "Which city are you in?" is appropriate ✅
+   
+2️⃣ If we know the city but don't know the brand:
+   - Asking about the brand is appropriate ✅
+   - Example: "Which brand do you need?" or "Which company do you want?"
+   
+3️⃣ If we know city and brand but don't know product size:
+   - Asking about product or size is appropriate ✅
+   - Example: "What size do you need?" or "Which product do you want?"
 
 Strict Evaluation Rules:
 
@@ -1334,13 +1365,14 @@ Strict Evaluation Rules:
 - Provides information unrelated to customer's question
 - Contains duplicate links in the same message
 - Too generic and doesn't address the specific question
-
+- Violates logical conversation flow (asks about brand before city)
 🟢 Response is APPROPRIATE if:
 - Accurately answers the customer's specific question
 - Uses correct information based on question type
 - Aligns with conversation context
 - Provides relevant water service information when needed
-- Asks about city, brand, products, or size when needed
+- Follows logical flow: city → brand → product/size
+- Asks the right questions based on what we know from context
 
 Common Error Examples:
 - Customer asks about contact number → Response talks about branches ❌
