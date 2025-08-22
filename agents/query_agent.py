@@ -522,40 +522,40 @@ class QueryAgent:
                                     "found_in": "current_message_city"
                                 }
                 
-                # PRIORITY 2: Check for district in last message (current user message)
-                if user_message:
-                    district_match = district_lookup.find_district_in_message(user_message, db)
-                    print(f"🏘️ QueryAgent: District match: {district_match}")
-                    if district_match:
-                        district_name = district_match['district']
-                        city_name = district_match['city']
-                        
-                        print(f"🏘️ QueryAgent: Found district '{district_name}' -> city '{city_name}' in last message")
-                        
-                        # Verify district extraction with ChatGPT
-                        is_verified = await self._verify_city_extraction(
-                            user_message, conversation_history, 
-                            district_name, "الرسالة الحالية (حي)"
-                        )
-                        
-                        if is_verified:
-                            # Find the city details in our cities list (normalize for comparison)
-                            normalized_district_city = district_lookup.normalize_city_name(city_name)
-                            for city in all_cities:
-                                system_city_name = city.get("name", "").strip()
-                                normalized_system_city = district_lookup.normalize_city_name(system_city_name)
-                                
-                                if normalized_system_city == normalized_district_city:
-                                    print(f"🎯 QueryAgent: District-to-City mapping from last message:")
-                                    print(f"   📍 District: '{district_name}' (user is from this district)")
-                                    print(f"   🏙️ Business City: '{city['name']}' (ID: {city['id']}) - THIS will be used for brands/products")
-                                    return {
-                                        "city_id": city["id"],
-                                        "city_name": city["name"],  # ← CITY name (e.g., "الأحساء") - used for business logic
-                                        "city_name_en": city["name_en"],
-                                        "found_in": "current_message_district",
-                                        "district_name": district_name  # ← DISTRICT name (e.g., "الحمراء الأول") - context only
-                                    }
+                # PRIORITY 2: Check for district in last message (current user message) - COMMENTED OUT
+                # if user_message:
+                #     district_match = district_lookup.find_district_in_message(user_message, db)
+                #     print(f"🏘️ QueryAgent: District match: {district_match}")
+                #     if district_match:
+                #         district_name = district_match['district']
+                #         city_name = district_match['city']
+                #         
+                #         print(f"🏘️ QueryAgent: Found district '{district_name}' -> city '{city_name}' in last message")
+                #         
+                #         # Verify district extraction with ChatGPT
+                #         is_verified = await self._verify_city_extraction(
+                #             user_message, conversation_history, 
+                #             district_name, "الرسالة الحالية (حي)"
+                #         )
+                #         
+                #         if is_verified:
+                #             # Find the city details in our cities list (normalize for comparison)
+                #             normalized_district_city = district_lookup.normalize_city_name(city_name)
+                #             for city in all_cities:
+                #                 system_city_name = city.get("name", "").strip()
+                #                 normalized_system_city = district_lookup.normalize_city_name(system_city_name)
+                #                 
+                #                 if normalized_system_city == normalized_district_city:
+                #                     print(f"🎯 QueryAgent: District-to-City mapping from last message:")
+                #                     print(f"   📍 District: '{district_name}' (user is from this district)")
+                #                     print(f"   🏙️ Business City: '{city['name']}' (ID: {city['id']}) - THIS will be used for brands/products")
+                #                     return {
+                #                         "city_id": city["id"],
+                #                         "city_name": city["name"],  # ← CITY name (e.g., "الأحساء") - used for business logic
+                #                         "city_name_en": city["name_en"],
+                #                         "found_in": "current_message_district",
+                #                         "district_name": district_name  # ← DISTRICT name (e.g., "الحمراء الأول") - context only
+                #                     }
                 
                 # PRIORITY 3: Check for city in conversation history
                 if conversation_history:
@@ -606,42 +606,42 @@ class QueryAgent:
                                         "found_in": "conversation_history_city"
                                     }
                 
-                # PRIORITY 4: Check for district in conversation history
-                if conversation_history:
-                    for message in reversed(conversation_history[-5:]):  # Check last 5 messages
-                        content = message.get("content", "")
-                        
-                        district_match = district_lookup.find_district_in_message(content, db)
-                        if district_match:
-                            district_name = district_match['district']
-                            city_name = district_match['city']
-                            
-                            print(f"🏘️ QueryAgent: Found district in history '{district_name}' -> city '{city_name}'")
-                            
-                            # Verify district extraction with ChatGPT
-                            is_verified = await self._verify_city_extraction(
-                                user_message, conversation_history, 
-                                district_name, "تاريخ المحادثة (حي)"
-                            )
-                            
-                            if is_verified:
-                                # Find the city details in our cities list (normalize for comparison)
-                                normalized_district_city = district_lookup.normalize_city_name(city_name)
-                                for city in all_cities:
-                                    system_city_name = city.get("name", "").strip()
-                                    normalized_system_city = district_lookup.normalize_city_name(system_city_name)
-                                    
-                                    if normalized_system_city == normalized_district_city:
-                                        print(f"🎯 QueryAgent: District-to-City mapping from history:")
-                                        print(f"   📍 District: '{district_name}' (user is from this district)")
-                                        print(f"   🏙️ Business City: '{city['name']}' (ID: {city['id']}) - THIS will be used for brands/products")
-                                        return {
-                                            "city_id": city["id"],
-                                            "city_name": city["name"],  # ← CITY name - used for business logic
-                                            "city_name_en": city["name_en"],
-                                            "found_in": "conversation_history_district",
-                                            "district_name": district_name  # ← DISTRICT name - context only
-                                        }
+                # PRIORITY 4: Check for district in conversation history - COMMENTED OUT
+                # if conversation_history:
+                #     for message in reversed(conversation_history[-5:]):  # Check last 5 messages
+                #         content = message.get("content", "")
+                #         
+                #         district_match = district_lookup.find_district_in_message(content, db)
+                #         if district_match:
+                #             district_name = district_match['district']
+                #             city_name = district_match['city']
+                #             
+                #             print(f"🏘️ QueryAgent: Found district in history '{district_name}' -> city '{city_name}'")
+                #             
+                #             # Verify district extraction with ChatGPT
+                #             is_verified = await self._verify_city_extraction(
+                #                 user_message, conversation_history, 
+                #                 district_name, "تاريخ المحادثة (حي)"
+                #             )
+                #             
+                #             if is_verified:
+                #                 # Find the city details in our cities list (normalize for comparison)
+                #                 normalized_district_city = district_lookup.normalize_city_name(city_name)
+                #                 for city in all_cities:
+                #                     system_city_name = city.get("name", "").strip()
+                #                     normalized_system_city = district_lookup.normalize_city_name(system_city_name)
+                #                     
+                #                     if normalized_system_city == normalized_district_city:
+                #                         print(f"🎯 QueryAgent: District-to-City mapping from history:")
+                #                         print(f"   📍 District: '{district_name}' (user is from this district)")
+                #                         print(f"   🏙️ Business City: '{city['name']}' (ID: {city['id']}) - THIS will be used for brands/products")
+                #                         return {
+                #                             "city_id": city["id"],
+                #                             "city_name": city["name"],  # ← CITY name - used for business logic
+                #                             "city_name_en": city["name_en"],
+                #                             "found_in": "conversation_history_district",
+                #                             "district_name": district_name  # ← DISTRICT name - context only
+                #                         }
 
                 return None
             finally:
@@ -1299,6 +1299,7 @@ Classification:"""
 - يستخدم المعلومات الصحيحة حسب نوع السؤال
 - يتماشى مع سياق المحادثة
 - يقدم معلومات متعلقة بخدمات المياه عند الحاجة
+- يسأل عن المدينة أو العلامة التجارية أو المنتجات أو الحجم عند الحاجة
 
 أمثلة على أخطاء شائعة:
 - العميل يسأل عن رقم التواصل → الرد يتكلم عن الفروع ❌
@@ -1339,6 +1340,7 @@ Strict Evaluation Rules:
 - Uses correct information based on question type
 - Aligns with conversation context
 - Provides relevant water service information when needed
+- Asks about city, brand, products, or size when needed
 
 Common Error Examples:
 - Customer asks about contact number → Response talks about branches ❌
