@@ -1628,7 +1628,9 @@ Output in JSON format only:
                     - Use the get_all_cities() function to get the list of cities we serve
                     - Compare the suspected word with the available cities list
                     - Get the correct and complete city name from the list
-                    - Use the correct name with other functions like get_brands_by_city_name
+                    - Use the correct name with other functions like get_brands_by_city_name and get_products_by_brand_and_city_name
+                    
+                    
 
                     Communication Style:
                     - Talk like a real human customer service representative
@@ -1868,6 +1870,12 @@ Output in JSON format only:
                     - قارن الكلمة المشبوهة مع قائمة المدن المتاحة
                     - احصل على الاسم الصحيح والكامل للمدينة من القائمة
                     - استخدم الاسم الصحيح مع الوظائف الأخرى مثل get_brands_by_city_name and  get_products_by_brand_and_city_name
+                    
+                    📍 أسماء المدن المختصرة - انتبه لهذا:
+                    - المستخدمون أحياناً يقولون "المدينة" أو "المدينه" بدلاً من "المدينة المنورة"
+                    - المستخدمون أحياناً يقولون "مكة" أو "مكه" بدلاً من "مكة المكرمة"
+                    - عندما تسمع هذه الأسماء المختصرة، اعلم أن المستخدم يريد المدينة المنورة أو مكة المكرمة
+                    - وكلا من المدينين يتم التوصيل لهم
 
                     أسلوب التواصل:
                     - تكلم مثل موظف خدمة عملاء حقيقي
