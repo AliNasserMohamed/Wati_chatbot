@@ -66,10 +66,6 @@ class QueryAgent:
         self.max_retries = int(os.getenv("OPENAI_MAX_RETRIES", "3"))  # Default 3 retries
         self.base_delay = float(os.getenv("OPENAI_BASE_DELAY", "1"))  # Default 1 second base delay
         
-        # Simple classification cache to reduce API calls
-        self.classification_cache = {}
-        self.cache_max_size = 1000
-        
         # Define available functions for the LLM
         self.available_functions = {
             "get_all_cities": lambda user_language='ar': self.get_all_cities(user_language),
@@ -100,6 +96,7 @@ class QueryAgent:
         ✅ الرد بـ "نعم" أو "أي" عندما نسأل عن منتج معين في سياق المحادثة
         ✅ أسئلة عن الأسعار الإجمالية أو قوائم الأسعار
         ✅ طلبات الطلب أو الشراء ("أريد أطلب"، "كيف أطلب"، "أريد أشتري"، "أبي أطلب")
+        ✅ طلبات توصيل المياه مع ذكر العلامة التجارية ("أريد توصيل مياه نستله"، "ارغب بتوصيل مياه راين")
         ✅ الردود على أسئلة متعلقة بالمياه والعلامات التجارية في تاريخ المحادثة
 
         الرسائل غير المتعلقة بالخدمة تشمل:
@@ -109,7 +106,7 @@ class QueryAgent:
         ❌ الأسئلة الشخصية
         ❌ طلبات المساعدة في مواضيع أخرى
         ❌ الرسائل التي تحتوي على روابط
-        ❌ الاستفسار عن خدمة التوصيل العامة
+        ❌ الاستفسار عن خدمة التوصيل العامة (بدون ذكر علامة تجارية أو مدينة)
         ❌ مشاكل متعلقة بالمندوب أو المندوبين
         ❌ شكاوي من المندوب أو طاقم التوصيل
         ❌ مشاكل التوصيل (تأخير، عدم وصول الطلب، مشاكل التوصيل)
@@ -122,7 +119,8 @@ class QueryAgent:
 
         تعليمات خاصة وصارمة:
         - كن صارم جداً في التصنيف - فقط الأسئلة عن المدن والعلامات التجارية والمنتجات والأسعار تعتبر متعلقة
-        - أي رسالة تذكر "المندوب" أو "التوصيل" أو "الطلب لم يصل" أو "تأخر" أو "متى يوصل" أو "متى يجي" تعتبر غير متعلقة
+        - أي رسالة تذكر "المندوب" أو "الطلب لم يصل" أو "تأخر" أو "متى يوصل" أو "متى يجي" تعتبر غير متعلقة
+        - لكن طلبات "توصيل المياه" مع ذكر العلامة التجارية أو المدينة تعتبر متعلقة بالخدمة
         - أي رسالة تطلب "تعديل الموقع" أو "تغيير العنوان" أو "أعدل المكان" تعتبر غير متعلقة
         - أي شكوى أو مشكلة في الخدمة تعتبر غير متعلقة
         - لا تعتبر التحيات والشكر متعلقة بالخدمة حتى لو كانت في سياق محادثة عن المياه
@@ -145,6 +143,7 @@ class QueryAgent:
             ✅ Replying with "yes" when we ask about a specific product
             ✅ Questions about total prices or price lists
             ✅ Order requests or purchase inquiries ("I want to order", "how to order", "I want to buy")
+            ✅ Water delivery requests with brand mentions ("I want Nestle water delivery", "I need Rain water delivery")
 
             Non-service-related messages include:
             ❌ General greetings ("hello", "hi", "good morning", "good evening", "how are you")
@@ -153,7 +152,7 @@ class QueryAgent:
             ❌ Personal questions
             ❌ Requests for help with other topics
             ❌ Messages containing links or URLs
-            ❌ General delivery service inquiries
+            ❌ General delivery service inquiries (without mentioning brand or city)
             ❌ Problems related to delivery person/driver
             ❌ Complaints about delivery person or delivery staff
             ❌ Delivery problems (delays, order not arrived, delivery issues)
@@ -166,7 +165,8 @@ class QueryAgent:
 
             Special strict instructions:
             - Be very strict in classification - only questions about cities, brands, products, and prices count as relevant
-            - Any message mentioning "delivery person", "driver", "delivery", "order not arrived", "delayed", "when will it arrive", or "how long" is not relevant
+            - Any message mentioning "delivery person", "driver", "order not arrived", "delayed", "when will it arrive", or "how long" is not relevant
+            - But water delivery requests with brand or city mentions are service-related
             - Any message requesting to "edit location", "change address", or "modify delivery location" is not relevant
             - Any complaint or service problem is not relevant
             - Do not consider greetings and thanks as service-related even if they appear in water-related conversations
@@ -1192,11 +1192,7 @@ class QueryAgent:
                 logger.info(f"Message contains URL, marking as not relevant: {user_message[:50]}...")
                 return False
             
-            # Check cache first to avoid duplicate API calls
-            cache_key = f"{user_message.strip().lower()}_{user_language}"
-            if cache_key in self.classification_cache:
-                logger.info(f"Using cached classification for: {user_message[:30]}...")
-                return self.classification_cache[cache_key]
+            # Classification will be performed fresh each time for accuracy
             
             # Prepare context from conversation history
             context = ""
@@ -1230,17 +1226,9 @@ Classification:"""
             # Log the classification
             logger.info(f"Message classification for '{user_message[:50]}...': {classification_result}")
             
-            # Determine relevance and cache the result
+            # Determine relevance
             # Fix: Check for exact match to avoid "not_relevant" being treated as relevant
             is_relevant = classification_result == "relevant"
-            
-            # Cache the result (with size limit)
-            if len(self.classification_cache) >= self.cache_max_size:
-                # Remove oldest entry (simple FIFO)
-                oldest_key = next(iter(self.classification_cache))
-                del self.classification_cache[oldest_key]
-            
-            self.classification_cache[cache_key] = is_relevant
             
             # Return True if relevant, False if not relevant
             return is_relevant
