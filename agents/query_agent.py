@@ -92,7 +92,10 @@ class QueryAgent:
         ✅ طلبات معرفة التوفر في مدينة معينة أو حي معين
         ✅ أسئلة عن أحجام المياه والعبوات
         ✅ أسئلة عن الدبات والقوارير والجوالين (عبوات المياه الكبيرة)
-        ✅ ذكر أسماء العلامات التجارية مثل (نستله، أكوافينا، العين، القصيم، المراعي، وغيرها)
+        ✅ ذكر أسماء العلامات التجارية مثل (نستله، أكوافينا، العين، القصيم، المراعي، حلوه، وغيرها)
+        ✅ أي ذكر لـ "مياه" مع أحجام أو أوصاف المنتجات (مثل "مياه حلوه 200 مل", "مياه الشكل الجديد", "مياه صغيرة")
+        ✅ أسئلة التوفر مع ذكر "مياه" ("عندكم مياه", "يوجد مياه", "متوفر مياه")
+        ✅ وصف منتجات المياه ("الشكل الجديد", "الحجم الجديد", "النوع الجديد", أي وصف مع كلمة "مياه")
         ✅ الرد بـ "نعم" أو "أي" عندما نسأل عن منتج معين في سياق المحادثة
         ✅ أسئلة عن الأسعار الإجمالية أو قوائم الأسعار
         ✅ طلبات الطلب أو الشراء ("أريد أطلب"، "كيف أطلب"، "أريد أشتري"، "أبي أطلب")
@@ -119,6 +122,9 @@ class QueryAgent:
 
         تعليمات خاصة وصارمة:
         - كن صارم جداً في التصنيف - فقط الأسئلة عن المدن والعلامات التجارية والمنتجات والأسعار تعتبر متعلقة
+        - 🚨 أي رسالة تحتوي على كلمة "مياه" مع وصف منتج أو حجم أو سؤال توفر تعتبر متعلقة بالخدمة
+        - 🚨 مثال: "عندكم مياه حلوه الشكل الجديد 200 مل" = متعلقة بالخدمة (حتى لو كانت "حلوه" غير معروفة كعلامة تجارية)
+        - 🚨 أي اسم مذكور مع "مياه" يجب اعتباره علامة تجارية محتملة = متعلق بالخدمة
         - أي رسالة تذكر "المندوب" أو "الطلب لم يصل" أو "تأخر" أو "متى يوصل" أو "متى يجي" تعتبر غير متعلقة
         - لكن طلبات "توصيل المياه" مع ذكر العلامة التجارية أو المدينة تعتبر متعلقة بالخدمة
         - أي رسالة تطلب "تعديل الموقع" أو "تغيير العنوان" أو "أعدل المكان" تعتبر غير متعلقة
@@ -139,7 +145,10 @@ class QueryAgent:
             ✅ Requests to check availability in specific cities
             ✅ Questions about water sizes and packaging
             ✅ Questions about water gallons, jugs, and large water containers
-            ✅ Mentioning brand names like (Nestle, Aquafina, Alain, Qassim, Almarai, etc.)
+            ✅ Mentioning brand names like (Nestle, Aquafina, Alain, Qassim, Almarai, Helwa, etc.)
+            ✅ Any mention of "water" with product sizes or descriptions ("Helwa water 200ml", "water new design", "small water")
+            ✅ Availability questions with "water" ("do you have water", "water available", "any water")
+            ✅ Water product descriptions ("new design", "new size", "new type", any description with "water")
             ✅ Replying with "yes" when we ask about a specific product
             ✅ Questions about total prices or price lists
             ✅ Order requests or purchase inquiries ("I want to order", "how to order", "I want to buy")
@@ -165,6 +174,9 @@ class QueryAgent:
 
             Special strict instructions:
             - Be very strict in classification - only questions about cities, brands, products, and prices count as relevant
+            - 🚨 Any message containing "water" with product description or size or availability question counts as service-related
+            - 🚨 Example: "do you have Helwa water new design 200ml" = service-related (even if "Helwa" is unknown brand)
+            - 🚨 Any name mentioned with "water" should be considered potential brand = service-related
             - Any message mentioning "delivery person", "driver", "order not arrived", "delayed", "when will it arrive", or "how long" is not relevant
             - But water delivery requests with brand or city mentions are service-related
             - Any message requesting to "edit location", "change address", or "modify delivery location" is not relevant
