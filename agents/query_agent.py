@@ -1473,6 +1473,7 @@ Output in JSON format only:
                     raise ValueError("Missing required keys in validation result")
                 
                 print(f"🔍 Response validation result: {result['is_appropriate']} (confidence: {result['confidence']}) - {result['reason']}")
+                print(f"📝 Generated response being validated: '{generated_response}'")
                 return result
                 
             except (json.JSONDecodeError, ValueError) as e:
