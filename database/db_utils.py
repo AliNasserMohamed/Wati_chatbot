@@ -5,7 +5,7 @@ from typing import Optional, List, Dict, Any, Union
 import os
 import datetime
 
-from database.db_models import Base, User, UserMessage, BotReply, City, Brand, Product, DataSyncLog
+from database.db_models import Base, User, UserMessage, BotReply, City, Brand, Product, DataSyncLog, Complaint, Suggestion
 
 # Create database directory if it doesn't exist
 os.makedirs("database/data", exist_ok=True)
@@ -193,6 +193,8 @@ class DatabaseManager:
             "phone_number": phone_number,
             "user_found": False,
             "bot_replies_deleted": 0,
+            "complaints_deleted": 0,
+            "suggestions_deleted": 0,
             "user_messages_deleted": 0,
             "user_deleted": False,
             "success": False,
@@ -213,13 +215,27 @@ class DatabaseManager:
             # Get all user messages
             user_messages = db.query(UserMessage).filter(UserMessage.user_id == user_id).all()
             
-            # Delete bot replies first (to maintain referential integrity)
+            # Delete dependent records first (to maintain referential integrity)
             total_bot_replies = 0
+            total_complaints = 0
+            total_suggestions = 0
+            
             for message in user_messages:
+                # Delete bot replies
                 bot_replies_count = db.query(BotReply).filter(BotReply.message_id == message.id).delete()
                 total_bot_replies += bot_replies_count
+                
+                # Delete complaints  
+                complaints_count = db.query(Complaint).filter(Complaint.message_id == message.id).delete()
+                total_complaints += complaints_count
+                
+                # Delete suggestions
+                suggestions_count = db.query(Suggestion).filter(Suggestion.message_id == message.id).delete()
+                total_suggestions += suggestions_count
             
             results["bot_replies_deleted"] = total_bot_replies
+            results["complaints_deleted"] = total_complaints
+            results["suggestions_deleted"] = total_suggestions
             
             # Delete user messages
             messages_deleted = db.query(UserMessage).filter(UserMessage.user_id == user_id).delete()
