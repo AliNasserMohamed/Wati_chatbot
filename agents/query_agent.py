@@ -1284,6 +1284,35 @@ Classification:"""
 السياق السابق للمحادثة (آخر 3 رسائل):
 {conversation_context}
 
+📋 نطاق عمل وكيل الاستعلامات - مهم جداً لفهم الردود المناسبة:
+
+🎯 ما يستطيع وكيل الاستعلامات فعله:
+1. ✅ عرض المدن المتاحة للتوصيل
+2. ✅ عرض العلامات التجارية المتاحة في كل مدينة
+3. ✅ عرض منتجات المياه وأسعارها لكل علامة تجارية
+4. ✅ البحث عن علامات تجارية في مدن محددة
+5. ✅ عرض أرخص المنتجات في مدينة معينة
+6. ✅ الإجابة على أسئلة المنتجات والأسعار والتوفر
+7. ✅ طرح أسئلة ودودة لجمع معلومات (مدينة، علامة، منتج)
+8. ✅ توجيه العميل للتطبيق/الموقع للطلب
+9. ✅ التعامل مع الاستفسارات العامة عن المياه وأنواعها
+
+❌ ما لا يستطيع وكيل الاستعلامات فعله:
+1. ❌ أخذ طلبات فعلية أو معالجة الدفع
+2. ❌ تحديد مواعيد التوصيل أو التوصيل الفعلي
+3. ❌ التعامل مع مشاكل المندوبين أو التوصيل
+4. ❌ تعديل الطلبات الموجودة أو إلغاؤها
+5. ❌ التعامل مع الشكاوي أو مشاكل الخدمة
+6. ❌ تقديم معلومات التواصل أو العناوين
+7. ❌ التعامل مع طلبات تغيير المواقع أو العناوين
+
+🔧 وظائف النظام المتاحة لوكيل الاستعلامات:
+- get_all_cities(): عرض جميع المدن
+- get_brands_by_city_name(): عرض العلامات في مدينة
+- get_products_by_brand_and_city_name(): عرض منتجات علامة في مدينة
+- search_brands_in_city(): البحث عن علامات تجارية
+- get_cheapest_products_by_city_name(): أرخص المنتجات في مدينة
+
 🔄 فهم تدفق المحادثات لتوصيل المياه - مهم جداً:
 راجع الرسائل الثلاث الأخيرة لفهم السياق:
 
@@ -1310,6 +1339,8 @@ Classification:"""
 - يحتوي على روابط مكررة في نفس الرسالة
 - عام جداً ولا يجيب على السؤال المحدد
 
+⚠️ تنبيه: لا ترفض الردود التي تجيب بصدق على توفر المنتجات!
+
 🟢 الرد مناسب إذا:
 - يجيب بدقة على سؤال العميل المحدد
 - يستخدم المعلومات الصحيحة حسب نوع السؤال
@@ -1318,11 +1349,17 @@ Classification:"""
 - يتبع التدفق المنطقي: مدينة → علامات متاحة أو منتجات
 - يعرض الخيارات المتاحة بدلاً من مجرد السؤال عنها
 - يقدم معلومات مفيدة حسب ما نعرفه من السياق
+- يجيب بصدق عن توفر أو عدم توفر منتج معين (مقبول حتى لو لم يقدم بدائل)
 
 أمثلة على أخطاء شائعة:
 - العميل يسأل عن رقم التواصل → الرد يتكلم عن الفروع ❌
 - العميل يسأل عن التوصيل عامة → الرد عن التوصيل للباب فقط ❌ 
 - العميل يسأل عن ماركة معينة → رد عام عن جميع الماركات ❌
+
+أمثلة على ردود صحيحة ومقبولة:
+- العميل يسأل عن "مياه المنهل" → "للأسف، مياه المنهل غير متوفرة حالياً" ✅ (مقبول)
+- العميل يسأل عن علامة معينة → "هذه العلامة غير متاحة في الرياض" ✅ (مقبول)
+- إخبار العميل بالحقيقة عن التوفر أفضل من معلومات خاطئة ✅
 
 قيّم الرد وأخرج:
 - is_appropriate: true أو false
@@ -1342,6 +1379,35 @@ Generated Response: "{generated_response}"
 
 Previous Conversation Context (Last 3 messages):
 {conversation_context}
+
+📋 Query Agent Scope - Critical for Understanding Appropriate Responses:
+
+🎯 What the Query Agent CAN do:
+1. ✅ Show available cities for delivery
+2. ✅ Show available water brands in each city
+3. ✅ Show water products and prices for each brand
+4. ✅ Search for brands in specific cities
+5. ✅ Show cheapest products in a specific city
+6. ✅ Answer questions about products, prices, and availability
+7. ✅ Ask friendly questions to gather information (city, brand, product)
+8. ✅ Direct customers to app/website for ordering
+9. ✅ Handle general inquiries about water and water types
+
+❌ What the Query Agent CANNOT do:
+1. ❌ Take actual orders or process payments
+2. ❌ Schedule deliveries or handle actual delivery
+3. ❌ Handle delivery driver or delivery problems
+4. ❌ Modify or cancel existing orders
+5. ❌ Handle complaints or service issues
+6. ❌ Provide contact information or addresses
+7. ❌ Handle requests to change locations or addresses
+
+🔧 Available System Functions for Query Agent:
+- get_all_cities(): Show all cities
+- get_brands_by_city_name(): Show brands in city
+- get_products_by_brand_and_city_name(): Show brand products in city
+- search_brands_in_city(): Search for brands
+- get_cheapest_products_by_city_name(): Cheapest products in city
 
 🔄 Understanding Water Delivery Conversation Flow - Very Important:
 Review the last 3 messages to understand context:
@@ -1369,6 +1435,8 @@ Strict Evaluation Rules:
 - Contains duplicate links in the same message
 - Too generic and doesn't address the specific question
 - Asks about brand without knowing the city first
+
+⚠️ Warning: Don't reject responses that honestly answer about product availability!
 🟢 Response is APPROPRIATE if:
 - Accurately answers the customer's specific question
 - Uses correct information based on question type
@@ -1377,11 +1445,17 @@ Strict Evaluation Rules:
 - Follows logical flow: city → available brands or products
 - Shows available options instead of just asking about them
 - Provides helpful information based on what we know from context
+- Honestly answers about availability or non-availability of specific products (acceptable even without alternatives)
 
 Common Error Examples:
 - Customer asks about contact number → Response talks about branches ❌
 - Customer asks about general delivery → Response only about door delivery ❌
 - Customer asks about specific brand → Generic response about all brands ❌
+
+Examples of Correct and Acceptable Responses:
+- Customer asks about "Al Manhal water" → "Sorry, Al Manhal water is currently not available" ✅ (Acceptable)
+- Customer asks about specific brand → "This brand is not available in Riyadh" ✅ (Acceptable)
+- Telling customer the truth about availability is better than wrong information ✅
 
 Evaluate the response and output:
 - is_appropriate: true or false
