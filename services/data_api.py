@@ -38,13 +38,23 @@ class DataAPIService:
         }
     
     @staticmethod
-    def get_city_id_by_name(db: Session, city_name: str) -> Optional[int]:
-        """Get city ID by name (supports both Arabic and English names)"""
-        city = db.query(City).filter(
-            (City.name.ilike(f"%{city_name}%")) | 
-            (City.name_en.ilike(f"%{city_name}%")) |
-            (City.title.ilike(f"%{city_name}%"))
-        ).first()
+    def get_city_id_by_name(db: Session, city_name: str, user_language: str = 'ar') -> Optional[int]:
+        """Get city ID by name - language-aware search"""
+        # LANGUAGE-AWARE CITY SEARCH: Search appropriate language column first
+        if user_language == 'en':
+            # For English conversations, prioritize English city names
+            city = db.query(City).filter(
+                (City.name_en.ilike(f"%{city_name}%")) |
+                (City.name.ilike(f"%{city_name}%")) | 
+                (City.title.ilike(f"%{city_name}%"))
+            ).first()
+        else:
+            # For Arabic conversations, prioritize Arabic city names  
+            city = db.query(City).filter(
+                (City.name.ilike(f"%{city_name}%")) | 
+                (City.name_en.ilike(f"%{city_name}%")) |
+                (City.title.ilike(f"%{city_name}%"))
+            ).first()
         
         if city:
             return city.id  # Now this is the same as external_id
@@ -91,16 +101,41 @@ class DataAPIService:
                 "name_en": city.name_en or ""    # Keep original English for reference
             }
             
-            # Check for exact matches
-            if (query_normalized == city_name_lower or 
-                query_normalized == city_name_en_lower):
-                city_data["match_type"] = "exact"
-                exact_matches.append(city_data)
-            # Check for partial matches (search term must be contained in city name)
-            elif (query_normalized in city_name_lower or 
-                  query_normalized in city_name_en_lower):
-                city_data["match_type"] = "partial"
-                partial_matches.append(city_data)
+            # LANGUAGE-AWARE SEARCH PRIORITY: Check appropriate language first
+            exact_match = False
+            
+            if user_language == 'en':
+                # For English conversations, prioritize English city names
+                if query_normalized == city_name_en_lower:
+                    city_data["match_type"] = "exact"
+                    exact_matches.append(city_data)
+                    exact_match = True
+                elif query_normalized == city_name_lower:
+                    city_data["match_type"] = "exact"
+                    exact_matches.append(city_data)
+                    exact_match = True
+                elif query_normalized in city_name_en_lower:
+                    city_data["match_type"] = "partial"
+                    partial_matches.append(city_data)
+                elif query_normalized in city_name_lower:
+                    city_data["match_type"] = "partial"
+                    partial_matches.append(city_data)
+            else:
+                # For Arabic conversations, prioritize Arabic city names
+                if query_normalized == city_name_lower:
+                    city_data["match_type"] = "exact"
+                    exact_matches.append(city_data)
+                    exact_match = True
+                elif query_normalized == city_name_en_lower:
+                    city_data["match_type"] = "exact"
+                    exact_matches.append(city_data)
+                    exact_match = True
+                elif query_normalized in city_name_lower:
+                    city_data["match_type"] = "partial"
+                    partial_matches.append(city_data)
+                elif query_normalized in city_name_en_lower:
+                    city_data["match_type"] = "partial"
+                    partial_matches.append(city_data)
             # If no match at all, don't include this city
         
         # Return exact matches first, then partial matches
@@ -233,14 +268,38 @@ class DataAPIService:
                 "city_name_en": city.name_en     # Keep original English for reference
             }
             
-            # Check for EXACT matches first (normalized)
-            if (normalized_brand_title == normalized_brand_name or 
-                normalized_brand_title_en == normalized_brand_name):
-                exact_matches.append(brand_info)
-            # Then check for PARTIAL matches
-            elif (normalized_brand_name in normalized_brand_title or 
-                  normalized_brand_name in normalized_brand_title_en):
-                partial_matches.append(brand_info)
+            # LANGUAGE-AWARE SEARCH PRIORITY: Check appropriate language first
+            exact_match = False
+            partial_match = False
+            
+            if user_language == 'en':
+                # For English conversations, prioritize English brand names
+                if normalized_brand_title_en == normalized_brand_name:
+                    exact_matches.append(brand_info)
+                    exact_match = True
+                elif normalized_brand_title == normalized_brand_name:
+                    exact_matches.append(brand_info)
+                    exact_match = True
+                elif normalized_brand_name in normalized_brand_title_en:
+                    partial_matches.append(brand_info)
+                    partial_match = True
+                elif normalized_brand_name in normalized_brand_title:
+                    partial_matches.append(brand_info)
+                    partial_match = True
+            else:
+                # For Arabic conversations, prioritize Arabic brand names
+                if normalized_brand_title == normalized_brand_name:
+                    exact_matches.append(brand_info)
+                    exact_match = True
+                elif normalized_brand_title_en == normalized_brand_name:
+                    exact_matches.append(brand_info)
+                    exact_match = True
+                elif normalized_brand_name in normalized_brand_title:
+                    partial_matches.append(brand_info)
+                    partial_match = True
+                elif normalized_brand_name in normalized_brand_title_en:
+                    partial_matches.append(brand_info)
+                    partial_match = True
         
         print(f"🔍 Brand search results for '{brand_name}' in '{city_name}':")
         print(f"   ✅ Exact matches: {len(exact_matches)}")
@@ -267,31 +326,57 @@ class DataAPIService:
         print(f"🔍 Cascading search for products: brand='{brand_name}' city='{city_name}'")
         print(f"   Normalized: brand='{normalized_brand_name}' city='{normalized_city_name}'")
         
-        # Helper function to find exact city match
+        # Helper function to find exact city match (LANGUAGE-AWARE)
         def find_exact_city(city_name_to_search: str):
             normalized_search = DistrictLookup.normalize_city_name(city_name_to_search).lower()
+            
             for city_candidate in db.query(City).all():
                 city_ar_normalized = DistrictLookup.normalize_city_name(city_candidate.name).lower()
                 city_en_normalized = city_candidate.name_en.lower() if city_candidate.name_en else ""
                 
-                if (city_ar_normalized == normalized_search or 
-                    city_en_normalized == normalized_search):
-                    return city_candidate
+                # LANGUAGE-AWARE PRIORITY: Search appropriate language column first
+                if user_language == 'en':
+                    # For English conversations, prioritize English names
+                    if city_en_normalized and city_en_normalized == normalized_search:
+                        return city_candidate
+                    # Fallback: Check Arabic name (for cases like "Kharj" → "الخرج")
+                    elif city_ar_normalized == normalized_search:
+                        return city_candidate
+                else:
+                    # For Arabic conversations, prioritize Arabic names
+                    if city_ar_normalized == normalized_search:
+                        return city_candidate
+                    # Fallback: Check English name
+                    elif city_en_normalized and city_en_normalized == normalized_search:
+                        return city_candidate
             return None
         
-        # Helper function to find partial city matches
+        # Helper function to find partial city matches (LANGUAGE-AWARE)
         def find_partial_cities(city_name_to_search: str):
-            return db.query(City).filter(
-                or_(
-                    City.name.ilike(f"%{city_name_to_search}%"),
-                    City.name_en.ilike(f"%{city_name_to_search}%"),
-                    City.title.ilike(f"%{city_name_to_search}%")
-                )
-            ).all()
+            # For language-aware partial matching, prioritize appropriate language column
+            if user_language == 'en':
+                # For English conversations, prioritize English names
+                return db.query(City).filter(
+                    or_(
+                        City.name_en.ilike(f"%{city_name_to_search}%"),
+                        City.name.ilike(f"%{city_name_to_search}%"),
+                        City.title.ilike(f"%{city_name_to_search}%")
+                    )
+                ).all()
+            else:
+                # For Arabic conversations, prioritize Arabic names
+                return db.query(City).filter(
+                    or_(
+                        City.name.ilike(f"%{city_name_to_search}%"),
+                        City.name_en.ilike(f"%{city_name_to_search}%"),
+                        City.title.ilike(f"%{city_name_to_search}%")
+                    )
+                ).all()
         
-        # Helper function to find exact brand in city
+        # Helper function to find exact brand in city (LANGUAGE-AWARE)
         def find_exact_brand_in_city(city, brand_name_to_search: str):
             normalized_search = DistrictLookup.normalize_city_name(brand_name_to_search).lower()
+            
             for brand in city.brands:
                 if not brand.title:
                     continue
@@ -299,14 +384,27 @@ class DataAPIService:
                 brand_ar_normalized = DistrictLookup.normalize_city_name(brand.title).lower()
                 brand_en_normalized = brand.title_en.lower() if brand.title_en else ""
                 
-                if (brand_ar_normalized == normalized_search or 
-                    brand_en_normalized == normalized_search):
-                    return brand
+                # LANGUAGE-AWARE PRIORITY: Search appropriate language column first
+                if user_language == 'en':
+                    # For English conversations, prioritize English brand names
+                    if brand_en_normalized and brand_en_normalized == normalized_search:
+                        return brand
+                    # Fallback: Check Arabic brand name
+                    elif brand_ar_normalized == normalized_search:
+                        return brand
+                else:
+                    # For Arabic conversations, prioritize Arabic brand names
+                    if brand_ar_normalized == normalized_search:
+                        return brand
+                    # Fallback: Check English brand name
+                    elif brand_en_normalized and brand_en_normalized == normalized_search:
+                        return brand
             return None
         
-        # Helper function to find partial brand in city
+        # Helper function to find partial brand in city (LANGUAGE-AWARE)
         def find_partial_brand_in_city(city, brand_name_to_search: str):
             normalized_search = DistrictLookup.normalize_city_name(brand_name_to_search).lower()
+            
             for brand in city.brands:
                 if not brand.title:
                     continue
@@ -314,15 +412,36 @@ class DataAPIService:
                 brand_ar_normalized = DistrictLookup.normalize_city_name(brand.title).lower()
                 brand_en_normalized = brand.title_en.lower() if brand.title_en else ""
                 
-                if (normalized_search in brand_ar_normalized or 
-                    normalized_search in brand_en_normalized):
-                    return brand
+                # LANGUAGE-AWARE PRIORITY: Search appropriate language column first
+                if user_language == 'en':
+                    # For English conversations, prioritize English brand names
+                    if brand_en_normalized and normalized_search in brand_en_normalized:
+                        return brand
+                    # Fallback: Check Arabic brand name
+                    elif normalized_search in brand_ar_normalized:
+                        return brand
+                else:
+                    # For Arabic conversations, prioritize Arabic brand names
+                    if normalized_search in brand_ar_normalized:
+                        return brand
+                    # Fallback: Check English brand name
+                    elif brand_en_normalized and normalized_search in brand_en_normalized:
+                        return brand
             return None
         
         # Helper function to get products from brand and return formatted result
         def get_products_from_brand(city, brand, search_method: str):
             products = DatabaseManager.get_products_by_brand(db, brand.id)
-            print(f"   ✅ {search_method}: Found {len(products)} products for '{brand.title}' in '{city.name}'")
+            
+            # Use language-appropriate names for debug output
+            if user_language == 'en':
+                debug_brand_name = brand.title_en or brand.title
+                debug_city_name = city.name_en or city.name
+            else:
+                debug_brand_name = brand.title
+                debug_city_name = city.name
+            
+            print(f"   ✅ {search_method}: Found {len(products)} products for '{debug_brand_name}' in '{debug_city_name}'")
             
             # Use language-appropriate names
             if user_language == 'en':
@@ -360,7 +479,8 @@ class DataAPIService:
         print("🎯 Priority 1: Searching exact city + exact brand")
         exact_city = find_exact_city(city_name)
         if exact_city:
-            print(f"   ✅ Found exact city: '{exact_city.name}'")
+            debug_city_name = exact_city.name_en if user_language == 'en' and exact_city.name_en else exact_city.name
+            print(f"   ✅ Found exact city: '{debug_city_name}'")
             exact_brand = find_exact_brand_in_city(exact_city, brand_name)
             if exact_brand:
                 products = get_products_from_brand(exact_city, exact_brand, "EXACT CITY + EXACT BRAND")
@@ -472,19 +592,28 @@ class DataAPIService:
         ]
     
     @staticmethod
-    def get_products_by_brand(db: Session, brand_id: int) -> List[Dict[str, Any]]:
-        """Get all products for a specific brand - simplified response"""
+    def get_products_by_brand(db: Session, brand_id: int, user_language: str = 'ar') -> List[Dict[str, Any]]:
+        """Get all products for a specific brand - language-aware response"""
         products = DatabaseManager.get_products_by_brand(db, brand_id)
-        return [
-            {
+        
+        result = []
+        for product in products:
+            # Use language-appropriate product titles
+            if user_language == 'en':
+                product_title_result = product.title_en or product.title
+            else:
+                product_title_result = product.title
+                
+            result.append({
                 "product_id": product.id,           # Now matches external ID
                 "external_id": product.external_id,
-                "product_title": product.title,
+                "product_title": product_title_result,        # Language-appropriate product title
+                "product_title_en": product.title_en,         # Keep original English for reference
                 "product_packing": product.packing,
                 "product_contract_price": product.contract_price  # Use correct field
-            }
-            for product in products
-        ]
+            })
+        
+        return result
     
     @staticmethod
     def get_all_products(db: Session) -> List[Dict[str, Any]]:
@@ -502,37 +631,66 @@ class DataAPIService:
         ]
     
     @staticmethod
-    def get_product_by_id(db: Session, product_id: int) -> Optional[Dict[str, Any]]:
-        """Get a specific product by ID - simplified response"""
+    def get_product_by_id(db: Session, product_id: int, user_language: str = 'ar') -> Optional[Dict[str, Any]]:
+        """Get a specific product by ID - language-aware response"""
         product = db.query(Product).filter(Product.id == product_id).first()
         if not product:
             return None
         
+        # Use language-appropriate product title
+        if user_language == 'en':
+            product_title_result = product.title_en or product.title
+        else:
+            product_title_result = product.title
+        
         return {
             "product_id": product.id,           # Now matches external ID
             "external_id": product.external_id,
-            "product_title": product.title,
+            "product_title": product_title_result,        # Language-appropriate product title
+            "product_title_en": product.title_en,         # Keep original English for reference
             "product_packing": product.packing,
             "product_contract_price": product.contract_price  # Use correct field
         }
     
     @staticmethod
-    def search_products(db: Session, query: str) -> List[Dict[str, Any]]:
-        """Search products by title - simplified response"""
-        products = db.query(Product).filter(
-            Product.title.ilike(f"%{query}%")
-        ).all()
+    def search_products(db: Session, query: str, user_language: str = 'ar') -> List[Dict[str, Any]]:
+        """Search products by title - language-aware response"""
+        # LANGUAGE-AWARE PRODUCT SEARCH: Search appropriate language column first
+        if user_language == 'en':
+            # For English conversations, prioritize English product titles
+            products = db.query(Product).filter(
+                or_(
+                    Product.title_en.ilike(f"%{query}%"),
+                    Product.title.ilike(f"%{query}%")
+                )
+            ).all()
+        else:
+            # For Arabic conversations, prioritize Arabic product titles
+            products = db.query(Product).filter(
+                or_(
+                    Product.title.ilike(f"%{query}%"),
+                    Product.title_en.ilike(f"%{query}%")
+                )
+            ).all()
         
-        return [
-            {
+        result = []
+        for product in products:
+            # Use language-appropriate product title
+            if user_language == 'en':
+                product_title_result = product.title_en or product.title
+            else:
+                product_title_result = product.title
+                
+            result.append({
                 "product_id": product.id,           # Now matches external ID
                 "external_id": product.external_id,
-                "product_title": product.title,
+                "product_title": product_title_result,        # Language-appropriate product title
+                "product_title_en": product.title_en,         # Keep original English for reference
                 "product_packing": product.packing,
                 "product_contract_price": product.contract_price  # Use correct field
-            }
-            for product in products
-        ]
+            })
+        
+        return result
     
     @staticmethod
     def get_brand_with_products(db: Session, brand_id: int) -> Optional[Dict[str, Any]]:
@@ -576,14 +734,25 @@ class DataAPIService:
     @staticmethod
     def get_cheapest_products_by_city_name(db: Session, city_name: str, user_language: str = 'ar') -> Dict[str, Any]:
         """Get cheapest products in each size for a specific city"""
-        # Find the city first
-        city = db.query(City).filter(
-            or_(
-                City.name.ilike(f"%{city_name}%"),
-                City.name_en.ilike(f"%{city_name}%"),
-                City.title.ilike(f"%{city_name}%")
-            )
-        ).first()
+        # Find the city first (LANGUAGE-AWARE PRIORITY)
+        if user_language == 'en':
+            # For English conversations, prioritize English city names
+            city = db.query(City).filter(
+                or_(
+                    City.name_en.ilike(f"%{city_name}%"),
+                    City.name.ilike(f"%{city_name}%"),
+                    City.title.ilike(f"%{city_name}%")
+                )
+            ).first()
+        else:
+            # For Arabic conversations, prioritize Arabic city names
+            city = db.query(City).filter(
+                or_(
+                    City.name.ilike(f"%{city_name}%"),
+                    City.name_en.ilike(f"%{city_name}%"),
+                    City.title.ilike(f"%{city_name}%")
+                )
+            ).first()
         
         if not city:
             if user_language == 'ar':

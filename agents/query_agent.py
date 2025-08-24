@@ -1057,34 +1057,28 @@ class QueryAgent:
                         "show_app_links": False
                     }
                 
-                # Extract city information (same for all brands)
-                city_ar = brands[0]["city_name"] if brands else city_name
-                city_en = brands[0].get("city_name_en", "") if brands else ""
+                # Extract language-appropriate city information
+                # The data_api now returns language-appropriate city names in main field
+                city_name_display = brands[0]["city_name"] if brands else city_name
                 
-                # Filter brands to include only language-appropriate titles
+                # Extract language-appropriate brand titles
+                # The data_api now returns language-appropriate brand names in main field
                 filtered_brands = []
                 for brand in brands:
-                    if user_language == 'ar':
-                        # Arabic request - return only Arabic brand names
-                        if brand.get("title"):  # Only include brands with Arabic titles
-                            filtered_brands.append(brand["title"])
-                    else:
-                        # English request - return only English brand names, fallback to Arabic
-                        brand_name = brand.get("title_en", "") or brand.get("title", "")
-                        if brand_name:  # Only include brands with names
-                            filtered_brands.append(brand_name)
+                    brand_name = brand.get("title", "")
+                    if brand_name:  # Only include brands with names
+                        filtered_brands.append(brand_name)
                 
                 # Remove duplicates and sort
                 filtered_brands = sorted(list(set(filtered_brands)))
                 
-                # Create response message
+                # Create response message using language-appropriate city name
                 if user_language == 'ar':
-                    response_message = f"هذه هي العلامات التجارية المتاحة في {city_ar}:"
-                    city_info = city_ar
+                    response_message = f"هذه هي العلامات التجارية المتاحة في {city_name_display}:"
                 else:
-                    city_display = city_en if city_en else city_ar
-                    response_message = f"These are the brands available in {city_display}:"
-                    city_info = city_display
+                    response_message = f"These are the brands available in {city_name_display}:"
+                
+                city_info = city_name_display
                 
                 return {
                     "success": True, 
@@ -1135,40 +1129,35 @@ class QueryAgent:
                         "original_city": city_name
                     }
                 
-                # Extract brand and city information
-                brand_ar = products[0]["brand_title"] if products else brand_name
-                brand_en = products[0].get("brand_title_en", "") if products else ""
-                city_ar = products[0]["city_name"] if products else city_name
-                city_en = products[0].get("city_name_en", "") if products else ""
+                # Extract language-appropriate brand and city information
+                # The data_api now returns language-appropriate names in main fields
+                brand_name_display = products[0]["brand_title"] if products else brand_name
+                city_name_display = products[0]["city_name"] if products else city_name
                 
                 # Create simple product strings with prices
                 filtered_products = []
                 for product in products:
                     price = product["product_contract_price"]
+                    # The data_api now returns language-appropriate product titles in main field
+                    title = product["product_title"]
                     
                     if user_language == 'ar':
                         # Arabic format: "Product Title - XX.XX ريال"
-                        title = product["product_title"]
                         product_string = f"{title} - {price} ريال"
                     else:
                         # English format: "Product Title - XX.XX SAR"
-                        # Use English title if available, fallback to Arabic
-                        title = product.get("product_title_en", "") or product["product_title"]
                         product_string = f"{title} - {price} SAR"
                     
                     filtered_products.append(product_string)
                 
-                # Create response message
+                # Create response message using language-appropriate names
                 if user_language == 'ar':
-                    response_message = f"منتجات {brand_ar} المتاحة في {city_ar}:"
-                    brand_found = brand_ar
-                    city_found = city_ar
+                    response_message = f"منتجات {brand_name_display} المتاحة في {city_name_display}:"
                 else:
-                    brand_display = brand_en if brand_en else brand_ar
-                    city_display = city_en if city_en else city_ar
-                    response_message = f"{brand_display} products available in {city_display}:"
-                    brand_found = brand_display
-                    city_found = city_display
+                    response_message = f"{brand_name_display} products available in {city_name_display}:"
+                
+                brand_found = brand_name_display
+                city_found = city_name_display
                 
                 return {
                     "success": True, 
@@ -1216,8 +1205,8 @@ class QueryAgent:
                 # Return found brands
                 filtered_brands = [
                     {
-                        "title": brand["title"],                    # Brand name in Arabic
-                        "title_en": brand.get("title_en", ""),     # Brand name in English
+                        "title": brand["title"],                    # Language-appropriate brand name
+                        "title_en": brand.get("title_en", ""),     # Original English brand name
                         "image_url": brand.get("image_url", "")    # Brand image
                     }
                     for brand in brands
