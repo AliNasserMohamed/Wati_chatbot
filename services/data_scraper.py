@@ -34,19 +34,20 @@ class DataScraperService:
     def _clean_and_normalize_brand_name(self, brand_name: str) -> str:
         """
         Clean and normalize brand names during scraping:
-        1. Remove 'مياه' prefix from brand names
-        2. Apply Arabic text normalization
+        1. Remove Arabic water prefixes ('مياه', 'موية', 'مياة', 'ميه')
+        2. Remove English water prefixes/suffixes ('Water', 'WATER', 'water')
+        3. Apply Arabic text normalization
         """
         from database.district_utils import DistrictLookup
         
         if not brand_name or not brand_name.strip():
             return brand_name
             
-        # Remove water prefixes
-        water_prefixes = ["مياه", "موية", "مياة", "ميه"]
         cleaned_name = brand_name.strip()
         
-        for prefix in water_prefixes:
+        # STEP 1: Remove Arabic water prefixes
+        arabic_water_prefixes = ["مياه", "موية", "مياة", "ميه"]
+        for prefix in arabic_water_prefixes:
             # Check if brand name starts with the prefix followed by space
             if cleaned_name.startswith(prefix + " "):
                 cleaned_name = cleaned_name[len(prefix):].strip()
@@ -59,7 +60,25 @@ class DataScraperService:
                     cleaned_name = cleaned_name[next_char_idx:].strip()
                     break
         
-        # Apply normalization
+        # STEP 2: Remove English water prefixes and suffixes
+        english_water_words = ["Water", "WATER", "water"]
+        
+        for water_word in english_water_words:
+            # Remove as prefix: "Water Brand" -> "Brand"
+            if cleaned_name.startswith(water_word + " "):
+                cleaned_name = cleaned_name[len(water_word):].strip()
+                break
+            # Remove as suffix: "Brand Water" -> "Brand"  
+            elif cleaned_name.endswith(" " + water_word):
+                cleaned_name = cleaned_name[:-len(water_word)].strip()
+                break
+            # Handle cases where Water is the whole word after/before spaces
+            elif " " + water_word + " " in cleaned_name:
+                # Replace middle occurrence: "Brand Water Company" -> "Brand Company"
+                cleaned_name = cleaned_name.replace(" " + water_word + " ", " ").strip()
+                break
+        
+        # STEP 3: Apply normalization
         normalized_name = DistrictLookup.normalize_city_name(cleaned_name)
         
         return normalized_name
@@ -103,36 +122,58 @@ class DataScraperService:
             logger.error(f"Error fetching cities (English): {str(e)}")
             raise
 
-    async def fetch_brands_by_city(self, city_id: int) -> Dict[str, Any]:
-        """Fetch brands for a specific city"""
+    async def fetch_brands_by_city(self, city_id: int, language: str = 'ar') -> Dict[str, Any]:
+        """Fetch brands for a specific city in specified language"""
         url = f"{self.base_url}/get-location-brands/{city_id}"
+        headers = self.headers_ar if language == 'ar' else self.headers_en
         
         async with aiohttp.ClientSession() as session:
             try:
-                async with session.get(url, headers=self.headers_ar) as response:
+                async with session.get(url, headers=headers) as response:
                     response.raise_for_status()
                     data = await response.json()
                     return data
             except Exception as e:
-                logger.error(f"Error fetching brands for city {city_id}: {str(e)}")
+                logger.error(f"Error fetching brands for city {city_id} in {language}: {str(e)}")
                 raise
     
-    async def fetch_products_by_brand(self, brand_id: int) -> Dict[str, Any]:
-        """Fetch products for a specific brand"""
+    async def fetch_brands_by_city_arabic(self, city_id: int) -> Dict[str, Any]:
+        """Fetch brands for a specific city in Arabic"""
+        return await self.fetch_brands_by_city(city_id, 'ar')
+    
+    async def fetch_brands_by_city_english(self, city_id: int) -> Dict[str, Any]:
+        """Fetch brands for a specific city in English"""
+        return await self.fetch_brands_by_city(city_id, 'en')
+    
+    async def fetch_products_by_brand(self, brand_id: int, language: str = 'ar') -> Dict[str, Any]:
+        """Fetch products for a specific brand in specified language"""
         url = f"{self.base_url}/get-brand-products/{brand_id}"
+        headers = self.headers_ar if language == 'ar' else self.headers_en
         
         async with aiohttp.ClientSession() as session:
             try:
-                async with session.get(url, headers=self.headers_ar) as response:
+                async with session.get(url, headers=headers) as response:
                     response.raise_for_status()
                     data = await response.json()
                     return data
             except Exception as e:
-                logger.error(f"Error fetching products for brand {brand_id}: {str(e)}")
+                logger.error(f"Error fetching products for brand {brand_id} in {language}: {str(e)}")
                 raise
+    
+    async def fetch_products_by_brand_arabic(self, brand_id: int) -> Dict[str, Any]:
+        """Fetch products for a specific brand in Arabic"""
+        return await self.fetch_products_by_brand(brand_id, 'ar')
+    
+    async def fetch_products_by_brand_english(self, brand_id: int) -> Dict[str, Any]:
+        """Fetch products for a specific brand in English"""
+        return await self.fetch_products_by_brand(brand_id, 'en')
 
     async def brand_has_products(self, session: aiohttp.ClientSession, brand_id: int, max_retries: int = 3) -> bool:
-        """Check if a brand has any products with retry logic"""
+        """
+        Check if a brand has any products with retry logic
+        NOTE: Currently not used in scraping process (disabled for performance)
+        Kept for potential future use or manual verification
+        """
         url = f"{self.base_url}/get-brand-products/{brand_id}"
         
         for attempt in range(max_retries):
@@ -149,7 +190,9 @@ class DataScraperService:
                     data = await response.json()
                     
                     if data.get('key') == 'success':
-                        products = data.get('data', [])
+                        # Products are inside data.products for the get-brand-products endpoint
+                        brand_data = data.get('data', {})
+                        products = brand_data.get('products', [])
                         has_products = len(products) > 0
                         logger.info(f"✅ Brand {brand_id} check successful: {'has products' if has_products else 'no products'}")
                         return has_products
@@ -297,57 +340,81 @@ class DataScraperService:
             all_brands = {}
             city_brand_relationships = []
             
-            # STEP 3: SYNC BRANDS FOR EACH CITY
+            # STEP 3: SYNC BRANDS FOR EACH CITY (WITH DUAL-LANGUAGE SUPPORT)
             timeout = aiohttp.ClientTimeout(total=30)
             async with aiohttp.ClientSession(timeout=timeout) as session:
                 for city in cities:
                     logger.info(f"🏙️ Syncing brands for city: {city.name} (ID: {city.id})")
                     
                     try:
+                        # FETCH ARABIC BRANDS DATA
                         url = f"{self.base_url}/get-location-brands/{city.id}"
                         async with session.get(url, headers=self.headers_ar) as response:
                             response.raise_for_status()
-                            data = await response.json()
+                            arabic_data = await response.json()
                         
-                        if data.get('key') != 'success':
-                            logger.warning(f"⚠️ API error for city {city.id}: {data.get('msg', 'Unknown error')}")
+                        if arabic_data.get('key') != 'success':
+                            logger.warning(f"⚠️ API error (Arabic) for city {city.id}: {arabic_data.get('msg', 'Unknown error')}")
                             continue
                         
-                        brands_data = data.get('data', [])
-                        logger.info(f"📦 Found {len(brands_data)} brands for {city.name}")
+                        # FETCH ENGLISH BRANDS DATA
+                        async with session.get(url, headers=self.headers_en) as response:
+                            response.raise_for_status()
+                            english_data = await response.json()
+                        
+                        if english_data.get('key') != 'success':
+                            logger.warning(f"⚠️ API error (English) for city {city.id}: {english_data.get('msg', 'Unknown error')}")
+                            # Continue with Arabic data only if English fails
+                            english_data = {'data': []}
+                        
+                        # CREATE LOOKUP FOR ENGLISH BRAND NAMES
+                        english_brands = {}
+                        for brand_data in english_data.get('data', []):
+                            contract_id = brand_data.get('contract_id')
+                            brand_title_en = brand_data.get('brand_title', '')
+                            if contract_id and brand_title_en:
+                                english_brands[contract_id] = brand_title_en
+                        
+                        brands_data = arabic_data.get('data', [])
+                        logger.info(f"📦 Found {len(brands_data)} brands for {city.name} (Arabic: {len(brands_data)}, English: {len(english_brands)})")
                         
                         for brand_data in brands_data:
                             contract_id = brand_data.get('contract_id')
-                            brand_title = brand_data.get('brand_title', '')
+                            brand_title_ar = brand_data.get('brand_title', '')
+                            brand_title_en = english_brands.get(contract_id, '')
                             brand_image = brand_data.get('brand_image', '')
                             
-                            if contract_id and brand_title:
-                                # Check if brand has products before saving
-                                logger.info(f"🔍 Checking if brand {contract_id} ({brand_title}) has products...")
-                                has_products = await self.brand_has_products(session, contract_id)
-                                
-                                if not has_products:
-                                    logger.info(f"⏭️ Skipping brand without products: ID={contract_id}, {brand_title}")
-                                    continue
+                            if contract_id and brand_title_ar:
+                                # DISABLED: Check if brand has products before saving
+                                # This speeds up scraping by not pre-checking products for each brand
+                                # Brands will be saved regardless of whether they have products
+                                # logger.info(f"🔍 Checking if brand {contract_id} ({brand_title_ar}) has products...")
+                                # has_products = await self.brand_has_products(session, contract_id)
+                                # 
+                                # if not has_products:
+                                #     logger.info(f"⏭️ Skipping brand without products: ID={contract_id}, {brand_title_ar}")
+                                #     continue
                                 
                                 # Add delay between processing different brands to avoid overwhelming the server
                                 await asyncio.sleep(1)
                                 
-                                # CLEAN and NORMALIZE brand title during scraping
-                                cleaned_brand_title = self._clean_and_normalize_brand_name(brand_title)
-                                logger.info(f"📝 Brand cleaning: '{brand_title}' -> '{cleaned_brand_title}'")
+                                # CLEAN and NORMALIZE brand titles during scraping
+                                cleaned_brand_title_ar = self._clean_and_normalize_brand_name(brand_title_ar)
+                                cleaned_brand_title_en = self._clean_and_normalize_brand_name(brand_title_en) if brand_title_en else ''
+                                logger.info(f"📝 Brand cleaning: AR: '{brand_title_ar}' -> '{cleaned_brand_title_ar}', EN: '{brand_title_en}' -> '{cleaned_brand_title_en}'")
                                 
                                 # Create brand with external ID as primary key (if not exists)
                                 if contract_id not in all_brands:
                                     brand = Brand(
                                         id=contract_id,  # Use external ID as primary key
                                         external_id=contract_id,  # Keep for compatibility
-                                        title=cleaned_brand_title,  # Use cleaned and normalized title
+                                        title=cleaned_brand_title_ar,  # Arabic title (cleaned and normalized)
+                                        title_en=cleaned_brand_title_en,  # English title (cleaned and normalized)
                                         image_url=brand_image
                                     )
                                     db.add(brand)
                                     all_brands[contract_id] = brand
-                                    logger.info(f"✅ Created brand: ID={contract_id}, {cleaned_brand_title} (verified has products)")
+                                    logger.info(f"✅ Created brand: ID={contract_id}, AR: '{cleaned_brand_title_ar}', EN: '{cleaned_brand_title_en}'")
                                 
                                 # Store city-brand relationship for bulk insert
                                 relationship = (city.id, contract_id)
@@ -427,26 +494,48 @@ class DataScraperService:
                     url = f"{self.base_url}/get-brand-products/{brand.id}"
                     timeout = aiohttp.ClientTimeout(total=30)
                     async with aiohttp.ClientSession(timeout=timeout) as session:
+                        # FETCH ARABIC PRODUCTS DATA
                         async with session.get(url, headers=self.headers_ar) as response:
                             response.raise_for_status()
-                            data = await response.json()
+                            arabic_data = await response.json()
+                        
+                        if arabic_data.get('key') != 'success':
+                            logger.warning(f"⚠️ API error (Arabic) for brand {brand.id}: {arabic_data.get('msg', 'Unknown error')}")
+                            continue
+                        
+                        # FETCH ENGLISH PRODUCTS DATA
+                        async with session.get(url, headers=self.headers_en) as response:
+                            response.raise_for_status()
+                            english_data = await response.json()
+                        
+                        if english_data.get('key') != 'success':
+                            logger.warning(f"⚠️ API error (English) for brand {brand.id}: {english_data.get('msg', 'Unknown error')}")
+                            # Continue with Arabic data only if English fails
+                            english_data = {'data': {'products': []}}
+                        
+                        # CREATE LOOKUP FOR ENGLISH PRODUCT NAMES
+                        english_products = {}
+                        english_brand_data = english_data.get('data', {})
+                        english_products_data = english_brand_data.get('products', [])
+                        for product_data in english_products_data:
+                            product_id = product_data.get('product_id')
+                            product_title_en = product_data.get('product_title', '')
+                            if product_id and product_title_en:
+                                english_products[product_id] = product_title_en
                     
-                    if data.get('key') != 'success':
-                        logger.warning(f"⚠️ API error for brand {brand.id}: {data.get('msg', 'Unknown error')}")
-                        continue
-                    
-                    # FIX: Products are inside data.products, not data directly
-                    brand_data = data.get('data', {})
+                    # Products are inside data.products, not data directly
+                    brand_data = arabic_data.get('data', {})
                     products_data = brand_data.get('products', [])
-                    logger.info(f"📦 Found {len(products_data)} products for {brand.title}")
+                    logger.info(f"📦 Found {len(products_data)} products for {brand.title} (Arabic: {len(products_data)}, English: {len(english_products)})")
                     
                     for product_data in products_data:
                         product_id = product_data.get('product_id')  # Note: it's product_id, not id
-                        product_title = product_data.get('product_title', '')
+                        product_title_ar = product_data.get('product_title', '')
+                        product_title_en = english_products.get(product_id, '')
                         product_packing = product_data.get('product_packing', '')
                         product_price = product_data.get('product_contract_price', 0.0)
                         
-                        if product_id and product_title:
+                        if product_id and product_title_ar:
                             try:
                                 # Check if product with this ID already exists
                                 existing_product = db.query(Product).filter(Product.id == product_id).first()
@@ -461,7 +550,8 @@ class DataScraperService:
                                     id=product_id,  # Use external ID as primary key
                                     external_id=product_id,  # Keep for compatibility
                                     brand_id=brand.id,  # Use brand's ID (which is also external ID)
-                                    title=product_title,
+                                    title=product_title_ar,  # Arabic title
+                                    title_en=product_title_en,  # English title
                                     packing=product_packing,
                                     contract_price=float(product_price) if product_price else 0.0
                                 )
@@ -469,7 +559,7 @@ class DataScraperService:
                                 db.add(product)
                                 db.commit()  # Commit each product individually
                                 processed_count += 1
-                                logger.info(f"✅ Created product: ID={product_id}, {product_title}")
+                                logger.info(f"✅ Created product: ID={product_id}, AR: '{product_title_ar}', EN: '{product_title_en}'")
                             
                             except Exception as product_error:
                                 logger.warning(f"⚠️ Failed to create product ID={product_id}: {str(product_error)}")
@@ -670,57 +760,81 @@ class DataScraperService:
             all_brands = {}
             city_brand_relationships = []
             
-            # Sync brands for each city
+            # Sync brands for each city (WITH DUAL-LANGUAGE SUPPORT)
             timeout = aiohttp.ClientTimeout(total=30)
             async with aiohttp.ClientSession(timeout=timeout) as session:
                 for city in cities:
                     logger.info(f"🏙️ Syncing brands for city: {city.name} (ID: {city.id})")
                     
                     try:
+                        # FETCH ARABIC BRANDS DATA
                         url = f"{self.base_url}/get-location-brands/{city.id}"
                         async with session.get(url, headers=self.headers_ar) as response:
                             response.raise_for_status()
-                            data = await response.json()
+                            arabic_data = await response.json()
                         
-                        if data.get('key') != 'success':
-                            logger.warning(f"⚠️ API error for city {city.id}: {data.get('msg', 'Unknown error')}")
+                        if arabic_data.get('key') != 'success':
+                            logger.warning(f"⚠️ API error (Arabic) for city {city.id}: {arabic_data.get('msg', 'Unknown error')}")
                             continue
                         
-                        brands_data = data.get('data', [])
-                        logger.info(f"📦 Found {len(brands_data)} brands for {city.name}")
+                        # FETCH ENGLISH BRANDS DATA
+                        async with session.get(url, headers=self.headers_en) as response:
+                            response.raise_for_status()
+                            english_data = await response.json()
+                        
+                        if english_data.get('key') != 'success':
+                            logger.warning(f"⚠️ API error (English) for city {city.id}: {english_data.get('msg', 'Unknown error')}")
+                            # Continue with Arabic data only if English fails
+                            english_data = {'data': []}
+                        
+                        # CREATE LOOKUP FOR ENGLISH BRAND NAMES
+                        english_brands = {}
+                        for brand_data in english_data.get('data', []):
+                            contract_id = brand_data.get('contract_id')
+                            brand_title_en = brand_data.get('brand_title', '')
+                            if contract_id and brand_title_en:
+                                english_brands[contract_id] = brand_title_en
+                        
+                        brands_data = arabic_data.get('data', [])
+                        logger.info(f"📦 Found {len(brands_data)} brands for {city.name} (Arabic: {len(brands_data)}, English: {len(english_brands)})")
                         
                         for brand_data in brands_data:
                             contract_id = brand_data.get('contract_id')
-                            brand_title = brand_data.get('brand_title', '')
+                            brand_title_ar = brand_data.get('brand_title', '')
+                            brand_title_en = english_brands.get(contract_id, '')
                             brand_image = brand_data.get('brand_image', '')
                             
-                            if contract_id and brand_title:
-                                # Check if brand has products before saving
-                                logger.info(f"🔍 Checking if brand {contract_id} ({brand_title}) has products...")
-                                has_products = await self.brand_has_products(session, contract_id)
-                                
-                                if not has_products:
-                                    logger.info(f"⏭️ Skipping brand without products: ID={contract_id}, {brand_title}")
-                                    continue
+                            if contract_id and brand_title_ar:
+                                # DISABLED: Check if brand has products before saving
+                                # This speeds up scraping by not pre-checking products for each brand
+                                # Brands will be saved regardless of whether they have products
+                                # logger.info(f"🔍 Checking if brand {contract_id} ({brand_title_ar}) has products...")
+                                # has_products = await self.brand_has_products(session, contract_id)
+                                # 
+                                # if not has_products:
+                                #     logger.info(f"⏭️ Skipping brand without products: ID={contract_id}, {brand_title_ar}")
+                                #     continue
                                 
                                 # Add delay between processing different brands to avoid overwhelming the server
                                 await asyncio.sleep(1)
                                 
-                                # CLEAN and NORMALIZE brand title during scraping
-                                cleaned_brand_title = self._clean_and_normalize_brand_name(brand_title)
-                                logger.info(f"📝 Brand cleaning: '{brand_title}' -> '{cleaned_brand_title}'")
+                                # CLEAN and NORMALIZE brand titles during scraping
+                                cleaned_brand_title_ar = self._clean_and_normalize_brand_name(brand_title_ar)
+                                cleaned_brand_title_en = self._clean_and_normalize_brand_name(brand_title_en) if brand_title_en else ''
+                                logger.info(f"📝 Brand cleaning: AR: '{brand_title_ar}' -> '{cleaned_brand_title_ar}', EN: '{brand_title_en}' -> '{cleaned_brand_title_en}'")
                                 
                                 # Create brand with external ID as primary key (if not exists)
                                 if contract_id not in all_brands:
                                     brand = Brand(
                                         id=contract_id,  # Use external ID as primary key
                                         external_id=contract_id,  # Keep for compatibility
-                                        title=cleaned_brand_title,  # Use cleaned and normalized title
+                                        title=cleaned_brand_title_ar,  # Arabic title (cleaned and normalized)
+                                        title_en=cleaned_brand_title_en,  # English title (cleaned and normalized)
                                         image_url=brand_image
                                     )
                                     db.add(brand)
                                     all_brands[contract_id] = brand
-                                    logger.info(f"✅ Created brand: ID={contract_id}, {cleaned_brand_title} (verified has products)")
+                                    logger.info(f"✅ Created brand: ID={contract_id}, AR: '{cleaned_brand_title_ar}', EN: '{cleaned_brand_title_en}'")
                                 
                                 # Store city-brand relationship for bulk insert
                                 relationship = (city.id, contract_id)
@@ -793,7 +907,7 @@ class DataScraperService:
             processed_count = 0
             skipped_count = 0
             
-            # Sync products for each brand
+            # Sync products for each brand (WITH DUAL-LANGUAGE SUPPORT)
             for brand in brands:
                 logger.info(f"🏷️ Syncing products for brand: {brand.title} (ID: {brand.id})")
                 
@@ -801,26 +915,48 @@ class DataScraperService:
                     url = f"{self.base_url}/get-brand-products/{brand.id}"
                     timeout = aiohttp.ClientTimeout(total=30)
                     async with aiohttp.ClientSession(timeout=timeout) as session:
+                        # FETCH ARABIC PRODUCTS DATA
                         async with session.get(url, headers=self.headers_ar) as response:
                             response.raise_for_status()
-                            data = await response.json()
-                    
-                    if data.get('key') != 'success':
-                        logger.warning(f"⚠️ API error for brand {brand.id}: {data.get('msg', 'Unknown error')}")
-                        continue
+                            arabic_data = await response.json()
+                        
+                        if arabic_data.get('key') != 'success':
+                            logger.warning(f"⚠️ API error (Arabic) for brand {brand.id}: {arabic_data.get('msg', 'Unknown error')}")
+                            continue
+                        
+                        # FETCH ENGLISH PRODUCTS DATA
+                        async with session.get(url, headers=self.headers_en) as response:
+                            response.raise_for_status()
+                            english_data = await response.json()
+                        
+                        if english_data.get('key') != 'success':
+                            logger.warning(f"⚠️ API error (English) for brand {brand.id}: {english_data.get('msg', 'Unknown error')}")
+                            # Continue with Arabic data only if English fails
+                            english_data = {'data': {'products': []}}
+                        
+                        # CREATE LOOKUP FOR ENGLISH PRODUCT NAMES
+                        english_products = {}
+                        english_brand_data = english_data.get('data', {})
+                        english_products_data = english_brand_data.get('products', [])
+                        for product_data in english_products_data:
+                            product_id = product_data.get('product_id')
+                            product_title_en = product_data.get('product_title', '')
+                            if product_id and product_title_en:
+                                english_products[product_id] = product_title_en
                     
                     # Products are inside data.products, not data directly
-                    brand_data = data.get('data', {})
+                    brand_data = arabic_data.get('data', {})
                     products_data = brand_data.get('products', [])
-                    logger.info(f"📦 Found {len(products_data)} products for {brand.title}")
+                    logger.info(f"📦 Found {len(products_data)} products for {brand.title} (Arabic: {len(products_data)}, English: {len(english_products)})")
                     
                     for product_data in products_data:
                         product_id = product_data.get('product_id')  # Note: it's product_id, not id
-                        product_title = product_data.get('product_title', '')
+                        product_title_ar = product_data.get('product_title', '')
+                        product_title_en = english_products.get(product_id, '')
                         product_packing = product_data.get('product_packing', '')
                         product_price = product_data.get('product_contract_price', 0.0)
                         
-                        if product_id and product_title:
+                        if product_id and product_title_ar:
                             try:
                                 # Check if product already exists for this brand
                                 existing_product = db.query(Product).filter(
@@ -830,22 +966,24 @@ class DataScraperService:
                                 
                                 if existing_product:
                                     # Update existing product
-                                    existing_product.title = product_title
+                                    existing_product.title = product_title_ar
+                                    existing_product.title_en = product_title_en
                                     existing_product.packing = product_packing
                                     existing_product.contract_price = float(product_price) if product_price else 0.0
-                                    logger.info(f"🔄 Updated product: external_id={product_id}, {product_title}")
+                                    logger.info(f"🔄 Updated product: external_id={product_id}, AR: '{product_title_ar}', EN: '{product_title_en}'")
                                 else:
                                     # Create new product (let id auto-increment)
                                     product = Product(
                                         external_id=product_id,  # Store external ID for reference
                                         brand_id=brand.id,  # Use brand's ID (which is also external ID)
-                                        title=product_title,
+                                        title=product_title_ar,  # Arabic title
+                                        title_en=product_title_en,  # English title
                                         packing=product_packing,
                                         contract_price=float(product_price) if product_price else 0.0
                                     )
                                     
                                     db.add(product)
-                                    logger.info(f"✅ Created product: external_id={product_id}, {product_title}")
+                                    logger.info(f"✅ Created product: external_id={product_id}, AR: '{product_title_ar}', EN: '{product_title_en}'")
                                 
                                 db.commit()  # Commit each product individually
                                 processed_count += 1
