@@ -51,7 +51,7 @@ class DataAPIService:
         return None
     
     @staticmethod
-    def search_cities(db: Session, query: str) -> List[Dict[str, Any]]:
+    def search_cities(db: Session, query: str, user_language: str = 'ar') -> List[Dict[str, Any]]:
         """
         Enhanced city search with exact and partial matching.
         Returns cities ordered by relevance (exact matches first, then partial)
@@ -78,11 +78,17 @@ class DataAPIService:
             city_name_lower = city.name.lower() if city.name else ""
             city_name_en_lower = city.name_en.lower() if city.name_en else ""
             
+            # Use language-appropriate names
+            if user_language == 'en':
+                city_name_result = city.name_en or city.name
+            else:
+                city_name_result = city.name
+            
             city_data = {
                 "id": city.id,
                 "external_id": city.external_id,
-                "name": city.name,
-                "name_en": city.name_en or ""
+                "name": city_name_result,        # Language-appropriate city name
+                "name_en": city.name_en or ""    # Keep original English for reference
             }
             
             # Check for exact matches
@@ -118,7 +124,7 @@ class DataAPIService:
         ]
     
     @staticmethod
-    def get_brands_by_city_name(db: Session, city_name: str) -> List[Dict[str, Any]]:
+    def get_brands_by_city_name(db: Session, city_name: str, user_language: str = 'ar') -> List[Dict[str, Any]]:
         """Get all brands for a specific city using city name with fuzzy matching"""
         # First try to find the city by name
         city = db.query(City).filter(
@@ -132,22 +138,33 @@ class DataAPIService:
         if not city:
             return []
         
-        return [
-            {
+        # Return brand data in appropriate language
+        result = []
+        for brand in city.brands:
+            if user_language == 'en':
+                # English: prioritize English names, fallback to Arabic
+                brand_name = brand.title_en or brand.title
+                city_name_result = city.name_en or city.name
+            else:
+                # Arabic: use Arabic names
+                brand_name = brand.title
+                city_name_result = city.name
+            
+            result.append({
                 "id": brand.id,
                 "external_id": brand.external_id,
-                "title": brand.title,
-                "title_en": brand.title_en,
+                "title": brand_name,            # Language-appropriate brand title
+                "title_en": brand.title_en,     # Keep original English for reference
                 "image_url": brand.image_url,
                 "city_id": city.id,
-                "city_name": city.name,
-                "city_name_en": city.name_en
-            }
-            for brand in city.brands
-        ]
+                "city_name": city_name_result,  # Language-appropriate city name
+                "city_name_en": city.name_en    # Keep original English for reference
+            })
+        
+        return result
     
     @staticmethod
-    def search_brands_in_city(db: Session, brand_name: str, city_name: str) -> List[Dict[str, Any]]:
+    def search_brands_in_city(db: Session, brand_name: str, city_name: str, user_language: str = 'ar') -> List[Dict[str, Any]]:
         """Search brands by name within a specific city only (not global search)
         Prioritizes exact matches first, then partial matches
         """
@@ -195,15 +212,25 @@ class DataAPIService:
             normalized_brand_title = DistrictLookup.normalize_city_name(brand.title).lower()
             normalized_brand_title_en = brand.title_en.lower() if brand.title_en else ""
             
+            # Use language-appropriate names
+            if user_language == 'en':
+                # English: prioritize English names, fallback to Arabic
+                brand_name_result = brand.title_en or brand.title
+                city_name_result = city.name_en or city.name
+            else:
+                # Arabic: use Arabic names
+                brand_name_result = brand.title
+                city_name_result = city.name
+            
             brand_info = {
                 "id": brand.id,
                 "external_id": brand.external_id,
-                "title": brand.title,
-                "title_en": brand.title_en,
+                "title": brand_name_result,      # Language-appropriate brand title
+                "title_en": brand.title_en,      # Keep original English for reference
                 "image_url": brand.image_url,
                 "city_id": city.id,
-                "city_name": city.name,
-                "city_name_en": city.name_en
+                "city_name": city_name_result,   # Language-appropriate city name
+                "city_name_en": city.name_en     # Keep original English for reference
             }
             
             # Check for EXACT matches first (normalized)
@@ -223,7 +250,7 @@ class DataAPIService:
         return exact_matches + partial_matches
     
     @staticmethod 
-    def get_products_by_brand_and_city_name(db: Session, brand_name: str, city_name: str) -> List[Dict[str, Any]]:
+    def get_products_by_brand_and_city_name(db: Session, brand_name: str, city_name: str, user_language: str = 'ar') -> List[Dict[str, Any]]:
         """
         Get products by brand name and city name with intelligent cascading search strategy:
         1. Exact city + exact brand (highest priority)
@@ -297,23 +324,37 @@ class DataAPIService:
             products = DatabaseManager.get_products_by_brand(db, brand.id)
             print(f"   ✅ {search_method}: Found {len(products)} products for '{brand.title}' in '{city.name}'")
             
-            return [
-                {
+            # Use language-appropriate names
+            if user_language == 'en':
+                brand_name_result = brand.title_en or brand.title
+                city_name_result = city.name_en or city.name
+            else:
+                brand_name_result = brand.title
+                city_name_result = city.name
+            
+            result = []
+            for product in products:
+                if user_language == 'en':
+                    product_title_result = product.title_en or product.title
+                else:
+                    product_title_result = product.title
+                
+                result.append({
                     "product_id": product.id,
                     "external_id": product.external_id,
-                    "product_title": product.title,
-                    "product_title_en": product.title_en,
+                    "product_title": product_title_result,    # Language-appropriate product title
+                    "product_title_en": product.title_en,     # Keep original English for reference
                     "product_packing": product.packing,
                     "product_contract_price": product.contract_price,
                     "brand_id": brand.id,
-                    "brand_title": brand.title,
-                    "brand_title_en": brand.title_en,
+                    "brand_title": brand_name_result,         # Language-appropriate brand title
+                    "brand_title_en": brand.title_en,         # Keep original English for reference
                     "city_id": city.id,
-                    "city_name": city.name,
-                    "city_name_en": city.name_en
-                }
-                for product in products
-            ]
+                    "city_name": city_name_result,            # Language-appropriate city name
+                    "city_name_en": city.name_en              # Keep original English for reference
+                })
+            
+            return result
         
         # PRIORITY 1: Exact city + exact brand
         print("🎯 Priority 1: Searching exact city + exact brand")
@@ -533,7 +574,7 @@ class DataAPIService:
         }
 
     @staticmethod
-    def get_cheapest_products_by_city_name(db: Session, city_name: str) -> Dict[str, Any]:
+    def get_cheapest_products_by_city_name(db: Session, city_name: str, user_language: str = 'ar') -> Dict[str, Any]:
         """Get cheapest products in each size for a specific city"""
         # Find the city first
         city = db.query(City).filter(
@@ -545,9 +586,14 @@ class DataAPIService:
         ).first()
         
         if not city:
+            if user_language == 'ar':
+                error_msg = f"بتحصل الاصناف والاسعار في التطبيق وهذا هو الرابط https://onelink.to/abar_app https://abar.app/en/store/ وايضا عن طريق الموقع الالكتروني"
+            else:
+                error_msg = f"You can find products and prices in the app: https://onelink.to/abar_app https://abar.app/en/store/ or on the website"
+                
             return {
                 "success": False,
-                "error": f"بتحصل الاصناف والاسعار في التطبيق وهذا هو الرابط https://onelink.to/abar_app https://abar.app/en/store/ وايضا عن طريق الموقع الالكتروني",
+                "error": error_msg,
                 "original_city": city_name,
                 "show_app_links": True
             }
@@ -557,24 +603,41 @@ class DataAPIService:
         for brand in city.brands:
             products = DatabaseManager.get_products_by_brand(db, brand.id)
             for product in products:
+                # Use language-appropriate names
+                if user_language == 'en':
+                    product_title_result = product.title_en or product.title
+                    brand_title_result = brand.title_en or brand.title
+                    city_name_result = city.name_en or city.name
+                else:
+                    product_title_result = product.title
+                    brand_title_result = brand.title
+                    city_name_result = city.name
+                
                 all_products.append({
                     "product_id": product.id,
-                    "product_title": product.title,
+                    "product_title": product_title_result,           # Language-appropriate product title
                     "product_packing": product.packing,
                     "product_contract_price": float(product.contract_price) if product.contract_price else 0.0,
                     "brand_id": brand.id,
-                    "brand_title": brand.title,
-                    "brand_title_en": brand.title_en,
+                    "brand_title": brand_title_result,              # Language-appropriate brand title
+                    "brand_title_en": brand.title_en,               # Keep original English for reference
                     "city_id": city.id,
-                    "city_name": city.name,
-                    "city_name_en": city.name_en
+                    "city_name": city_name_result,                  # Language-appropriate city name
+                    "city_name_en": city.name_en                    # Keep original English for reference
                 })
         
         if not all_products:
+            if user_language == 'ar':
+                error_msg = f"بتحصل الاصناف والاسعار في التطبيق وهذا هو الرابط https://onelink.to/abar_app https://abar.app/en/store/ وايضا عن طريق الموقع الالكتروني"
+                city_name_result = city.name
+            else:
+                error_msg = f"You can find products and prices in the app: https://onelink.to/abar_app https://abar.app/en/store/ or on the website"
+                city_name_result = city.name_en or city.name
+                
             return {
                 "success": False,
-                "error": f"بتحصل الاصناف والاسعار في التطبيق وهذا هو الرابط https://onelink.to/abar_app https://abar.app/en/store/ وايضا عن طريق الموقع الالكتروني",
-                "city_name": city.name
+                "error": error_msg,
+                "city_name": city_name_result
             }
         
         # Group products by size/packing and find cheapest in each group

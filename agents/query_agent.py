@@ -519,7 +519,21 @@ class QueryAgent:
             print(f"🚨 [CITY VERIFICATION] Defaulting to REJECT due to error for safety")
             return False
 
-    async def _extract_city_from_context(self, user_message: str, conversation_history: List[Dict] = None) -> Optional[Dict[str, Any]]:
+    def _create_city_result(self, city: Dict[str, Any], found_in: str, user_language: str = 'ar') -> Dict[str, Any]:
+        """Helper function to create language-appropriate city result"""
+        if user_language == 'en':
+            city_name_result = city["name_en"] or city["name"]
+        else:
+            city_name_result = city["name"]
+        
+        return {
+            "city_id": city["id"],
+            "city_name": city_name_result,        # Language-appropriate name
+            "city_name_en": city["name_en"],      # Keep original English for reference
+            "found_in": found_in
+        }
+
+    async def _extract_city_from_context(self, user_message: str, conversation_history: List[Dict] = None, user_language: str = 'ar') -> Optional[Dict[str, Any]]:
         """Extract city information from current message and conversation history with AI verification
         Priority: 1) City in last message, 2) District in last message, 3) City in history (last 5 messages), 4) District in history (last 5 messages)"""
         try:
@@ -552,12 +566,7 @@ class QueryAgent:
                             )
                             
                             if is_verified:
-                                return {
-                                    "city_id": city["id"],
-                                    "city_name": city["name"],
-                                    "city_name_en": city["name_en"],
-                                    "found_in": "current_message_city"
-                                }
+                                return self._create_city_result(city, "current_message_city", user_language)
                         # Check English city name (no normalization needed for English)
                         elif city_name_en and city_name_en in user_message.lower():
                             print(f"🏙️ QueryAgent: Found direct city '{city['name']}' (English) in last message")
@@ -569,12 +578,7 @@ class QueryAgent:
                             )
                             
                             if is_verified:
-                                return {
-                                    "city_id": city["id"],
-                                    "city_name": city["name"],
-                                    "city_name_en": city["name_en"],
-                                    "found_in": "current_message_city"
-                                }
+                                return self._create_city_result(city, "current_message_city", user_language)
                 
                 # PRIORITY 2: Check for district in last message (current user message) - COMMENTED OUT
                 # if user_message:
@@ -637,12 +641,7 @@ class QueryAgent:
                                 )
                                 
                                 if is_verified:
-                                    return {
-                                        "city_id": city["id"],
-                                        "city_name": city["name"],
-                                        "city_name_en": city["name_en"],
-                                        "found_in": "conversation_history_city"
-                                    }
+                                    return self._create_city_result(city, "conversation_history_city", user_language)
                             elif city_name_en and city_name_en in content.lower():
                                 print(f"🏙️ QueryAgent: Found city in history '{city['name']}' (English)")
                                 
@@ -653,12 +652,7 @@ class QueryAgent:
                                 )
                                 
                                 if is_verified:
-                                    return {
-                                        "city_id": city["id"],
-                                        "city_name": city["name"],
-                                        "city_name_en": city["name_en"],
-                                        "found_in": "conversation_history_city"
-                                    }
+                                    return self._create_city_result(city, "conversation_history_city", user_language)
                 
                 # PRIORITY 4: Check for district in conversation history - COMMENTED OUT
                 # if conversation_history:
@@ -781,7 +775,20 @@ class QueryAgent:
             print(f"🚨 [BRAND VERIFICATION] Defaulting to REJECT due to error for safety")
             return False
 
-    async def _extract_brand_from_context(self, user_message: str, conversation_history: List[Dict] = None, city_name: str = None) -> Optional[Dict[str, Any]]:
+    def _create_brand_result(self, brand: Dict[str, Any], found_in: str, user_language: str = 'ar') -> Dict[str, Any]:
+        """Helper function to create language-appropriate brand result"""
+        if user_language == 'en':
+            brand_title_result = brand.get("title_en") or brand["title"]
+        else:
+            brand_title_result = brand["title"]
+        
+        return {
+            "brand_title": brand_title_result,    # Language-appropriate name
+            "brand_title_en": brand.get("title_en"),  # Keep original English for reference
+            "found_in": found_in
+        }
+
+    async def _extract_brand_from_context(self, user_message: str, conversation_history: List[Dict] = None, city_name: str = None, user_language: str = 'ar') -> Optional[Dict[str, Any]]:
         """Extract brand information from current message and conversation history with AI verification and improved matching
         IMPORTANT: Only returns brands if city_name is provided (city must be known first)
         IMPORTANT: Ignores size terms like ابو ربع, ابو نص, ابو ريال as they are NOT brand names
@@ -805,7 +812,7 @@ class QueryAgent:
             db = self._get_db_session()
             try:
                 # Get brands only for the specific city using city name
-                brands = data_api.get_brands_by_city_name(db, city_name)
+                brands = data_api.get_brands_by_city_name(db, city_name, user_language)
                 
                 # PRIORITY 1: Check current user message first - EXACT MATCH
                 if user_message:
@@ -831,10 +838,7 @@ class QueryAgent:
                             )
                             
                             if is_verified:
-                                return {
-                                    "brand_title": brand["title"],
-                                    "found_in": "current_message"
-                                }
+                                return self._create_brand_result(brand, "current_message", user_language)
                     
                     # If no exact match, try partial matching
                     for brand in brands:
@@ -854,10 +858,7 @@ class QueryAgent:
                             )
                             
                             if is_verified:
-                                return {
-                                    "brand_title": brand["title"],
-                                    "found_in": "current_message"
-                                }
+                                return self._create_brand_result(brand, "current_message", user_language)
                 
                 # PRIORITY 2: Check conversation history if no brand in current message
                 if conversation_history:
@@ -884,10 +885,7 @@ class QueryAgent:
                                 )
                                 
                                 if is_verified:
-                                    return {
-                                        "brand_title": brand["title"],
-                                        "found_in": "conversation_history"
-                                    }
+                                    return self._create_brand_result(brand, "conversation_history", user_language)
                 
                 return None
             finally:
@@ -980,16 +978,21 @@ class QueryAgent:
         
         try:
             # Use the conversation language instead of detecting from city name
-            detected_language = user_language
-            print(f"🌐 Using conversation language '{detected_language}' for city '{city_name}'")
+            user_language = user_language
+            print(f"🌐 Using conversation language '{user_language}' for city '{city_name}'")
             
             db = self._get_db_session()
             try:
-                brands = data_api.get_brands_by_city_name(db, city_name)
+                brands = data_api.get_brands_by_city_name(db, city_name, user_language)
                 if not brands:
+                    if user_language == 'ar':
+                        error_msg = f"عذراً، لا نقدم خدمة التوصيل لمدينة {city_name} حالياً"
+                    else:
+                        error_msg = f"Sorry, we currently do not provide delivery service to {city_name}"
+                    
                     return {
                         "success": False,
-                        "error": f"عذراً، لا نقدم خدمة التوصيل لمدينة {city_name} حالياً",
+                        "error": error_msg,
                         "original_input": city_name,
                         "show_app_links": False
                     }
@@ -1001,7 +1004,7 @@ class QueryAgent:
                 # Filter brands to include only language-appropriate titles
                 filtered_brands = []
                 for brand in brands:
-                    if detected_language == 'ar':
+                    if user_language == 'ar':
                         # Arabic request - return only Arabic brand names
                         if brand.get("title"):  # Only include brands with Arabic titles
                             filtered_brands.append(brand["title"])
@@ -1015,7 +1018,7 @@ class QueryAgent:
                 filtered_brands = sorted(list(set(filtered_brands)))
                 
                 # Create response message
-                if detected_language == 'ar':
+                if user_language == 'ar':
                     response_message = f"هذه هي العلامات التجارية المتاحة في {city_ar}:"
                     city_info = city_ar
                 else:
@@ -1027,7 +1030,7 @@ class QueryAgent:
                     "success": True, 
                     "data": filtered_brands,  # Simple list of brand names in detected language
                     "city_found": city_info,
-                    "language": detected_language,
+                    "language": user_language,
                     "response_message": response_message,
                     "total_brands": len(filtered_brands)
                 }
@@ -1045,8 +1048,8 @@ class QueryAgent:
         
         try:
             # Use the conversation language instead of detecting from brand/city names
-            detected_language = user_language
-            print(f"🌐 Using conversation language '{detected_language}' for brand '{brand_name}' in city '{city_name}'")
+            user_language = user_language
+            print(f"🌐 Using conversation language '{user_language}' for brand '{brand_name}' in city '{city_name}'")
             
             # Clean the brand name by removing water prefixes
             cleaned_brand_name = self._clean_brand_name(brand_name)
@@ -1054,15 +1057,20 @@ class QueryAgent:
             db = self._get_db_session()
             try:
                 # Try with cleaned brand name first
-                products = data_api.get_products_by_brand_and_city_name(db, cleaned_brand_name, city_name)
+                products = data_api.get_products_by_brand_and_city_name(db, cleaned_brand_name, city_name, user_language)
                 
                 # If no results with cleaned name, try original name
                 if not products:
-                    products = data_api.get_products_by_brand_and_city_name(db, brand_name, city_name)
+                    products = data_api.get_products_by_brand_and_city_name(db, brand_name, city_name, user_language)
                 if not products:
+                    if user_language == 'ar':
+                        error_msg = f"عذراً، العلامة التجارية {brand_name} غير متوفرة في مدينة {city_name} حالياً"
+                    else:
+                        error_msg = f"Sorry, the {brand_name} brand is currently not available in {city_name}"
+                    
                     return {
                         "success": False,
-                        "error": f"عذراً، العلامة التجارية {brand_name} غير متوفرة في مدينة {city_name} حالياً",
+                        "error": error_msg,
                         "original_brand": brand_name,
                         "original_city": city_name
                     }
@@ -1077,19 +1085,21 @@ class QueryAgent:
                 filtered_products = []
                 for product in products:
                     price = product["product_contract_price"]
-                    title = product["product_title"]
                     
-                    if detected_language == 'ar':
+                    if user_language == 'ar':
                         # Arabic format: "Product Title - XX.XX ريال"
+                        title = product["product_title"]
                         product_string = f"{title} - {price} ريال"
                     else:
                         # English format: "Product Title - XX.XX SAR"
+                        # Use English title if available, fallback to Arabic
+                        title = product.get("product_title_en", "") or product["product_title"]
                         product_string = f"{title} - {price} SAR"
                     
                     filtered_products.append(product_string)
                 
                 # Create response message
-                if detected_language == 'ar':
+                if user_language == 'ar':
                     response_message = f"منتجات {brand_ar} المتاحة في {city_ar}:"
                     brand_found = brand_ar
                     city_found = city_ar
@@ -1103,7 +1113,7 @@ class QueryAgent:
                 return {
                     "success": True, 
                     "data": filtered_products,  # Simple list of product strings with prices
-                    "language": detected_language,
+                    "language": user_language,
                     "response_message": response_message,
                     "brand_found": brand_found,
                     "city_found": city_found,
@@ -1115,8 +1125,8 @@ class QueryAgent:
             logger.error(f"Error fetching products for brand {brand_name} in city {city_name}: {str(e)}")
             return {"error": f"Failed to get products: {str(e)}"}
     
-    def search_brands_in_city(self, brand_name: str, city_name: str) -> Dict[str, Any]:
-        """Search for brands by name within a specific city only"""
+    def search_brands_in_city(self, brand_name: str, city_name: str, user_language: str = 'ar') -> Dict[str, Any]:
+        """Search for brands by name within a specific city only with language support"""
         try:
             # Clean the brand name by removing water prefixes
             cleaned_brand_name = self._clean_brand_name(brand_name)
@@ -1124,11 +1134,11 @@ class QueryAgent:
             db = self._get_db_session()
             try:
                 # Search with both cleaned and original brand names
-                brands = data_api.search_brands_in_city(db, cleaned_brand_name, city_name)
+                brands = data_api.search_brands_in_city(db, cleaned_brand_name, city_name, user_language)
                 
                 # If no results with cleaned name, try original name
                 if not brands:
-                    brands = data_api.search_brands_in_city(db, brand_name, city_name)
+                    brands = data_api.search_brands_in_city(db, brand_name, city_name, user_language)
                 
                 if not brands:
                     return {
@@ -1159,17 +1169,23 @@ class QueryAgent:
             logger.error(f"Error searching brands for {brand_name}: {str(e)}")
             return {"error": f"Failed to search brands: {str(e)}"}
     
-    def search_cities(self, query: str) -> Dict[str, Any]:
-        """Search cities by name with """
+    def search_cities(self, query: str, user_language: str = 'ar') -> Dict[str, Any]:
+        """Search cities by name with language support"""
         try:
+            user_language = user_language
             db = self._get_db_session()
             try:
-                cities = data_api.search_cities(db, query)
+                cities = data_api.search_cities(db, query, user_language)
                 
                 if not cities:
+                    if user_language == 'ar':
+                        error_msg = f"عذراً، لا نقدم خدمة التوصيل لمدينة {query} حالياً"
+                    else:
+                        error_msg = f"Sorry, we currently do not provide delivery service to {query}"
+                    
                     return {
                         "success": False,
-                        "error": f"عذراً، لا نقدم خدمة التوصيل لمدينة {query} حالياً",
+                        "error": error_msg,
                         "query": query,
                         "show_app_links": False
                     }
@@ -1220,12 +1236,13 @@ class QueryAgent:
     
 
 
-    def get_cheapest_products_by_city_name(self, city_name: str) -> Dict[str, Any]:
+    def get_cheapest_products_by_city_name(self, city_name: str, user_language: str = 'ar') -> Dict[str, Any]:
         """Get cheapest products in each size for a specific city using city name with fuzzy matching"""
         try:
+            user_language = user_language
             db = self._get_db_session()
             try:
-                result = data_api.get_cheapest_products_by_city_name(db, city_name)
+                result = data_api.get_cheapest_products_by_city_name(db, city_name, user_language)
                 return result
             finally:
                 db.close()
@@ -1654,13 +1671,14 @@ Output in JSON format only:
         
         try:
             # Check if we already have city information from current message or conversation history
-            city_context = await self._extract_city_from_context(user_message, conversation_history)
+            city_context = await self._extract_city_from_context(user_message, conversation_history, user_language)
             
             # Check if we have brand information
             brand_context = await self._extract_brand_from_context(
                 user_message, 
                 conversation_history, 
-                city_context.get("city_name") if city_context else None  # ← Uses CITY name for brand search
+                city_context.get("city_name") if city_context else None,  # ← Uses CITY name for brand search
+                user_language  # ← Pass language parameter
             )
             
             # Prepare conversation history

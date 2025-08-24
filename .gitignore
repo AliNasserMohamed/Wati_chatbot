@@ -45,22 +45,82 @@ access_control_config.json
 *.swo
 *~
 
-# Database files (optional - you might want to exclude the actual database)
-# database/data/*.sqlite
-# database/data/*.db
+# ===============================================
+# 🛡️ PRODUCTION DATA PROTECTION
+# ===============================================
+# CRITICAL: These files contain production data and should NEVER be committed
 
-# Logs
+# Database files - SQLite and all related files
+database/data/
+database/backups/
+*.sqlite
+*.sqlite3
+*.db
+*.sqlite-shm
+*.sqlite-wal
+*.sqlite-journal
+
+# Vector Store data - ChromaDB and embeddings
+vectorstore/data/
+vectorstore/backups/
+*.chroma
+*.faiss
+*.pkl
+*.pickle
+
+# Data exports and imports
+data_exports/
+data_imports/
+*.csv
+*.json.backup
+*.sql
+*.dump
+
+# Logs that might contain sensitive data
+logs/
 *.log
+*.log.*
+database_alerts.log
+error.log
+access.log
 
-# Model Cache
+# Backup files and snapshots
+*.backup
+*.bak
+*.old
+*_backup_*
+*_snapshot_*
+database_*.backup*
+
+# Cache files
 models/cache/
+__pycache__/
+*.cache
+.cache/
+
+# Model files (large and environment-specific)
 *.model
 *.bin
 pytorch_model.bin
+*.safetensors
+
+# Configuration files (might contain secrets)
 config.json
 tokenizer.json
 tokenizer_config.json
-logs/
+
+# ===============================================
+# 📁 STANDARD EXCLUDES
+# ===============================================
+
+# Temporary files
+*.tmp
+*.temp
+
+# Compressed files
+*.zip
+*.tar.gz
+*.rar
 
 # OS generated files
 .DS_Store
@@ -71,21 +131,6 @@ logs/
 ehthumbs.db
 Thumbs.db
 
-# Temporary files
-*.tmp
-*.temp
-
-# Backup files
-*.bak
-*.backup
-
-# Compressed files
-*.zip
-*.tar.gz
-*.rar
-
 # Node modules (if any)
 node_modules/ 
 ~$Suadi_Districts.xlsx
-vectorstore/data/chroma.sqlite3
-database/data/chatbot.sqlite*
