@@ -1741,6 +1741,7 @@ Output in JSON format only:
                     - NEVER say "let me check" or "one moment" without actually calling the function
                     - If system provides city context, use the function calls immediately in the same response
                     - Do NOT provide generic responses - always use functions to get real data
+                    - 🚨 LANGUAGE CONSISTENCY: The functions will automatically return English brand/product names for English conversations - use them directly without translation
 
                     🚨 DISTRICT-TO-CITY MAPPING SYSTEM - CRITICAL:
                     - The system automatically detects DISTRICT NAMES (neighborhoods) in user messages
@@ -1992,6 +1993,7 @@ Output in JSON format only:
                     🚨 استدعاء الوظائف الإجباري - مهم جداً:
                     - عندما تعرف المدينة لكن تحتاج لعرض العلامات التجارية: استدعي فوراً وظيفة get_brands_by_city_name
                     - عندما تعرف المدينة والعلامة التجارية لكن تحتاج للمنتجات: استدعي فوراً وظيفة get_products_by_brand_and_city_name
+                    - 🚨 اتساق اللغة: الوظائف ستعيد تلقائياً أسماء العلامات التجارية/المنتجات باللغة الانجليزية للمحادثات الانجليزية - استخدمها مباشرة بدون ترجمة
                     - لا تقل أبداً "دعني أتحقق" أو "لحظة واحدة" بدون استدعاء الوظيفة فعلاً
                     - إذا وفر النظام سياق المدينة، استخدم استدعاءات الوظائف فوراً في نفس الرد
                     - لا تقدم ردود عامة - استخدم دائماً الوظائف للحصول على بيانات حقيقية
@@ -2266,6 +2268,11 @@ Output in JSON format only:
                             try:
                                 # Record function call start time for duration measurement
                                 func_start_time = time.time()
+                                
+                                # Automatically add user_language parameter for language-aware functions
+                                if function_name in ["get_brands_by_city_name", "get_products_by_brand_and_city_name", "get_all_cities"]:
+                                    function_args["user_language"] = user_language
+                                    logger.info(f"Added user_language='{user_language}' to {function_name}")
                                 
                                 function_result = self.available_functions[function_name](**function_args)
                                 
