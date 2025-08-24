@@ -553,32 +553,61 @@ class QueryAgent:
                         city_name_ar = district_lookup.normalize_city_name(city.get("name", "")).lower()
                         city_name_en = city.get("name_en", "").lower().strip()
                         
-                        # Check normalized Arabic city name
-                        if city_name_ar and city_name_ar in current_content:
-                            print(f"🏙️ QueryAgent: Found normalized city '{city['name']}' in last message")
-                            print(f"   Original: '{city.get('name', '')}' -> Normalized: '{city_name_ar}'")
-                            print(f"   User message normalized: '{normalized_user_message}'")
-                            
-                            # Verify extraction with ChatGPT
-                            is_verified = await self._verify_city_extraction(
-                                user_message, conversation_history, 
-                                city['name'], "الرسالة الحالية"
-                            )
-                            
-                            if is_verified:
-                                return self._create_city_result(city, "current_message_city", user_language)
-                        # Check English city name (no normalization needed for English)
-                        elif city_name_en and city_name_en in user_message.lower():
-                            print(f"🏙️ QueryAgent: Found direct city '{city['name']}' (English) in last message")
-                            
-                            # Verify extraction with ChatGPT
-                            is_verified = await self._verify_city_extraction(
-                                user_message, conversation_history, 
-                                city['name'], "الرسالة الحالية"
-                            )
-                            
-                            if is_verified:
-                                return self._create_city_result(city, "current_message_city", user_language)
+                        # LANGUAGE-AWARE PRIORITY: Check language-appropriate city name first
+                        if user_language == 'en':
+                            # For English conversations, prioritize English city names
+                            if city_name_en and city_name_en in user_message.lower():
+                                print(f"🏙️ QueryAgent: Found English city '{city.get('name_en', city['name'])}' in last message")
+                                
+                                # Verify extraction with ChatGPT
+                                is_verified = await self._verify_city_extraction(
+                                    user_message, conversation_history, 
+                                    city.get('name_en', city['name']), "current message"
+                                )
+                                
+                                if is_verified:
+                                    return self._create_city_result(city, "current_message_city", user_language)
+                            # Fallback: Check normalized Arabic city name for English conversations (e.g., "Kharj" -> "الخرج")
+                            elif city_name_ar and city_name_ar in current_content:
+                                print(f"🏙️ QueryAgent: Found normalized Arabic city '{city['name']}' matching English input")
+                                print(f"   Original: '{city.get('name', '')}' -> Normalized: '{city_name_ar}'")
+                                print(f"   User message normalized: '{normalized_user_message}'")
+                                
+                                # Verify extraction with ChatGPT
+                                is_verified = await self._verify_city_extraction(
+                                    user_message, conversation_history, 
+                                    city['name'], "current message"
+                                )
+                                
+                                if is_verified:
+                                    return self._create_city_result(city, "current_message_city", user_language)
+                        else:
+                            # For Arabic conversations, prioritize Arabic city names
+                            if city_name_ar and city_name_ar in current_content:
+                                print(f"🏙️ QueryAgent: Found normalized city '{city['name']}' in last message")
+                                print(f"   Original: '{city.get('name', '')}' -> Normalized: '{city_name_ar}'")
+                                print(f"   User message normalized: '{normalized_user_message}'")
+                                
+                                # Verify extraction with ChatGPT
+                                is_verified = await self._verify_city_extraction(
+                                    user_message, conversation_history, 
+                                    city['name'], "الرسالة الحالية"
+                                )
+                                
+                                if is_verified:
+                                    return self._create_city_result(city, "current_message_city", user_language)
+                            # Fallback: Check English city name for Arabic conversations
+                            elif city_name_en and city_name_en in user_message.lower():
+                                print(f"🏙️ QueryAgent: Found direct city '{city['name']}' (English) in last message")
+                                
+                                # Verify extraction with ChatGPT
+                                is_verified = await self._verify_city_extraction(
+                                    user_message, conversation_history, 
+                                    city['name'], "الرسالة الحالية"
+                                )
+                                
+                                if is_verified:
+                                    return self._create_city_result(city, "current_message_city", user_language)
                 
                 # PRIORITY 2: Check for district in last message (current user message) - COMMENTED OUT
                 # if user_message:
@@ -623,36 +652,67 @@ class QueryAgent:
                         normalized_content = district_lookup.normalize_city_name(content)
                         content_lower = normalized_content.lower()
                         
-                        # Check if any city name appears in the message
+                        # Check if any city name appears in the message (language-aware priority)
                         for city in all_cities:
                             # Normalize city names from database
                             city_name_ar = district_lookup.normalize_city_name(city.get("name", "")).lower()
                             city_name_en = city.get("name_en", "").lower().strip()
                             
-                            if city_name_ar and city_name_ar in content_lower:
-                                print(f"🏙️ QueryAgent: Found normalized city in history '{city['name']}'")
-                                print(f"   Original: '{city.get('name', '')}' -> Normalized: '{city_name_ar}'")
-                                print(f"   History content normalized: '{normalized_content}'")
-                                
-                                # Verify extraction with ChatGPT
-                                is_verified = await self._verify_city_extraction(
-                                    user_message, conversation_history, 
-                                    city['name'], "تاريخ المحادثة"
-                                )
-                                
-                                if is_verified:
-                                    return self._create_city_result(city, "conversation_history_city", user_language)
-                            elif city_name_en and city_name_en in content.lower():
-                                print(f"🏙️ QueryAgent: Found city in history '{city['name']}' (English)")
-                                
-                                # Verify extraction with ChatGPT
-                                is_verified = await self._verify_city_extraction(
-                                    user_message, conversation_history, 
-                                    city['name'], "تاريخ المحادثة"
-                                )
-                                
-                                if is_verified:
-                                    return self._create_city_result(city, "conversation_history_city", user_language)
+                            # LANGUAGE-AWARE PRIORITY for conversation history
+                            if user_language == 'en':
+                                # For English conversations, prioritize English city names
+                                if city_name_en and city_name_en in content.lower():
+                                    print(f"🏙️ QueryAgent: Found English city in history '{city.get('name_en', city['name'])}'")
+                                    
+                                    # Verify extraction with ChatGPT
+                                    is_verified = await self._verify_city_extraction(
+                                        user_message, conversation_history, 
+                                        city.get('name_en', city['name']), "conversation history"
+                                    )
+                                    
+                                    if is_verified:
+                                        return self._create_city_result(city, "conversation_history_city", user_language)
+                                # Fallback: Check normalized Arabic city name
+                                elif city_name_ar and city_name_ar in content_lower:
+                                    print(f"🏙️ QueryAgent: Found normalized Arabic city in history matching English context '{city['name']}'")
+                                    print(f"   Original: '{city.get('name', '')}' -> Normalized: '{city_name_ar}'")
+                                    print(f"   History content normalized: '{normalized_content}'")
+                                    
+                                    # Verify extraction with ChatGPT
+                                    is_verified = await self._verify_city_extraction(
+                                        user_message, conversation_history, 
+                                        city['name'], "conversation history"
+                                    )
+                                    
+                                    if is_verified:
+                                        return self._create_city_result(city, "conversation_history_city", user_language)
+                            else:
+                                # For Arabic conversations, prioritize Arabic city names
+                                if city_name_ar and city_name_ar in content_lower:
+                                    print(f"🏙️ QueryAgent: Found normalized city in history '{city['name']}'")
+                                    print(f"   Original: '{city.get('name', '')}' -> Normalized: '{city_name_ar}'")
+                                    print(f"   History content normalized: '{normalized_content}'")
+                                    
+                                    # Verify extraction with ChatGPT
+                                    is_verified = await self._verify_city_extraction(
+                                        user_message, conversation_history, 
+                                        city['name'], "تاريخ المحادثة"
+                                    )
+                                    
+                                    if is_verified:
+                                        return self._create_city_result(city, "conversation_history_city", user_language)
+                                # Fallback: Check English city name
+                                elif city_name_en and city_name_en in content.lower():
+                                    print(f"🏙️ QueryAgent: Found English city in history '{city['name']}'")
+                                    
+                                    # Verify extraction with ChatGPT
+                                    is_verified = await self._verify_city_extraction(
+                                        user_message, conversation_history, 
+                                        city['name'], "تاريخ المحادثة"
+                                    )
+                                    
+                                    if is_verified:
+                                        return self._create_city_result(city, "conversation_history_city", user_language)
                 
                 # PRIORITY 4: Check for district in conversation history - COMMENTED OUT
                 # if conversation_history:
@@ -1141,9 +1201,14 @@ class QueryAgent:
                     brands = data_api.search_brands_in_city(db, brand_name, city_name, user_language)
                 
                 if not brands:
+                    if user_language == 'ar':
+                        error_msg = f"عذراً، العلامة التجارية {brand_name} غير متوفرة في مدينة {city_name} حالياً"
+                    else:
+                        error_msg = f"Sorry, the {brand_name} brand is currently not available in {city_name}"
+                    
                     return {
                         "success": False,
-                        "error": f"عذراً، العلامة التجارية {brand_name} غير متوفرة في مدينة {city_name} حالياً",
+                        "error": error_msg,
                         "original_brand": brand_name,
                         "original_city": city_name
                     }
