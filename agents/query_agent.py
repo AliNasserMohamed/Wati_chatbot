@@ -103,6 +103,17 @@ class QueryAgent:
         ✅ طلبات توصيل المياه مع ذكر العلامة التجارية ("أريد توصيل مياه نستله"، "ارغب بتوصيل مياه راين")
         ✅ الردود على أسئلة متعلقة بالمياه والعلامات التجارية في تاريخ المحادثة
 
+        🚨 تمييز مهم جداً - أسئلة التوصيل قبل وبعد الطلب:
+        ✅ أسئلة التوصيل قبل الطلب (متعلقة بالخدمة):
+        - "فيه توصيل لمدينتي؟"، "تصلون الرياض؟"، "هل يوجد توصيل جدة؟"
+        - "تقدرون توصلون لحي كذا؟"، "التوصيل متوفر في منطقتنا؟"
+        - أي سؤال عن إمكانية أو توفر التوصيل لمكان معين قبل تقديم الطلب
+
+        ❌ أسئلة التوصيل بعد الطلب (غير متعلقة بالخدمة):
+        - "متى يوصل الطلب؟"، "وين المندوب؟"، "الطلب اتأخر"
+        - "متى يجي المندوب؟"، "كم باقي على وصول الطلب؟"
+        - أي سؤال عن حالة أو توقيت طلب تم تقديمه بالفعل
+
         الرسائل غير المتعلقة بالخدمة تشمل:
         ❌ التحيات العامة ("أهلاً", "مرحبا", "السلام عليكم", "صباح الخير", "مساء الخير")  
         ❌ رسائل الشكر والامتنان ("شكراً", "جزاك الله خير", "مشكور", "الله يعطيك العافية")
@@ -127,6 +138,9 @@ class QueryAgent:
         - 🚨 أي اسم مذكور مع "مياه" يجب اعتباره علامة تجارية محتملة = متعلق بالخدمة
         - أي رسالة تذكر "المندوب" أو "الطلب لم يصل" أو "تأخر" أو "متى يوصل" أو "متى يجي" تعتبر غير متعلقة
         - لكن طلبات "توصيل المياه" مع ذكر العلامة التجارية أو المدينة تعتبر متعلقة بالخدمة
+        - 🚨 الفرق الحاسم: أسئلة "فيه توصيل؟" أو "تصلون لمدينتي؟" = متعلقة (قبل الطلب)
+        - 🚨 لكن "متى يوصل؟" أو "وين المندوب؟" = غير متعلقة (بعد الطلب)
+        - إذا ذكر "الطلب" أو "المندوب" أو "الطلبية" فهو يسأل عن طلب موجود (غير متعلق)
         - أي رسالة تطلب "تعديل الموقع" أو "تغيير العنوان" أو "أعدل المكان" تعتبر غير متعلقة
         - أي شكوى أو مشكلة في الخدمة تعتبر غير متعلقة
         - لا تعتبر التحيات والشكر متعلقة بالخدمة حتى لو كانت في سياق محادثة عن المياه
@@ -143,7 +157,7 @@ class QueryAgent:
             ✅ Questions about water brands
             ✅ Questions about products and prices
             ✅ Requests to check availability in specific cities
-            ✅ Questions about delivery availability to cities ("is there delivery to Jeddah", "delivery available in Riyadh", "do you deliver to Dammam")
+            ✅ Questions about delivery availability to cities BEFORE placing order ("is there delivery to Jeddah", "delivery available in Riyadh", "do you deliver to Dammam", "can you deliver to our area?")
             ✅ Questions about water sizes and packaging
             ✅ Questions about water gallons, jugs, and large water containers
             ✅ Mentioning brand names like (Nestle, Aquafina, Alain, Qassim, Almarai, Helwa, etc.)
@@ -154,6 +168,17 @@ class QueryAgent:
             ✅ Questions about total prices or price lists
             ✅ Order requests or purchase inquiries ("I want to order", "how to order", "I want to buy")
             ✅ Water delivery requests with brand mentions ("I want Nestle water delivery", "I need Rain water delivery")
+
+            🚨 CRITICAL DISTINCTION - Pre-Order vs Post-Order Delivery Questions:
+            ✅ Pre-Order Delivery Questions (SERVICE-RELATED):
+            - "Do you deliver to my city?", "Is delivery available in Riyadh?", "Can you deliver to Jeddah?"
+            - "Do you deliver to our neighborhood?", "Is delivery available in our area?"
+            - Any question about delivery possibility or availability BEFORE placing an order
+
+            ❌ Post-Order Delivery Questions (NOT SERVICE-RELATED):
+            - "When will my order arrive?", "Where is the driver?", "My order is late"
+            - "When is the driver coming?", "How long until delivery arrives?"
+            - Any question about status or timing of an order that was ALREADY placed
 
             Non-service-related messages include:
             ❌ General greetings ("hello", "hi", "good morning", "good evening", "how are you")
@@ -180,6 +205,10 @@ class QueryAgent:
             - 🚨 Any name mentioned with "water" should be considered potential brand = service-related
             - Any message mentioning "delivery person", "driver", "order not arrived", "delayed", "when will it arrive", or "how long" is not relevant
             - But water delivery requests with brand or city mentions are service-related
+            - 🚨 CRITICAL DIFFERENCE: Questions like "do you deliver?" or "delivery available in my city?" = relevant (before order)
+            - 🚨 But "when will it arrive?" or "where is the driver?" = not relevant (after order)
+            - Check conversation context: If customer hasn't mentioned placing an order, they're asking about availability (relevant)
+            - If they mention "my order", "the driver", or "delivery person" they're asking about existing order (not relevant)
             - Any message requesting to "edit location", "change address", or "modify delivery location" is not relevant
             - Any complaint or service problem is not relevant
             - Do not consider greetings and thanks as service-related even if they appear in water-related conversations
@@ -948,9 +977,9 @@ class QueryAgent:
                 if not brands:
                     return {
                         "success": False,
-                        "error": f"بتحصل الاصناف والاسعار في التطبيق وهذا هو الرابط https://onelink.to/abar_app https://abar.app/en/store/ وايضا عن طريق الموقع الالكتروني",
+                        "error": f"عذراً، لا نقدم خدمة التوصيل لمدينة {city_name} حالياً",
                         "original_input": city_name,
-                        "show_app_links": True
+                        "show_app_links": False
                     }
                 
                 # Extract city information (same for all brands)
@@ -1021,7 +1050,7 @@ class QueryAgent:
                 if not products:
                     return {
                         "success": False,
-                        "error": f"بتحصل الاصناف والاسعار في التطبيق وهذا هو الرابط https://onelink.to/abar_app https://abar.app/en/store/ وايضا عن طريق الموقع الالكتروني",
+                        "error": f"عذراً، العلامة التجارية {brand_name} غير متوفرة في مدينة {city_name} حالياً",
                         "original_brand": brand_name,
                         "original_city": city_name
                     }
@@ -1092,7 +1121,7 @@ class QueryAgent:
                 if not brands:
                     return {
                         "success": False,
-                        "error": f"بتحصل الاصناف والاسعار في التطبيق وهذا هو الرابط https://onelink.to/abar_app https://abar.app/en/store/ وايضا عن طريق الموقع الالكتروني",
+                        "error": f"عذراً، العلامة التجارية {brand_name} غير متوفرة في مدينة {city_name} حالياً",
                         "original_brand": brand_name,
                         "original_city": city_name
                     }
@@ -1128,9 +1157,9 @@ class QueryAgent:
                 if not cities:
                     return {
                         "success": False,
-                        "error": f"بتحصل الاصناف والاسعار في التطبيق وهذا هو الرابط https://onelink.to/abar_app https://abar.app/en/store/ وايضا عن طريق الموقع الالكتروني",
+                        "error": f"عذراً، لا نقدم خدمة التوصيل لمدينة {query} حالياً",
                         "query": query,
-                        "show_app_links": True
+                        "show_app_links": False
                     }
                 
                 # Filter to return city information with match type for better UX
@@ -1784,16 +1813,16 @@ Output in JSON format only:
                     - If city is not available, just use the predefined simple response
 
                     🚨 CITY NOT AVAILABLE - CRITICAL INSTRUCTIONS:
-                    - When a city is not found or not serviced, ONLY use this exact response: "بتحصل الاصناف والاسعار في التطبيق وهذا هو الرابط https://onelink.to/abar_app https://abar.app/en/store/ وايضا عن طريق الموقع الالكتروني"
-                    - DO NOT add explanations, apologies, or additional text
-                    - DO NOT say "للأسف" (unfortunately) or similar words
+                    - When a city is not found or not serviced, ONLY use this exact response: "عذراً، لا نقدم خدمة التوصيل لهذه المدينة حالياً"
+                    - DO NOT add explanations or additional text beyond this message
+                    - Be direct and clear about unavailability
                     - Keep it simple and direct
 
-                    🚨 CRITICAL RULE - NEVER TELL CUSTOMERS DELIVERY IS NOT AVAILABLE:
-                    - NEVER tell customers "we don't deliver to your area" or "delivery not available"
-                    - NEVER say "your city is not serviced" or "not available in your location"
-                    - ALWAYS use the unified response about the app and website
-                    - This applies to ALL situations: cities, brands, products - everything
+                    🚨 CRITICAL RULE - BE DIRECT ABOUT SERVICE AVAILABILITY:
+                    - When a city is not serviced, clearly state: "عذراً، لا نقدم خدمة التوصيل لهذه المدينة حالياً"
+                    - When a brand is not available in a city, clearly state: "عذراً، هذه العلامة التجارية غير متوفرة في هذه المدينة حالياً"
+                    - Be direct and honest with customers about availability
+                    - This applies to cities and brand availability questions
 
                     🚨 SPECIFIC BUSINESS RULES - CRITICAL:
 
@@ -2048,16 +2077,16 @@ Output in JSON format only:
                     - إذا كانت المدينة غير متوفرة، فقط استخدم الرد البسيط المحدد مسبقاً
 
                     🚨 المدينة غير متوفرة - تعليمات مهمة جداً:
-                    - عندما لا توجد مدينة أو لا نخدمها، استخدم فقط هذا الرد: "بتحصل الاصناف والاسعار في التطبيق وهذا هو الرابط https://onelink.to/abar_app https://abar.app/en/store/ وايضا عن طريق الموقع الالكتروني"
-                    - لا تضيف تفسيرات أو اعتذارات أو نصوص إضافية
-                    - لا تقل "للأسف" أو كلمات مشابهة
+                    - عندما لا توجد مدينة أو لا نخدمها، استخدم فقط هذا الرد: "عذراً، لا نقدم خدمة التوصيل لهذه المدينة حالياً"
+                    - لا تضيف تفسيرات أو نصوص إضافية بعد هذه الرسالة
+                    - كن مباشراً وواضحاً بشأن عدم التوفر
                     - اجعل الرد بسيط ومباشر
 
-                    🚨 تعليمات حاسمة - لا تخبر العملاء أن التوصيل غير متاح:
-                    - NEVER tell customers "لا يوجد توصيل" or "التوصيل غير متاح"
-                    - NEVER say "لا نخدم منطقتك" or "غير متوفر في مدينتك"
-                    - ALWAYS use the unified response about the app and website
-                    - This applies to ALL situations: cities, brands, products - everything
+                    🚨 تعليمات حاسمة - كن مباشراً بشأن توفر الخدمة:
+                    - عندما لا تكون المدينة مخدومة، اذكر بوضوح: "عذراً، لا نقدم خدمة التوصيل لهذه المدينة حالياً"
+                    - عندما لا تكون العلامة التجارية متوفرة في المدينة، اذكر بوضوح: "عذراً، هذه العلامة التجارية غير متوفرة في هذه المدينة حالياً"
+                    - كن مباشراً وصادقاً مع العملاء بشأن التوفر
+                    - هذا ينطبق على أسئلة المدن وتوفر العلامات التجارية
 
                     🚨 قواعد العمل المحددة - مهمة جداً:
 
