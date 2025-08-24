@@ -4,6 +4,7 @@ import aiohttp
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 import logging
+import random
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 
@@ -93,6 +94,176 @@ class DataScraperService:
             return name
             
         return DistrictLookup.normalize_city_name(name)
+    
+    async def make_api_request_with_retry(
+        self, 
+        session: aiohttp.ClientSession, 
+        url: str, 
+        headers: dict, 
+        max_retries: int = 3, 
+        base_delay: float = 1.0,
+        backoff_factor: float = 2.0,
+        jitter: bool = True
+    ) -> Dict[str, Any]:
+        """
+        Make an API request with exponential backoff retry logic
+        
+        Args:
+            session: aiohttp session
+            url: URL to request
+            headers: Request headers
+            max_retries: Maximum number of retry attempts
+            base_delay: Base delay in seconds
+            backoff_factor: Exponential backoff multiplier
+            jitter: Add random jitter to prevent thundering herd
+        """
+        for attempt in range(max_retries + 1):  # +1 because first attempt is not a retry
+            try:
+                # Add delay before request (except first attempt)
+                if attempt > 0:
+                    delay = base_delay * (backoff_factor ** (attempt - 1))
+                    if jitter:
+                        delay *= (0.5 + random.random())  # Add 50-150% jitter
+                    logger.info(f"🔄 Retrying request (attempt {attempt + 1}/{max_retries + 1}) after {delay:.2f}s delay")
+                    await asyncio.sleep(delay)
+                else:
+                    # Small delay even on first attempt to be respectful to API
+                    await asyncio.sleep(0.5)
+                
+                async with session.get(url, headers=headers) as response:
+                    response.raise_for_status()
+                    data = await response.json()
+                    
+                    # Log successful request
+                    if attempt > 0:
+                        logger.info(f"✅ Request succeeded after {attempt + 1} attempts")
+                    
+                    return data
+                    
+            except aiohttp.ClientResponseError as e:
+                error_msg = f"HTTP {e.status} error: {e.message}"
+                
+                # Check if this is a retryable error
+                is_retryable = e.status in [429, 502, 503, 504] or (500 <= e.status < 600)
+                
+                if e.status == 400:
+                    logger.error(f"❌ 400 Bad Request (not retryable): {url}")
+                    logger.error(f"   Headers: {headers}")
+                    # 400 errors are client errors - don't retry
+                    raise
+                elif e.status == 404:
+                    logger.warning(f"⚠️ 404 Not Found: {url}")
+                    # 404 might mean the resource doesn't exist - don't retry
+                    raise
+                elif not is_retryable:
+                    logger.error(f"❌ Non-retryable error {e.status}: {url}")
+                    raise
+                
+                if attempt == max_retries:  # Last attempt
+                    logger.error(f"💥 Request failed after {max_retries + 1} attempts: {error_msg}")
+                    raise
+                else:
+                    logger.warning(f"⚠️ Retryable error (attempt {attempt + 1}): {error_msg}")
+                    
+            except Exception as e:
+                if attempt == max_retries:  # Last attempt
+                    logger.error(f"💥 Request failed after {max_retries + 1} attempts: {str(e)}")
+                    raise
+                else:
+                    logger.warning(f"⚠️ Unexpected error (attempt {attempt + 1}): {str(e)}")
+        
+        # This should never be reached
+        raise Exception("Unexpected end of retry loop")
+    
+    async def make_product_api_request_with_retry(
+        self, 
+        session: aiohttp.ClientSession, 
+        url: str, 
+        headers: dict, 
+        brand_id: int,
+        language: str = 'ar',
+        max_retries: int = 3, 
+        base_delay: float = 1.0,
+        backoff_factor: float = 2.0,
+        jitter: bool = True
+    ) -> Dict[str, Any]:
+        """
+        Make a product API request with retry logic that retries even 400 Bad Request errors
+        
+        Args:
+            session: aiohttp session
+            url: URL to request
+            headers: Request headers
+            brand_id: Brand ID for logging purposes
+            language: Language for logging (ar/en)
+            max_retries: Maximum number of retry attempts
+            base_delay: Base delay in seconds
+            backoff_factor: Exponential backoff multiplier
+            jitter: Add random jitter to prevent thundering herd
+        """
+        for attempt in range(max_retries + 1):  # +1 because first attempt is not a retry
+            try:
+                # Add delay before request (except first attempt)
+                if attempt > 0:
+                    delay = base_delay * (backoff_factor ** (attempt - 1))
+                    if jitter:
+                        delay *= (0.5 + random.random())  # Add 50-150% jitter
+                    logger.info(f"🔄 Retrying product request for brand {brand_id} ({language}) - attempt {attempt + 1}/{max_retries + 1} after {delay:.2f}s delay")
+                    await asyncio.sleep(delay)
+                else:
+                    # Small delay even on first attempt to be respectful to API
+                    await asyncio.sleep(0.5)
+                    logger.info(f"📡 Making product API request for brand {brand_id} ({language}) - attempt {attempt + 1}")
+                
+                async with session.get(url, headers=headers) as response:
+                    response.raise_for_status()
+                    data = await response.json()
+                    
+                    # Log successful request
+                    if attempt > 0:
+                        logger.info(f"✅ Product request for brand {brand_id} ({language}) succeeded after {attempt + 1} attempts")
+                    else:
+                        logger.info(f"✅ Product request for brand {brand_id} ({language}) succeeded on first attempt")
+                    
+                    return data
+                    
+            except aiohttp.ClientResponseError as e:
+                error_msg = f"HTTP {e.status} error: {e.message}"
+                
+                if e.status == 400:
+                    logger.warning(f"⚠️ 400 Bad Request for brand {brand_id} ({language}) - attempt {attempt + 1}: {url}")
+                    logger.warning(f"   Headers: {headers}")
+                    if attempt == max_retries:  # Last attempt
+                        logger.error(f"💥 Product request for brand {brand_id} ({language}) failed after {max_retries + 1} attempts with 400 Bad Request")
+                        raise
+                    else:
+                        logger.info(f"🔄 Will retry 400 Bad Request for brand {brand_id} ({language}) - {max_retries - attempt} attempts remaining")
+                elif e.status == 404:
+                    logger.warning(f"⚠️ 404 Not Found for brand {brand_id} ({language}): {url}")
+                    if attempt == max_retries:  # Last attempt
+                        logger.error(f"💥 Product request for brand {brand_id} ({language}) failed after {max_retries + 1} attempts with 404 Not Found")
+                        raise
+                    else:
+                        logger.info(f"🔄 Will retry 404 Not Found for brand {brand_id} ({language}) - {max_retries - attempt} attempts remaining")
+                else:
+                    # All other HTTP errors
+                    if attempt == max_retries:  # Last attempt
+                        logger.error(f"💥 Product request for brand {brand_id} ({language}) failed after {max_retries + 1} attempts: {error_msg}")
+                        raise
+                    else:
+                        logger.warning(f"⚠️ HTTP error for brand {brand_id} ({language}) attempt {attempt + 1}: {error_msg}")
+                        logger.info(f"🔄 Will retry HTTP error for brand {brand_id} ({language}) - {max_retries - attempt} attempts remaining")
+                    
+            except Exception as e:
+                if attempt == max_retries:  # Last attempt
+                    logger.error(f"💥 Product request for brand {brand_id} ({language}) failed after {max_retries + 1} attempts: {str(e)}")
+                    raise
+                else:
+                    logger.warning(f"⚠️ Unexpected error for brand {brand_id} ({language}) attempt {attempt + 1}: {str(e)}")
+                    logger.info(f"🔄 Will retry unexpected error for brand {brand_id} ({language}) - {max_retries - attempt} attempts remaining")
+        
+        # This should never be reached
+        raise Exception("Unexpected end of retry loop")
     
     async def fetch_cities_arabic(self) -> Dict[str, Any]:
         """Fetch all cities from external API in Arabic"""
@@ -494,21 +665,33 @@ class DataScraperService:
                     url = f"{self.base_url}/get-brand-products/{brand.id}"
                     timeout = aiohttp.ClientTimeout(total=30)
                     async with aiohttp.ClientSession(timeout=timeout) as session:
-                        # FETCH ARABIC PRODUCTS DATA
-                        async with session.get(url, headers=self.headers_ar) as response:
-                            response.raise_for_status()
-                            arabic_data = await response.json()
+                        # FETCH ARABIC PRODUCTS DATA with retry logic (including 400 errors)
+                        try:
+                            arabic_data = await self.make_product_api_request_with_retry(
+                                session, url, self.headers_ar, brand.id, 'ar', max_retries=3, base_delay=1.0
+                            )
+                        except Exception as e:
+                            logger.error(f"❌ Failed to fetch Arabic products for brand {brand.id} after 3 retries: {str(e)}")
+                            continue
                         
                         if arabic_data.get('key') != 'success':
                             logger.warning(f"⚠️ API error (Arabic) for brand {brand.id}: {arabic_data.get('msg', 'Unknown error')}")
                             continue
                         
-                        # FETCH ENGLISH PRODUCTS DATA
-                        async with session.get(url, headers=self.headers_en) as response:
-                            response.raise_for_status()
-                            english_data = await response.json()
+                        # Add delay between Arabic and English requests
+                        await asyncio.sleep(0.5)
                         
-                        if english_data.get('key') != 'success':
+                        # FETCH ENGLISH PRODUCTS DATA with retry logic (including 400 errors)
+                        try:
+                            english_data = await self.make_product_api_request_with_retry(
+                                session, url, self.headers_en, brand.id, 'en', max_retries=3, base_delay=1.0
+                            )
+                        except Exception as e:
+                            logger.warning(f"⚠️ Failed to fetch English products for brand {brand.id} after 3 retries: {str(e)}")
+                            # Continue with Arabic data only if English fails
+                            english_data = {'data': {'products': []}}
+                        
+                        if english_data.get('key') != 'success' and 'data' not in english_data:
                             logger.warning(f"⚠️ API error (English) for brand {brand.id}: {english_data.get('msg', 'Unknown error')}")
                             # Continue with Arabic data only if English fails
                             english_data = {'data': {'products': []}}
@@ -570,6 +753,9 @@ class DataScraperService:
                 except Exception as e:
                     logger.error(f"❌ Error syncing products for brand {brand.id}: {str(e)}")
                     continue
+                
+                # Add delay between brand processing to avoid overwhelming the API
+                await asyncio.sleep(1.0)
             
             # Update sync log
             sync_log.status = 'success'
@@ -915,21 +1101,33 @@ class DataScraperService:
                     url = f"{self.base_url}/get-brand-products/{brand.id}"
                     timeout = aiohttp.ClientTimeout(total=30)
                     async with aiohttp.ClientSession(timeout=timeout) as session:
-                        # FETCH ARABIC PRODUCTS DATA
-                        async with session.get(url, headers=self.headers_ar) as response:
-                            response.raise_for_status()
-                            arabic_data = await response.json()
+                        # FETCH ARABIC PRODUCTS DATA with retry logic (including 400 errors)
+                        try:
+                            arabic_data = await self.make_product_api_request_with_retry(
+                                session, url, self.headers_ar, brand.id, 'ar', max_retries=3, base_delay=1.0
+                            )
+                        except Exception as e:
+                            logger.error(f"❌ Failed to fetch Arabic products for brand {brand.id} after 3 retries: {str(e)}")
+                            continue
                         
                         if arabic_data.get('key') != 'success':
                             logger.warning(f"⚠️ API error (Arabic) for brand {brand.id}: {arabic_data.get('msg', 'Unknown error')}")
                             continue
                         
-                        # FETCH ENGLISH PRODUCTS DATA
-                        async with session.get(url, headers=self.headers_en) as response:
-                            response.raise_for_status()
-                            english_data = await response.json()
+                        # Add delay between Arabic and English requests
+                        await asyncio.sleep(0.5)
                         
-                        if english_data.get('key') != 'success':
+                        # FETCH ENGLISH PRODUCTS DATA with retry logic (including 400 errors)
+                        try:
+                            english_data = await self.make_product_api_request_with_retry(
+                                session, url, self.headers_en, brand.id, 'en', max_retries=3, base_delay=1.0
+                            )
+                        except Exception as e:
+                            logger.warning(f"⚠️ Failed to fetch English products for brand {brand.id} after 3 retries: {str(e)}")
+                            # Continue with Arabic data only if English fails
+                            english_data = {'data': {'products': []}}
+                        
+                        if english_data.get('key') != 'success' and 'data' not in english_data:
                             logger.warning(f"⚠️ API error (English) for brand {brand.id}: {english_data.get('msg', 'Unknown error')}")
                             # Continue with Arabic data only if English fails
                             english_data = {'data': {'products': []}}
@@ -997,6 +1195,9 @@ class DataScraperService:
                 except Exception as e:
                     logger.error(f"❌ Error syncing products for brand {brand.id}: {str(e)}")
                     continue
+                
+                # Add delay between brand processing to avoid overwhelming the API
+                await asyncio.sleep(1.0)
             
             # Update sync log
             sync_log.status = 'success'
