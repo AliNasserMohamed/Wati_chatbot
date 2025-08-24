@@ -90,6 +90,7 @@ class QueryAgent:
         ✅ أسئلة عن العلامات التجارية للمياه
         ✅ أسئلة عن المنتجات والأسعار
         ✅ طلبات معرفة التوفر في مدينة معينة أو حي معين
+        ✅ أسئلة عن توفر التوصيل للمدن مثل  ("فيه توصيل جدة"، "هل يوجد توصيل الرياض"، "متوفر توصيل الدمام")
         ✅ أسئلة عن أحجام المياه والعبوات
         ✅ أسئلة عن الدبات والقوارير والجوالين (عبوات المياه الكبيرة)
         ✅ ذكر أسماء العلامات التجارية مثل (نستله، أكوافينا، العين، القصيم، المراعي، حلوه، وغيرها)
@@ -109,13 +110,12 @@ class QueryAgent:
         ❌ الأسئلة الشخصية
         ❌ طلبات المساعدة في مواضيع أخرى
         ❌ الرسائل التي تحتوي على روابط
-        ❌ الاستفسار عن خدمة التوصيل العامة (بدون ذكر علامة تجارية أو مدينة)
         ❌ مشاكل متعلقة بالمندوب أو المندوبين
         ❌ شكاوي من المندوب أو طاقم التوصيل
         ❌ مشاكل التوصيل (تأخير، عدم وصول الطلب، مشاكل التوصيل)
         ❌ شكاوي خدمة العملاء أو مشاكل الخدمة
         ❌ طلبات إلغاء أو تعديل طلبات موجودة
-        ❌ استفسارات عن حالة الطلب أو تتبع الطلب
+        ❌ استفسارات عن حالة الطلب أو تتبع الطلب لة حالة التوصيل او موعد التوصيل 
         ❌ أسئلة عن مواعيد التوصيل أو وقت الوصول ("متى يوصل"، "كم يستغرق التوصيل"، "متى يجي المندوب")
         ❌ أسئلة عن وقت وصول المندوب أو مدة التوصيل
         ❌ طلبات تعديل موقع التوصيل أو العنوان ("أبغى أعدل الموقع"، "أريد أغير العنوان"، "تعديل المكان")
@@ -143,6 +143,7 @@ class QueryAgent:
             ✅ Questions about water brands
             ✅ Questions about products and prices
             ✅ Requests to check availability in specific cities
+            ✅ Questions about delivery availability to cities ("is there delivery to Jeddah", "delivery available in Riyadh", "do you deliver to Dammam")
             ✅ Questions about water sizes and packaging
             ✅ Questions about water gallons, jugs, and large water containers
             ✅ Mentioning brand names like (Nestle, Aquafina, Alain, Qassim, Almarai, Helwa, etc.)
@@ -161,7 +162,7 @@ class QueryAgent:
             ❌ Personal questions
             ❌ Requests for help with other topics
             ❌ Messages containing links or URLs
-            ❌ General delivery service inquiries (without mentioning brand or city)
+            ❌ General delivery service inquiries (without mentioning specific brand or city)
             ❌ Problems related to delivery person/driver
             ❌ Complaints about delivery person or delivery staff
             ❌ Delivery problems (delays, order not arrived, delivery issues)
