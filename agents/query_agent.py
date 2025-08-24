@@ -69,8 +69,8 @@ class QueryAgent:
         # Define available functions for the LLM
         self.available_functions = {
             "get_all_cities": lambda user_language='ar': self.get_all_cities(user_language),
-            "get_brands_by_city_name": self.get_brands_by_city_name,
-            "get_products_by_brand_and_city_name": self.get_products_by_brand_and_city_name,
+            "get_brands_by_city_name": lambda city_name, user_language='ar': self.get_brands_by_city_name(city_name, user_language),
+            "get_products_by_brand_and_city_name": lambda brand_name, city_name, user_language='ar': self.get_products_by_brand_and_city_name(brand_name, city_name, user_language),
             "search_cities": self.search_cities,
             "search_brands_in_city": self.search_brands_in_city,
             "get_cheapest_products_by_city_name": self.get_cheapest_products_by_city_name
@@ -243,7 +243,13 @@ class QueryAgent:
                     "properties": {
                         "city_name": {
                             "type": "string",
-                            "description": "Name of the city in Arabic or English (e.g., 'الرياض', 'Riyadh', 'جدة', 'Jeddah'). Supports partial matches and fuzzy matching. Language detection will be applied to return appropriate brand names."
+                            "description": "Name of the city in Arabic or English (e.g., 'الرياض', 'Riyadh', 'جدة', 'Jeddah'). Supports partial matches and fuzzy matching."
+                        },
+                        "user_language": {
+                            "type": "string",
+                            "description": "Language of the conversation ('ar' for Arabic, 'en' for English). Determines which brand names to return.",
+                            "enum": ["ar", "en"],
+                            "default": "ar"
                         }
                     },
                     "required": ["city_name"]
@@ -257,11 +263,17 @@ class QueryAgent:
                     "properties": {
                         "brand_name": {
                             "type": "string",
-                            "description": "Name of the brand in Arabic or English (e.g., 'نستله', 'Nestle', 'أكوافينا', 'Aquafina'). Supports partial matches. Language detection will be applied to return appropriate product format."
+                            "description": "Name of the brand in Arabic or English (e.g., 'نستله', 'Nestle', 'أكوافينا', 'Aquafina'). Supports partial matches."
                         },
                         "city_name": {
                             "type": "string",
-                            "description": "Name of the city in Arabic or English (e.g., 'الرياض', 'Riyadh', 'جدة', 'Jeddah'). Supports partial matches. Language detection will be applied to return appropriate product format."
+                            "description": "Name of the city in Arabic or English (e.g., 'الرياض', 'Riyadh', 'جدة', 'Jeddah'). Supports partial matches."
+                        },
+                        "user_language": {
+                            "type": "string",
+                            "description": "Language of the conversation ('ar' for Arabic, 'en' for English). Determines which product names and format to return.",
+                            "enum": ["ar", "en"],
+                            "default": "ar"
                         }
                     },
                     "required": ["brand_name", "city_name"]
@@ -960,16 +972,16 @@ class QueryAgent:
             logger.error(f"Error fetching cities: {str(e)}")
             return {"error": f"Failed to get cities: {str(e)}"}
     
-    def get_brands_by_city_name(self, city_name: str) -> Dict[str, Any]:
+    def get_brands_by_city_name(self, city_name: str, user_language: str = 'ar') -> Dict[str, Any]:
         """Get brands available in a specific city using city name with fuzzy matching
         Returns language-specific brand names and city information in response message
         """
         from utils.language_utils import language_handler
         
         try:
-            # Detect input language to determine response format
-            detected_language = language_handler.detect_language(city_name)
-            print(f"🌐 Detected language for city '{city_name}': {detected_language}")
+            # Use the conversation language instead of detecting from city name
+            detected_language = user_language
+            print(f"🌐 Using conversation language '{detected_language}' for city '{city_name}'")
             
             db = self._get_db_session()
             try:
@@ -1025,16 +1037,16 @@ class QueryAgent:
             logger.error(f"Error fetching brands for city {city_name}: {str(e)}")
             return {"error": f"Failed to get brands: {str(e)}"}
     
-    def get_products_by_brand_and_city_name(self, brand_name: str, city_name: str) -> Dict[str, Any]:
+    def get_products_by_brand_and_city_name(self, brand_name: str, city_name: str, user_language: str = 'ar') -> Dict[str, Any]:
         """Get products for a specific brand in a specific city using names with fuzzy matching
         Returns language-specific product strings with prices and contextual message
         """
         from utils.language_utils import language_handler
         
         try:
-            # Detect input language to determine response format
-            detected_language = language_handler.detect_language(brand_name + " " + city_name)
-            print(f"🌐 Detected language for brand '{brand_name}' in city '{city_name}': {detected_language}")
+            # Use the conversation language instead of detecting from brand/city names
+            detected_language = user_language
+            print(f"🌐 Using conversation language '{detected_language}' for brand '{brand_name}' in city '{city_name}'")
             
             # Clean the brand name by removing water prefixes
             cleaned_brand_name = self._clean_brand_name(brand_name)
