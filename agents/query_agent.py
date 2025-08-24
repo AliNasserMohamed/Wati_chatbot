@@ -93,6 +93,7 @@ class QueryAgent:
         ✅ أسئلة عن توفر التوصيل للمدن مثل  ("فيه توصيل جدة"، "هل يوجد توصيل الرياض"، "متوفر توصيل الدمام")
         ✅ أسئلة عن أحجام المياه والعبوات
         ✅ أسئلة عن الدبات والقوارير والجوالين (عبوات المياه الكبيرة)
+        ✅ أسئلة تبديل الجوالين أو استبدال المياه ("تبديل الجوالين"، "استبدال المياه"، "ملء جوالين"، "تبديل دبات"، "هل يوجد تبديل"، "فيه تبديل")
         ✅ ذكر أسماء العلامات التجارية مثل (نستله، أكوافينا، العين، القصيم، المراعي، حلوه، وغيرها)
         ✅ أي ذكر لـ "مياه" مع أحجام أو أوصاف المنتجات (مثل "مياه حلوه 200 مل", "مياه الشكل الجديد", "مياه صغيرة")
         ✅ أسئلة التوفر مع ذكر "مياه" ("عندكم مياه", "يوجد مياه", "متوفر مياه")
@@ -1399,16 +1400,42 @@ Classification:"""
 
 📋 نطاق عمل وكيل الاستعلامات - مهم جداً لفهم الردود المناسبة:
 
-🎯 ما يستطيع وكيل الاستعلامات فعله:
-1. ✅ عرض المدن المتاحة للتوصيل
-2. ✅ عرض العلامات التجارية المتاحة في كل مدينة
-3. ✅ عرض منتجات المياه وأسعارها لكل علامة تجارية
-4. ✅ البحث عن علامات تجارية في مدن محددة
-5. ✅ عرض أرخص المنتجات في مدينة معينة
-6. ✅ الإجابة على أسئلة المنتجات والأسعار والتوفر
-7. ✅ طرح أسئلة ودودة لجمع معلومات (مدينة، علامة، منتج)
-8. ✅ توجيه العميل للتطبيق/الموقع للطلب
-9. ✅ التعامل مع الاستفسارات العامة عن المياه وأنواعها
+🎯 ما يستطيع وكيل الاستعلامات فعله - فهم شامل للقدرات:
+
+🏙️ خدمات المدن والتوصيل:
+1. ✅ عرض المدن المتاحة للتوصيل (48+ مدينة)
+2. ✅ البحث في المدن مع تصحيح الأخطاء الإملائية
+3. ✅ فهم اختصارات المدن (المدينة = المدينة المنورة، الخميس = خميس مشيط)
+4. ✅ التعامل مع الأحياء وربطها بالمدن
+5. ✅ معرفة المدن المستثناة (أطراف الرياض)
+
+🏷️ العلامات التجارية والمنتجات:
+6. ✅ عرض العلامات التجارية المتاحة في كل مدينة (200+ علامة)
+7. ✅ البحث عن علامات تجارية مع المطابقة الضبابية
+8. ✅ عرض منتجات المياه وأسعارها لكل علامة تجارية
+9. ✅ عرض أرخص المنتجات في مدينة معينة
+10. ✅ فهم أحجام المياه الشائعة (ابو ربع = 200مل، ابو نص = 330مل، إلخ)
+11. ✅ تنظيف أسماء العلامات من البادئات (إزالة "مياه" من "مياه نستله")
+
+🔄 خدمات خاصة - تبديل الجوالين:
+12. ✅ معلومات تبديل الجوالين 19 لتر
+13. ✅ المدن المتاحة للتبديل: الرياض (تانيا، صافية)، المدينة المنورة (ينابيع المحبوبة)
+14. ✅ السؤال عن المدينة أولاً عند استفسارات التبديل
+15. ✅ توضيح عدم توفر التبديل للمنهل
+
+🏢 خدمات الشركة:
+16. ✅ معلومات التوصيل لباب الشقة (مع/بدون مصعد، الأدوار 1-3)
+17. ✅ توضيح عدم وجود فروع والاعتماد على التوصيل
+18. ✅ معلومات التواصل عبر واتساب
+19. ✅ توجيه العميل للتطبيق/الموقع للطلب الفعلي
+
+💬 تفاعل ذكي مع العملاء:
+20. ✅ طرح أسئلة ودودة لجمع معلومات (مدينة، علامة، منتج)
+21. ✅ استخراج السياق من تاريخ المحادثة
+22. ✅ فهم العبارات السعودية العامية والمصطلحات المحلية
+23. ✅ التعامل مع الاستفسارات العامة عن المياه وأنواعها
+24. ✅ الرد على أسئلة الأسعار والتوفر بدقة
+25. ✅ استخدام عبارات ودية ومحلية مناسبة
 
 ❌ ما لا يستطيع وكيل الاستعلامات فعله:
 1. ❌ أخذ طلبات فعلية أو معالجة الدفع
@@ -1490,14 +1517,48 @@ Classification:"""
 - العميل يسأل عن ماركة معينة → رد عام عن جميع الماركات ❌
 
 أمثلة على ردود صحيحة ومقبولة:
+
+💧 المنتجات والأسعار:
 - العميل يسأل عن "مياه المنهل" → "للأسف، مياه المنهل غير متوفرة حالياً" ✅ (مقبول)
 - العميل يسأل عن علامة معينة → "هذه العلامة غير متاحة في الرياض" ✅ (مقبول)
 - العميل يذكر "مياه راين" → "أي مدينة أنت فيها؟ راح أعرض لك منتجات راين هناك!" ✅ (مناسب)
 - العميل يسأل "أي علامات عندكم؟" → "أي مدينة أنت فيها؟ راح أعرض لك العلامات المتاحة هناك!" ✅ (مناسب)
 - العميل يسأل "كم سعر المياه؟" → "أي علامة ومدينة تريد؟ راح أعرض لك الأسعار!" ✅ (مناسب)  
 - العميل يقول "أبي توصيل مياه" → "أي مدينة وأي علامة تريد؟" ✅ (مناسب)
+
+🔄 تبديل الجوالين - أمثلة مناسبة:
+- العميل يسأل "فيه تبديل جوالين؟" → "تبديل الجوالين متوفر في بعض المدن، انت متواجد باي مدينة؟" ✅ (مناسب)
+
+
+🏙️ المدن والتوصيل:
 - العميل يسأل عن علامة معينة بشكل عام → السؤال عن المدينة لعرض منتجات هذه العلامة ✅ (مناسب)
 - إخبار العميل بالحقيقة عن التوفر أفضل من معلومات خاطئة ✅
+
+🚨 قواعد خاصة بالخدمات المحددة - فهم عميق للأعمال:
+
+🔄 تبديل الجوالين:
+- عند السؤال عن تبديل/استبدال/ملء الجوالين → السؤال عن المدينة مناسب ✅
+- إذا كانت المدينة الرياض → ذكر تانيا وصافية مناسب ✅
+- إذا كانت المدينة المدينة المنورة → ذكر ينابيع المحبوبة مناسب ✅
+- إذا كانت مدينة أخرى → الاعتذار وذكر عدم التوفر مناسب ✅
+- الردود التي تتبع منطق "تبديل → مدينة → علامات متاحة" مناسبة دائماً ✅
+
+🏙️ استفسارات المدن:
+- السؤال عن المدينة عند عدم المعرفة مناسب دائماً ✅
+- توضيح اختصارات المدن (المدينة = المدينة المنورة) مناسب ✅
+- عرض المدن المتاحة عند الطلب مناسب ✅
+- الاعتذار عن المدن غير المخدومة مناسب ✅
+
+🏷️ استفسارات العلامات والمنتجات:
+- السؤال عن العلامة التجارية عند عدم التحديد مناسب ✅
+- عرض العلامات المتاحة في مدينة محددة مناسب ✅
+- عرض منتجات وأسعار علامة محددة مناسب ✅
+- الردود التي تتبع منطق "مدينة → علامات" أو "علامة + مدينة → منتجات" مناسبة ✅
+
+🏢 خدمات الشركة:
+- توضيح عدم وجود فروع عند السؤال عن الفروع مناسب ✅
+- معلومات التوصيل لباب الشقة عند السؤال المحدد مناسب ✅
+- توجيه للتطبيق عند طلبات الطلب الفعلي مناسب ✅
 
 🚨 قاعدة مهمة: السؤال عن معلومات العلامة التجارية أو المدينة دائماً مناسب عندما تكون هذه المعلومات مطلوبة لتقديم خدمة دقيقة ✅
 
@@ -1522,16 +1583,42 @@ Previous Conversation Context (Last 3 messages):
 
 📋 Query Agent Scope - Critical for Understanding Appropriate Responses:
 
-🎯 What the Query Agent CAN do:
-1. ✅ Show available cities for delivery
-2. ✅ Show available water brands in each city
-3. ✅ Show water products and prices for each brand
-4. ✅ Search for brands in specific cities
-5. ✅ Show cheapest products in a specific city
-6. ✅ Answer questions about products, prices, and availability
-7. ✅ Ask friendly questions to gather information (city, brand, product)
-8. ✅ Direct customers to app/website for ordering
-9. ✅ Handle general inquiries about water and water types
+🎯 What the Query Agent CAN do - Comprehensive Understanding:
+
+🏙️ City and Delivery Services:
+1. ✅ Show available cities for delivery (130+ cities)
+2. ✅ Search cities with spelling error correction
+3. ✅ Understand city abbreviations (المدينة = Medina, الخميس = Khamis Mushait)
+4. ✅ Handle neighborhoods and link them to cities
+5. ✅ Know excluded cities (Riyadh outskirts)
+
+🏷️ Brands and Products:
+6. ✅ Show available water brands in each city (200+ brands)
+7. ✅ Search for brands with fuzzy matching
+8. ✅ Show water products and prices for each brand
+9. ✅ Show cheapest products in a specific city
+10. ✅ Understand common water sizes (ابو ربع = 200ml, ابو نص = 330ml, etc.)
+11. ✅ Clean brand names from prefixes (remove "مياه" from "مياه نستله")
+
+🔄 Special Services - Water Replacement:
+12. ✅ Information about 19L gallon replacement/exchange
+13. ✅ Available cities for replacement: Riyadh (Tania, Safiya), Medina (Yanabea Almahbooba)
+14. ✅ Ask about city first when customers inquire about replacement
+15. ✅ Clarify that Al-Manhal replacement is not available
+
+🏢 Company Services:
+16. ✅ Information about door-to-door delivery (with/without elevator, floors 1-3)
+17. ✅ Clarify no physical branches, delivery-only service
+18. ✅ Contact information via WhatsApp
+19. ✅ Direct customers to app/website for actual ordering
+
+💬 Smart Customer Interaction:
+20. ✅ Ask friendly questions to gather information (city, brand, product)
+21. ✅ Extract context from conversation history
+22. ✅ Understand Saudi colloquialisms and local terminology
+23. ✅ Handle general inquiries about water and water types
+24. ✅ Answer price and availability questions accurately
+25. ✅ Use appropriate friendly and local expressions
 
 ❌ What the Query Agent CANNOT do:
 1. ❌ Take actual orders or process payments
@@ -1543,11 +1630,21 @@ Previous Conversation Context (Last 3 messages):
 7. ❌ Handle requests to change locations or addresses
 
 🔧 Available System Functions for Query Agent:
-- get_all_cities(): Show all cities
-- get_brands_by_city_name(): Show brands in city
-- get_products_by_brand_and_city_name(): Show brand products in city
-- search_brands_in_city(): Search for brands
-- get_cheapest_products_by_city_name(): Cheapest products in city
+- get_all_cities(): Show all cities (130+ cities)
+- get_brands_by_city_name(): Show brands in specific city (200+ brands)
+- get_products_by_brand_and_city_name(): Show brand products in city with prices
+- search_brands_in_city(): Search for brands with fuzzy matching
+- get_cheapest_products_by_city_name(): Show cheapest products in city
+- search_cities(): Search cities with error correction
+
+🚨 Critical Business Logic Understanding:
+- System requires BOTH city AND brand information to show products/prices
+- If customer mentions brand but no city → asking for city is NECESSARY ✅
+- If customer asks about prices but specifies neither brand/city → asking for both is NECESSARY ✅
+- If customer wants general info but no city specified → asking for city is NECESSARY ✅
+- These questions are NOT generic - they're required for accurate service delivery
+- Water replacement is only available in Riyadh (Tania, Safiya) and Medina (Yanabea Almahbooba)
+- Al-Manhal brand replacement is explicitly NOT available
 
 🔄 Understanding Water Delivery Conversation Flow - Very Important:
 Review the last 3 messages to understand context:
@@ -1593,9 +1690,25 @@ Common Error Examples:
 - Customer asks about specific brand → Generic response about all brands ❌
 
 Examples of Correct and Acceptable Responses:
+
+💧 Products and Pricing:
 - Customer asks about "Al Manhal water" → "Sorry, Al Manhal water is currently not available" ✅ (Acceptable)
 - Customer asks about specific brand → "This brand is not available in Riyadh" ✅ (Acceptable)
+- Customer mentions "Rain water" → "Which city are you in? I'll show you Rain products there!" ✅ (Appropriate)
+- Customer asks "What brands do you have?" → "Which city are you in? I'll show you available brands there!" ✅ (Appropriate)
+- Customer asks "How much for water?" → "Which brand and city do you want? I'll show you the prices!" ✅ (Appropriate)
+- Customer says "I want water delivery" → "Which city and which brand do you want?" ✅ (Appropriate)
+
+🔄 Water Replacement - Appropriate Examples:
+- Customer asks "Do you have gallon replacement?" → "Gallon replacement is available in some cities, which city are you in?" ✅ (Appropriate)
+- Customer says "I want gallon replacement in Riyadh" → "Yes, replacement service is available in Riyadh for the following brands: Tania, Safiya" ✅ (Appropriate)
+- Customer says "Gallon replacement in Medina" → "Yes, replacement service is available in Medina for: Yanabea Almahbooba" ✅ (Appropriate)
+- Customer asks "Gallon replacement in Jeddah?" → "Sorry, gallon replacement service is not available in Jeddah currently, but delivery service is available" ✅ (Appropriate)
+- Customer asks "Al-Manhal water replacement?" → "Unfortunately, we don't have replacement service for Al-Manhal brand yet" ✅ (Appropriate)
+
+🏙️ Cities and Delivery:
 - Telling customer the truth about availability is better than wrong information ✅
+- Asking about city when customer mentions brand generally → appropriate for showing brand products ✅ (Appropriate)
 
 Evaluate the response and output:
 - is_appropriate: true or false
@@ -2251,12 +2364,21 @@ Output in JSON format only:
                     "\n\nوهذه هي العلامات التجارية التي تُعد من منتجات الآبار الجوفية:\n"
                     "نوفا، نقي، بيرين، موارد، بي، فيو، مايلز، أكويا، أكوا 8، مانا، تانيا، آبار حائل، أوسكا، نستله، آفا، هنا، سقيا المدينة، ديمان، هني، صحتك، حلوة، عذب، أوس، قطاف، رست، إيفال، وي."
                 )
-            if " جوالين" in all_conversation_text or "جالون" in all_conversation_text or "تبديل" in all_conversation_text: 
+            if " جوالين" in all_conversation_text or "جالون" in all_conversation_text or "تبديل" in all_conversation_text or "استبدال" in all_conversation_text or "تغيير" in all_conversation_text or "ملء" in all_conversation_text or "دبات" in all_conversation_text: 
                 system_message["content"] += (
-                    "\n\nهذه هي العلامات التي توفر تبديل الجوالين، والمدن التي يتوفر بها التبديل:\n\n"
-                    "تانيا – الرياض\n"
-                    "صافية – الرياض\n"
-                    "ينابيع المحبوبة – المدينة المنورة"
+                    "\n\n🔄 تبديل الجوالين (استبدال/ملء/تبديل الدبات) - تعليمات مهمة جداً:\n"
+                    "- المياه التي يتم تبديلها هي الجوالين (الدبات) 19 لتر فقط\n"
+                    "- عندما يسأل العميل عن تبديل/استبدال/ملء الجوالين، يجب سؤاله عن المدينة أولاً\n"
+                    "- إذا كانت المدينة من ضمن المدن المحددة للتبديل، أخبره بالعلامة التجارية المتاحة في مدينته\n\n"
+                    "المدن والعلامات المتاحة للتبديل:\n"
+                    "• الرياض: تانيا، صافية\n"
+                    "• المدينة المنورة: ينابيع المحبوبة\n\n"
+                    "📋 عبارات الرد:\n"
+                    "- عند السؤال عن التبديل: 'تبديل الجوالين متوفر في بعض المدن، انت متواجد باي مدينة؟'\n"
+                    "- إذا كانت المدينة الرياض: 'نعم، خدمة التبديل متوفرة في الرياض للعلامات التالية: تانيا، صافية'\n"
+                    "- إذا كانت المدينة المدينة المنورة: 'نعم، خدمة التبديل متوفرة في المدينة المنورة للعلامة التالية: ينابيع المحبوبة'\n"
+                    "- إذا كانت المدينة غير مدعومة: 'عذراً، خدمة تبديل الجوالين غير متوفرة في هذه المدينة حالياً، لكن خدمة التوصيل متوفرة'\n"
+                    "- لا يتوفر لدينا تبديل لماركة المنهل حتى الآن"
                 )
             messages.append(system_message)
             
