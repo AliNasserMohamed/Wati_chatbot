@@ -1958,14 +1958,23 @@ Output in JSON format only:
                     Gallon exchange means customer brings empty gallon and gets filled gallon in return for exchange price.
                     This is different from buying a new gallon.
                     
-                    When customer asks about gallon exchange (gallon exchange, jug exchange, bottle exchange):
+                    🧠 Step 1: Determine Request Type First
+                    - Read customer message and decide: Is this gallon exchange or buying new water?
+                    - Keywords for gallon exchange: "gallon exchange", "jug exchange", "bottle exchange", "replace gallon", "swap gallon"
                     
-                    🚨 SPECIAL WORKFLOW FOR GALLON EXCHANGE (Different from regular products):
-                    1. If you don't know the city → Ask for city
-                    2. If you know city but don't know brand → Ask "Which brand do you want?" (WITHOUT showing all available brands)
-                    3. If you know both city and brand → Use get_products_by_brand_and_city_name directly
-                    4. Use get_products_by_brand_and_city_name function normally
-                    5. 🚨 CRITICAL AND STRICT: Filter the returned products to ONLY show products with "تبديل" or "Exchange" in their title - DO NOT show "جديد" or other products
+                    🚨 IF REQUEST IS GALLON EXCHANGE - Special workflow:
+                    1. NEVER use get_brands_by_city_name ❌
+                    2. If you don't know the city → Ask for city
+                    3. If you don't know the brand → Ask "Which brand do you want to exchange?" (WITHOUT showing brand list)
+                    4. Once you know city and brand → Use get_products_by_brand_and_city_name directly
+                    
+                    5. Use get_products_by_brand_and_city_name function normally
+                    6. 🚨 CRITICAL AND STRICT: Filter the returned products to ONLY show products with "تبديل" or "Exchange" in their title - DO NOT show "جديد" or other products
+                    
+                    🚨 IF REQUEST IS BUYING NEW WATER - Normal workflow:
+                    1. You can use get_brands_by_city_name to show available brands
+                    2. Follow normal product workflow
+                    3. Show all products (including "جديد")
                     6. The prices shown are exchange prices, not purchase prices
                     7. Examples of exchange product titles:
                        - "Tania Water Gallon 19 L - Exchange" 
@@ -2277,14 +2286,23 @@ Output in JSON format only:
                       تبديل الجوالين يعني أن العميل يحضر الجالون الفارغ ويستلم جالون مليء بالماء مقابل سعر التبديل.
                       هذه خدمة مختلفة عن شراء جالون جديد.
                       
-                      عندما يسأل العميل عن تبديل الجوالين (تبديل الجوالين، جالون تبديل، استبدال الجوالين):
+                      🧠 خطوة 1: تحديد نوع الطلب أولاً
+                      - اقرأ رسالة العميل وحدد: هل هو طلب تبديل جوالين أم شراء مياه جديدة؟
+                      - كلمات مفتاحية لتبديل الجوالين: "تبديل الجوالين"، "تبديل جالون"، "استبدال الجوالين"، "بدل الجالون"، "تغيير الجوالين"
                       
-                      🚨 سير العمل الخاص لتبديل الجوالين (مختلف عن المنتجات العادية):
-                      1. إذا لم تكن تعرف المدينة → اسأل عن المدينة
-                      2. إذا كنت تعرف المدينة ولا تعرف العلامة التجارية → اسأل "أي علامة تجارية تريد؟" (بدون عرض كل العلامات المتاحة)
-                      3. إذا كنت تعرف المدينة والعلامة التجارية → استخدم get_products_by_brand_and_city_name مباشرة
-                    4. استخدم وظيفة get_products_by_brand_and_city_name بشكل طبيعي
-                    5. 🚨 مهم جداً وصارم: قم بفلترة المنتجات المرجعة لعرض المنتجات التي تحتوي على كلمة "تبديل" في عنوانها فقط - لا تعرض منتجات "جديد" أو غيرها
+                      🚨 إذا كان الطلب متعلق بتبديل الجوالين - سير عمل خاص:
+                      1. لا تستخدم get_brands_by_city_name أبداً ❌
+                      2. إذا لم تكن تعرف المدينة → اسأل عن المدينة
+                      3. إذا لم تكن تعرف العلامة التجارية → اسأل "أي علامة تجارية تريد تبديلها؟" (بدون عرض قائمة العلامات)
+                      4. بمجرد معرفة المدينة والعلامة التجارية → استخدم get_products_by_brand_and_city_name مباشرة
+                      
+                      5. استخدم وظيفة get_products_by_brand_and_city_name بشكل طبيعي
+                      6. 🚨 مهم جداً وصارم: قم بفلترة المنتجات المرجعة لعرض المنتجات التي تحتوي على كلمة "تبديل" في عنوانها فقط - لا تعرض منتجات "جديد" أو غيرها
+                      
+                      🚨 إذا كان الطلب متعلق بشراء مياه جديدة - سير عمل عادي:
+                      1. يمكنك استخدام get_brands_by_city_name لعرض العلامات المتاحة
+                      2. اتبع سير العمل العادي للمنتجات
+                      3. اعرض جميع المنتجات (بما في ذلك "جديد")
                     6. الأسعار المعروضة هي أسعار التبديل وليس أسعار الشراء
                     7. أمثلة على عناوين منتجات التبديل:
                        - "جالون 19 لتر - تبديل" (عربي)
