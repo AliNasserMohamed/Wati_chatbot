@@ -1458,6 +1458,7 @@ Classification:"""
    - اسأل عن المدينة والعلامة التجارية، ثم استخدم get_products_by_brand_and_city_name
    - قم بفلترة النتائج لعرض المنتجات التي تحتوي على "تبديل" أو "Exchange" في العنوان فقط
    - إذا لم توجد منتجات تبديل، أخبر العميل أن التبديل غير متوفر لهذه العلامة/المدينة
+   - سير العمل الخاص: مدينة ← اسأل عن العلامة التجارية (بدون عرض كل العلامات) ← عرض منتجات التبديل
 
 قواعد التقييم الصارمة:
 
@@ -1503,6 +1504,8 @@ Classification:"""
 - العميل يسأل عن علامة معينة بشكل عام → السؤال عن المدينة لعرض منتجات هذه العلامة ✅ (مناسب)
 - إخبار العميل بالحقيقة عن التوفر أفضل من معلومات خاطئة ✅
 - العميل يسأل عن "10 كراتين نوڤا كم السعر؟" → عرض سعر الكرتونة الواحدة مناسب ✅ (العميل يستطيع حساب المجموع بنفسه)
+- العميل يسأل عن تبديل الجوالين → اسأل عن المدينة ثم العلامة التجارية (بدون عرض كل العلامات) ثم اعرض منتجات التبديل ✅ (مناسب)
+- العميل يسأل عن تبديل الجوالين وقد ذكر المدينة والعلامة → عرض منتجات التبديل مباشرة ✅ (مناسب)
 
 🚨 قاعدة مهمة: السؤال عن معلومات العلامة التجارية أو المدينة دائماً مناسب عندما تكون هذه المعلومات مطلوبة لتقديم خدمة دقيقة ✅
 
@@ -1574,10 +1577,11 @@ Review the last 3 messages to understand context:
    - Example: If we know brand → show products and prices
 
 4️⃣ Gallon Exchange Handling:
-   - Gallon exchange requests follow the SAME workflow as regular product queries
-   - Ask for city and brand, then use get_products_by_brand_and_city_name
+   - Gallon exchange requests have SPECIAL workflow: ask for city, then ask for brand WITHOUT showing all brands in that city
+   - Ask for city and brand separately, then use get_products_by_brand_and_city_name
    - Filter results to show only products with "تبديل" or "Exchange" in title
    - If no exchange products found, inform customer exchange is not available for that brand/city
+   - Special workflow: city ← ask for brand (without showing all brands) ← show exchange products
 
 Strict Evaluation Rules:
 
@@ -1611,6 +1615,8 @@ Examples of Correct and Acceptable Responses:
 - Customer asks about specific brand → "This brand is not available in Riyadh" ✅ (Acceptable)
 - Telling customer the truth about availability is better than wrong information ✅
 - Customer asks "10 cartons of Nove, what's the price?" → Showing price per carton is appropriate ✅ (Customer can calculate total themselves)
+- Customer asks about gallon exchange → Ask for city then brand (without showing all brands) then show exchange products ✅ (Appropriate)
+- Customer asks about gallon exchange with city and brand mentioned → Show exchange products directly ✅ (Appropriate)
 
 Evaluate the response and output:
 - is_appropriate: true or false
