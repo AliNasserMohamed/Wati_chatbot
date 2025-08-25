@@ -93,6 +93,7 @@ class QueryAgent:
         ✅ أسئلة عن توفر التوصيل للمدن مثل  ("فيه توصيل جدة"، "هل يوجد توصيل الرياض"، "متوفر توصيل الدمام")
         ✅ أسئلة عن أحجام المياه والعبوات
         ✅ أسئلة عن الدبات والقوارير والجوالين (عبوات المياه الكبيرة)
+        ✅ أسئلة عن تبديل الجوالين أو استبدال الجوالين أو تغيير الجوالين او دبات المياه
         ✅ ذكر أسماء العلامات التجارية مثل (نستله، أكوافينا، العين، القصيم، المراعي، حلوه، وغيرها)
         ✅ أي ذكر لـ "مياه" مع أحجام أو أوصاف المنتجات (مثل "مياه حلوه 200 مل", "مياه الشكل الجديد", "مياه صغيرة")
         ✅ أسئلة التوفر مع ذكر "مياه" ("عندكم مياه", "يوجد مياه", "متوفر مياه")
@@ -136,6 +137,7 @@ class QueryAgent:
         - 🚨 أي رسالة تحتوي على كلمة "مياه" مع وصف منتج أو حجم أو سؤال توفر تعتبر متعلقة بالخدمة
         - 🚨 مثال: "عندكم مياه حلوه الشكل الجديد 200 مل" = متعلقة بالخدمة (حتى لو كانت "حلوه" غير معروفة كعلامة تجارية)
         - 🚨 أي اسم مذكور مع "مياه" يجب اعتباره علامة تجارية محتملة = متعلق بالخدمة
+        - 🚨 أسئلة تبديل الجوالين متعلقة بالخدمة: "فيه تبديل جوالين؟"، "تبديل الجوالين"، "استبدال الجوالين"، "تبديل جالون"، "بدل الجالون"، "تغيير الجوالين" = متعلق بالخدمة
         - أي رسالة تذكر "المندوب" أو "الطلب لم يصل" أو "تأخر" أو "متى يوصل" أو "متى يجي" تعتبر غير متعلقة
         - لكن طلبات "توصيل المياه" مع ذكر العلامة التجارية أو المدينة تعتبر متعلقة بالخدمة
         - 🚨 الفرق الحاسم: أسئلة "فيه توصيل؟" أو "تصلون لمدينتي؟" = متعلقة (قبل الطلب)
@@ -160,6 +162,7 @@ class QueryAgent:
             ✅ Questions about delivery availability to cities BEFORE placing order ("is there delivery to Jeddah", "delivery available in Riyadh", "do you deliver to Dammam", "can you deliver to our area?")
             ✅ Questions about water sizes and packaging
             ✅ Questions about water gallons, jugs, and large water containers
+            ✅ Questions about gallon exchange, jug exchange, or bottle exchange service
             ✅ Mentioning brand names like (Nestle, Aquafina, Alain, Qassim, Almarai, Helwa, etc.)
             ✅ Any mention of "water" with product sizes or descriptions ("Helwa water 200ml", "water new design", "small water")
             ✅ Availability questions with "water" ("do you have water", "water available", "any water")
@@ -201,8 +204,9 @@ class QueryAgent:
             Special strict instructions:
             - Be very strict in classification - only questions about cities, brands, products, and prices count as relevant
             - 🚨 Any message containing "water" with product description or size or availability question counts as service-related
-            - 🚨 Example: "do you have Helwa water new design 200ml" = service-related (even if "Helwa" is unknown brand)
+            - 🚨 Example: "do you have Helwa water new design 200ml" = service-related (even if "Helva" is unknown brand)
             - 🚨 Any name mentioned with "water" should be considered potential brand = service-related
+            - 🚨 Gallon exchange questions are service-related: "gallon exchange?", "jug exchange", "bottle exchange", "replace gallon", "swap gallon", "change gallon" = service-related
             - Any message mentioning "delivery person", "driver", "order not arrived", "delayed", "when will it arrive", or "how long" is not relevant
             - But water delivery requests with brand or city mentions are service-related
             - 🚨 CRITICAL DIFFERENCE: Questions like "do you deliver?" or "delivery available in my city?" = relevant (before order)
@@ -1829,6 +1833,19 @@ Output in JSON format only:
                     - Do not ask for information that already exists in conversation history
                     - Use extracted information from history even if it's from older messages
 
+                    🚨 NEVER ASSUME CITIES - ABSOLUTELY CRITICAL:
+                    - NEVER assume or guess a city for any brand name
+                    - If customer mentions ONLY a brand name (like "مياه المنهل" or "Nestle water") without a city:
+                      → ALWAYS ask "أي مدينة أنت فيها؟" (Which city are you in?)
+                      → DO NOT call any search functions without explicit city mention
+                      → DO NOT assume "المدينة المنورة" or any other city
+                    - Only call search functions when you have EXPLICIT city information from:
+                      → User's current message
+                      → Conversation history
+                      → System-provided city context
+                    - Example: "مياه المنهل" → Ask for city, don't assume Medina
+                    - Example: "مياه المنهل الرياض" → Use Riyadh as specified
+
                     🚨 MANDATORY FUNCTION CALLING - CRITICAL:
                     - When you know the city but need to show brands: IMMEDIATELY call get_brands_by_city_name function
                     - When you know both city and brand but need products: IMMEDIATELY call get_products_by_brand_and_city_name function
@@ -2204,6 +2221,19 @@ Output in JSON format only:
                     4. إذا سأل العميل عن أسعار عامة بدون تحديد العلامة التجارية/المدينة → اسأل دائماً عن الاثنين قبل تقديم أي معلومات أسعار
 
                     لا تقدم أبداً أسعار تقديرية أو عامة. احصل دائماً على أسعار منتجات محددة للعلامة التجارية المحددة في المدينة المحددة.
+                    
+                    🚨 منع افتراض المدن - مهم جداً:
+                    - لا تفترض أبداً أي مدينة لأي علامة تجارية
+                    - إذا ذكر العميل اسم علامة تجارية فقط (مثل "مياه المنهل" أو "نستله") بدون مدينة:
+                      → اسأل دائماً "أي مدينة أنت فيها؟"
+                      → لا تستدعي أي وظائف بحث بدون ذكر صريح للمدينة
+                      → لا تفترض "المدينة المنورة" أو أي مدينة أخرى
+                    - استدعي وظائف البحث فقط عندما تملك معلومات صريحة عن المدينة من:
+                      → رسالة العميل الحالية
+                      → تاريخ المحادثة
+                      → السياق المقدم من النظام
+                    - مثال: "مياه المنهل" → اسأل عن المدينة، لا تفترض المدينة المنورة
+                    - مثال: "مياه المنهل الرياض" → استخدم الرياض كما هو محدد
                     
                     🚨 توضيح مهم للأسعار:
                     جميع الأسعار المعروضة هي أسعار الكراتين وليس الزجاجة الواحدة. عند عرض أسعار المنتجات، وضح ذلك بإضافة "(سعر الكرتونة)" باللغة العربية أو "(carton price)" بالإنجليزية.
