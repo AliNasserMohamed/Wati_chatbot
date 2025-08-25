@@ -975,16 +975,7 @@ class QueryAgent:
         
         return False
 
-    def _check_for_total_price_question(self, user_message: str) -> bool:
-        """Check if user is asking about total prices or price lists"""
-        price_keywords = [
-            "الأسعار", "قائمة الأسعار", "كم الأسعار", "ايش الأسعار",  
-            "أسعاركم", "جميع الأسعار", "كل الأسعار", "الاسعار كلها",
-            "prices", "price list", "all prices", "total prices", "price menu"
-        ]
-        
-        user_msg_lower = user_message.lower()
-        return any(keyword.lower() in user_msg_lower for keyword in price_keywords)
+
     
     def get_all_cities(self, user_language: str = 'ar') -> Dict[str, Any]:
         """Get complete list of all cities we serve
@@ -1142,11 +1133,11 @@ class QueryAgent:
                     title = product["product_title"]
                     
                     if user_language == 'ar':
-                        # Arabic format: "Product Title - XX.XX ريال"
-                        product_string = f"{title} - {price} ريال"
+                        # Arabic format: "Product Title - XX.XX ريال (سعر الكرتونة)"
+                        product_string = f"{title} - {price} ريال (سعر الكرتونة)"
                     else:
-                        # English format: "Product Title - XX.XX SAR"
-                        product_string = f"{title} - {price} SAR"
+                        # English format: "Product Title - XX.XX SAR (carton price)"
+                        product_string = f"{title} - {price} SAR (carton price)"
                     
                     filtered_products.append(product_string)
                 
@@ -1408,7 +1399,11 @@ Classification:"""
 6. ✅ الإجابة على أسئلة المنتجات والأسعار والتوفر
 7. ✅ طرح أسئلة ودودة لجمع معلومات (مدينة، علامة، منتج)
 8. ✅ توجيه العميل للتطبيق/الموقع للطلب
-9. ✅ التعامل مع الاستفسارات العامة عن المياه وأنواعها
+9. ✅ توجيه طلبات حساب الإجمالي أو تكلفة الطلبات للتطبيق (مثل "10 كرتون نوڤا كم السعر الإجمالي؟")
+10. ✅ معالجة طلبات تبديل الجوالين بنفس طريقة استعلامات المنتجات العادية مع فلترة المنتجات حسب كلمة "تبديل"
+11. ✅ التعامل مع الاستفسارات العامة عن المياه وأنواعها
+12. ✅ عرض اسعار علامة تجارية في مدينة محددة عندما يسال العميل عن الاسعار او يذكر اسم البراند
+13. ✅ عرض سعر الكرتونة الواحدة عندما يسأل العميل عن عدة كراتين (مثل "10 كراتين كم السعر؟") - مقبول لأن العميل يستطيع الحساب
 
 ❌ ما لا يستطيع وكيل الاستعلامات فعله:
 1. ❌ أخذ طلبات فعلية أو معالجة الدفع
@@ -1454,6 +1449,12 @@ Classification:"""
    - مثال: إذا عرفنا المدينة → اعرض العلامات المتاحة
    - مثال: إذا عرفنا العلامة → اعرض المنتجات والأسعار
 
+5️⃣ معالجة تبديل الجوالين:
+   - طلبات تبديل الجوالين تتبع نفس سير العمل مثل استعلامات المنتجات العادية
+   - اسأل عن المدينة والعلامة التجارية، ثم استخدم get_products_by_brand_and_city_name
+   - قم بفلترة النتائج لعرض المنتجات التي تحتوي على "تبديل" أو "Exchange" في العنوان فقط
+   - إذا لم توجد منتجات تبديل، أخبر العميل أن التبديل غير متوفر لهذه العلامة/المدينة
+
 قواعد التقييم الصارمة:
 
 🔴 الرد غير مناسب إذا:
@@ -1498,6 +1499,7 @@ Classification:"""
 - العميل يقول "أبي توصيل مياه" → "أي مدينة وأي علامة تريد؟" ✅ (مناسب)
 - العميل يسأل عن علامة معينة بشكل عام → السؤال عن المدينة لعرض منتجات هذه العلامة ✅ (مناسب)
 - إخبار العميل بالحقيقة عن التوفر أفضل من معلومات خاطئة ✅
+- العميل يسأل عن "10 كراتين نوڤا كم السعر؟" → عرض سعر الكرتونة الواحدة مناسب ✅ (العميل يستطيع حساب المجموع بنفسه)
 
 🚨 قاعدة مهمة: السؤال عن معلومات العلامة التجارية أو المدينة دائماً مناسب عندما تكون هذه المعلومات مطلوبة لتقديم خدمة دقيقة ✅
 
@@ -1531,7 +1533,10 @@ Previous Conversation Context (Last 3 messages):
 6. ✅ Answer questions about products, prices, and availability
 7. ✅ Ask friendly questions to gather information (city, brand, product)
 8. ✅ Direct customers to app/website for ordering
-9. ✅ Handle general inquiries about water and water types
+9. ✅ Redirect total order calculation requests to the app (like "10 cartons of Nove, what's the total cost?")
+10. ✅ Handle gallon exchange requests using the same workflow as regular product queries, filtering products by "تبديل" or "Exchange" in title
+11. ✅ Handle general inquiries about water and water types
+12. ✅ Show single carton price when customer asks about multiple cartons (like "10 cartons, what's the price?") - acceptable as customer can calculate total
 
 ❌ What the Query Agent CANNOT do:
 1. ❌ Take actual orders or process payments
@@ -1565,6 +1570,12 @@ Review the last 3 messages to understand context:
    - Example: If we know city → show available brands
    - Example: If we know brand → show products and prices
 
+4️⃣ Gallon Exchange Handling:
+   - Gallon exchange requests follow the SAME workflow as regular product queries
+   - Ask for city and brand, then use get_products_by_brand_and_city_name
+   - Filter results to show only products with "تبديل" or "Exchange" in title
+   - If no exchange products found, inform customer exchange is not available for that brand/city
+
 Strict Evaluation Rules:
 
 🔴 Response is INAPPROPRIATE if:
@@ -1596,6 +1607,7 @@ Examples of Correct and Acceptable Responses:
 - Customer asks about "Al Manhal water" → "Sorry, Al Manhal water is currently not available" ✅ (Acceptable)
 - Customer asks about specific brand → "This brand is not available in Riyadh" ✅ (Acceptable)
 - Telling customer the truth about availability is better than wrong information ✅
+- Customer asks "10 cartons of Nove, what's the price?" → Showing price per carton is appropriate ✅ (Customer can calculate total themselves)
 
 Evaluate the response and output:
 - is_appropriate: true or false
@@ -1674,6 +1686,22 @@ Output in JSON format only:
                     user_language=user_language
                 )
                 
+                # Log validation result to message journey
+                if LOGGING_AVAILABLE and journey_id:
+                    message_journey_logger.add_step(
+                        journey_id=journey_id,
+                        step_type="response_validation",
+                        description=f"Response validation completed (attempt {attempt})",
+                        data={
+                            "is_appropriate": validation_result['is_appropriate'],
+                            "reason": validation_result['reason'],
+                            "confidence": validation_result['confidence'],
+                            "attempt_number": attempt,
+                            "user_message_length": len(user_message),
+                            "response_length": len(response)
+                        }
+                    )
+                
                 if validation_result['is_appropriate']:
                     print(f"✅ Response validated as appropriate (attempt {attempt})")
                     return response
@@ -1709,14 +1737,9 @@ Output in JSON format only:
         
         print("✅ Message is relevant to water delivery services")
 
-        # STEP 2: Check for total price questions - redirect to app/website
-        if self._check_for_total_price_question(user_message):
-            if user_language == 'ar':
-                return "بتحصل الاصناف والاسعار في التطبيق وهذا هو الرابط https://onelink.to/abar_app https://abar.app/en/store/ وايضا عن طريق الموقع الالكتروني"
-            else:
-                return "You can find all products and prices in our app: https://onelink.to/abar_app or on our website: https://abar.app/en/store/"
 
-        # STEP 3: Check if this is a "yes" response to a previous product question
+
+        # STEP 2: Check if this is a "yes" response to a previous product question
         if self._check_for_yes_response(user_message, conversation_history):
             print("✅ Detected 'yes' response - handling product confirmation")
         
@@ -1885,6 +1908,19 @@ Output in JSON format only:
                     4. If customer asks for general prices without specifying brand/city → Always ask for both before providing any price information
 
                     Never provide generic or estimated prices. Always get specific product prices for the exact brand in the specific city.
+                    
+                    🚨 IMPORTANT PRICE CLARIFICATION:
+                    ALL PRICES DISPLAYED ARE FOR CARTONS, NOT SINGLE BOTTLES. When showing product prices, make this clear by adding "(carton price)" in English or "(سعر الكرتونة)" in Arabic.
+                    
+                    🔄 GALLON EXCHANGE HANDLING - SPECIAL PRODUCT FILTERING:
+                    When customer asks about gallon exchange ( exchange gallon, gallon exchange):
+                    1. Follow the SAME workflow as regular product queries: ask for CITY first, then BRAND
+                    2. Use get_products_by_brand_and_city_name function normally
+                    3. IMPORTANT: Filter the returned products to ONLY show products with "تبديل" or "Exchange" in their title
+                    4. The prices shown are exchange prices, not purchase prices
+                    5. Examples of exchange product titles:
+                       - "Tania Water Gallon 19 L - Exchange" 
+                    6. If NO exchange products are found for that brand/city, inform customer that exchange service is not available for that brand in that city
 
                     ORDER REQUESTS - REDIRECT TO APP:
                     When user wants to place an order, make a purchase, or asks how to order, ALWAYS redirect them to the app/website with this message:
@@ -1892,6 +1928,14 @@ Output in JSON format only:
                     - Never try to take orders through the chat
                     - Never ask for delivery details, payment info, or personal information
                     - Always direct them to the official app/website for ordering
+                    
+                    TOTAL PRICE AND ORDER CALCULATIONS - REDIRECT TO APP:
+                    When user asks about:
+                    - Total prices or price lists ("prices", "price list", "all prices", "total prices")
+                    - Total order calculations ("10 cartons of Nove, what's the total?", "total", "total cost", "sum")
+                    - General price inquiries for multiple items or quantities
+                    ALWAYS redirect them to the app with this message:
+                    "You can find all products and prices in our app: https://onelink.to/abar_app or on our website: https://abar.app/en/store/"
 
                     🚨 APP PROMOTION - ONLY IN SPECIFIC CASES:
                     - When showing specific products/prices for a brand, add at the end: "You can order through our app: https://onelink.to/abar_app"
@@ -2160,6 +2204,20 @@ Output in JSON format only:
                     4. إذا سأل العميل عن أسعار عامة بدون تحديد العلامة التجارية/المدينة → اسأل دائماً عن الاثنين قبل تقديم أي معلومات أسعار
 
                     لا تقدم أبداً أسعار تقديرية أو عامة. احصل دائماً على أسعار منتجات محددة للعلامة التجارية المحددة في المدينة المحددة.
+                    
+                    🚨 توضيح مهم للأسعار:
+                    جميع الأسعار المعروضة هي أسعار الكراتين وليس الزجاجة الواحدة. عند عرض أسعار المنتجات، وضح ذلك بإضافة "(سعر الكرتونة)" باللغة العربية أو "(carton price)" بالإنجليزية.
+                    
+                    🔄 معالجة تبديل الجوالين - فلترة خاصة للمنتجات:
+                    عندما يسأل العميل عن تبديل الجوالين (تبديل الجوالين، جالون تبديل، استبدال الجوالين):
+                    1. اتبع نفس سير العمل مثل استعلامات المنتجات العادية: اسأل عن المدينة أولاً، ثم العلامة التجارية
+                    2. استخدم وظيفة get_products_by_brand_and_city_name بشكل طبيعي
+                    3. مهم جداً: قم بفلترة المنتجات المرجعة لعرض المنتجات التي تحتوي على "تبديل" أو "Exchange" في عنوانها فقط
+                    4. الأسعار المعروضة هي أسعار التبديل وليس أسعار الشراء
+                    5. أمثلة على عناوين منتجات التبديل:
+                       - "جالون 19 لتر - تبديل" (عربي)
+                    6. إذا لم توجد منتجات تبديل لتلك العلامة التجارية/المدينة، أخبر العميل أن خدمة التبديل غير متوفرة لهذه العلامة في هذه المدينة
+                    7. تعامل مع توحيد النصوص: "تبديل"/"تبدیل"/"exchange"/"Exchange" يجب التعرف عليها جميعاً
 
                     طلبات الطلب - التوجيه للتطبيق:
                     عندما يريد العميل تقديم طلب، أو الشراء، أو يسأل كيف يطلب، وجهه دائماً للتطبيق/الموقع بهذه الرسالة:
@@ -2167,6 +2225,14 @@ Output in JSON format only:
                     - لا تحاول أخذ طلبات من خلال المحادثة أبداً
                     - لا تسأل عن تفاصيل التوصيل أو معلومات الدفع أو المعلومات الشخصية
                     - وجههم دائماً للتطبيق/الموقع الرسمي للطلب
+                    
+                    الأسعار الإجمالية وحسابات الطلبات - التوجيه للتطبيق:
+                    عندما يسأل العميل عن:
+                    - الأسعار الإجمالية أو قوائم الأسعار ("الأسعار"، "قائمة الأسعار"، "جميع الأسعار"، "كل الأسعار")
+                    - حساب إجمالي الطلبات ("10 كرتون نوڤا، كم المجموع؟"، "المجموع"، "الإجمالي"، "مجموع السعر")
+                    - استفسارات أسعار عامة لعدة عناصر أو كميات
+                    وجهه دائماً للتطبيق بهذه الرسالة:
+                    "بتحصل الاصناف والاسعار في التطبيق وهذا هو الرابط https://onelink.to/abar_app https://abar.app/en/store/ وايضا عن طريق الموقع الالكتروني"
 
                     🚨 الترويج للتطبيق - في حالات محددة فقط:
                     - عند عرض منتجات/أسعار لعلامة تجارية محددة، أضف في النهاية: "تقدر تطلب من خلال التطبيق: https://onelink.to/abar_app"
@@ -2251,13 +2317,7 @@ Output in JSON format only:
                     "\n\nوهذه هي العلامات التجارية التي تُعد من منتجات الآبار الجوفية:\n"
                     "نوفا، نقي، بيرين، موارد، بي، فيو، مايلز، أكويا، أكوا 8، مانا، تانيا، آبار حائل، أوسكا، نستله، آفا، هنا، سقيا المدينة، ديمان، هني، صحتك، حلوة، عذب، أوس، قطاف، رست، إيفال، وي."
                 )
-            if " جوالين" in all_conversation_text or "جالون" in all_conversation_text or "تبديل" in all_conversation_text: 
-                system_message["content"] += (
-                    "\n\nهذه هي العلامات التي توفر تبديل الجوالين، والمدن التي يتوفر بها التبديل:\n\n"
-                    "تانيا – الرياض\n"
-                    "صافية – الرياض\n"
-                    "ينابيع المحبوبة – المدينة المنورة"
-                )
+
             messages.append(system_message)
             
             # Add conversation history if provided (use last 5 messages to keep context manageable)
