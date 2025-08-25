@@ -1496,7 +1496,7 @@ Classification:"""
 - العميل يسأل عن ماركة معينة → رد عام عن جميع الماركات ❌
 
 أمثلة على ردود صحيحة ومقبولة:
-- العميل يسأل عن علامة معينة → "هذه العلامة غير متاحة في الرياض" ✅ (مقبول)
+- العميل يسأل عن علامة معينة → "هذه العلامة غير متاحة في الرياض أو اي مدينة اخري" ✅ (مقبول)
 - العميل يذكر "مياه راين" → "أي مدينة أنت فيها؟ راح أعرض لك منتجات راين هناك!" ✅ (مناسب)
 - العميل يسأل "أي علامات عندكم؟" → "أي مدينة أنت فيها؟ راح أعرض لك العلامات المتاحة هناك!" ✅ (مناسب)
 - العميل يسأل "كم سعر المياه؟" → "أي علامة ومدينة تريد؟ راح أعرض لك الأسعار!" ✅ (مناسب)  
@@ -1504,18 +1504,21 @@ Classification:"""
 - العميل يسأل عن علامة معينة بشكل عام → السؤال عن المدينة لعرض منتجات هذه العلامة ✅ (مناسب)
 - إخبار العميل بالحقيقة عن التوفر أفضل من معلومات خاطئة ✅
 - العميل يسأل عن "10 كراتين نوڤا كم السعر؟" → عرض سعر الكرتونة الواحدة مناسب ✅ (العميل يستطيع حساب المجموع بنفسه)
-- العميل يسأل عن تبديل الجوالين بدون ذكر العلامة → اسأل عن المدينة ثم العلامة التجارية (بدون عرض كل العلامات) ثم اعرض منتجات التبديل ✅ (مناسب)
-- العميل يسأل عن تبديل الجوالين وقد ذكر المدينة والعلامة → عرض منتجات التبديل فقط (التي تحتوي على "تبديل") مباشرة ✅ (مناسب)
-- العميل يطلب تبديل جوالين لعلامة معينة وذكر المدينة → عرض منتجات التبديل لهذه العلامة فقط ✅ (مناسب)
-- العميل يطلب تبديل جوالين وذكر العلامة في الرسالة الحالية والمدينة في تاريخ المحادثة → عرض منتجات التبديل مباشرة ✅ (مناسب)
+- العميل يسأل عن تبديل الجوالين بدون ذكر العلامة والمدينة → اسأل عن المعلومات المفقودة ✅ (مناسب)
+- العميل يسأل عن تبديل الجوالين وذكر المدينة والعلامة معاً → عرض منتجات التبديل فقط (التي تحتوي على "تبديل") مباشرة ✅ (مناسب)
+- العميل يطلب تبديل جوالين وذكر العلامة (مثل "المنهل") والمدينة متاحة من التاريخ او من الرسالة الحالية  → عرض منتجات تبديل "المنهل" مباشرة ✅ (مناسب)
+- العميل يطلب تبديل جوالين وذكر المدينة والعلامة متاحة من التاريخ → عرض منتجات التبديل مباشرة ✅ (مناسب)
+- رد يحتوي على "منتجات المنهل المتاحة في الرياض أو اي مدينة  لتبديل الجوالين" → مناسب إذا كانت المعلومات متاحة ✅ (مناسب)
 
 🚨 قاعدة مهمة: السؤال عن معلومات العلامة التجارية أو المدينة دائماً مناسب عندما تكون هذه المعلومات مطلوبة لتقديم خدمة دقيقة ✅
 
-🔍 استخراج المعلومات من الرسائل:
+🔍 استخراج المعلومات من الرسائل - قاعدة حاسمة:
 - إذا كانت المدينة أو العلامة التجارية مذكورة في الرسالة الحالية أو تاريخ المحادثة → لا تسأل عنها مرة أخرى ✅
 - استخدم المعلومات المتاحة من الرسالة الحالية أو المحادثة السابقة مباشرة ✅
 - مثال: إذا ذكر المستخدم "الرياض" في رسالة سابقة، لا تسأل "أي مدينة؟" مرة أخرى ✅
 - مثال: إذا ذكر المستخدم "مياه المنهل" في الرسالة الحالية، لا تسأل "أي علامة تجارية؟" ✅
+- 🚨 مثال هام: إذا كان الرد "منتجات المنهل أو اي علامة المتاحة في الرياض أو الدمام او اي مدينة  لتبديل الجوالين" ويحتوي على معلومات صحيحة → مناسب ✅
+- 🚨 لا تعتبر الرد غير مناسب إذا كان يعرض منتجات تبديل مع ذكر العلامة والمدينة الصحيحتين ✅
 
 قيّم الرد وأخرج:
 - is_appropriate: true أو false
@@ -1623,18 +1626,21 @@ Examples of Correct and Acceptable Responses:
 - Customer asks about specific brand → "This brand is not available in Riyadh" ✅ (Acceptable)
 - Telling customer the truth about availability is better than wrong information ✅
 - Customer asks "10 cartons of Nove, what's the price?" → Showing price per carton is appropriate ✅ (Customer can calculate total themselves)
-- Customer asks about gallon exchange without mentioning brand → Ask for city then brand (without showing all brands) then show exchange products ✅ (Appropriate)
-- Customer asks about gallon exchange with city and brand mentioned → Show exchange products only (containing "تبديل" or "Exchange") directly ✅ (Appropriate)
-- Customer requests gallon exchange for specific brand and mentioned city → Show exchange products for that brand only ✅ (Appropriate)
-- Customer requests gallon exchange with brand mentioned in current message and city in conversation history → Show exchange products directly ✅ (Appropriate)
+- Customer asks about gallon exchange without mentioning brand and city → Ask for missing information ✅ (Appropriate)
+- Customer asks about gallon exchange with both city and brand mentioned → Show exchange products only (containing "تبديل" or "Exchange") directly ✅ (Appropriate)
+- Customer requests gallon exchange and mentions brand (like "Al Manhal") with city available from history → Show "Al Manhal" exchange products directly ✅ (Appropriate)
+- Customer requests gallon exchange and mentions city with brand available from history → Show exchange products directly ✅ (Appropriate)
+- Response containing "Al Manhal products available in Riyadh for gallon exchange" → Appropriate if information is available ✅ (Appropriate)
 
 🚨 Important rule: Asking for brand or city information is always appropriate when this information is needed to provide accurate service ✅
 
-🔍 Information Extraction from Messages:
+🔍 Information Extraction from Messages - Critical Rule:
 - If city or brand is mentioned in current message or conversation history → DO NOT ask for it again ✅
 - Use available information from current message or previous conversation directly ✅
 - Example: If user mentioned "Riyadh" in previous message, don't ask "Which city?" again ✅
 - Example: If user mentioned "Al Manhal water" in current message, don't ask "Which brand?" ✅
+- 🚨 Important example: If response is "Al Manhal products available in Riyadh for gallon exchange" with correct information → Appropriate ✅
+- 🚨 Don't consider response inappropriate if it shows exchange products with correct brand and city mentioned ✅
 
 Evaluate the response and output:
 - is_appropriate: true or false
