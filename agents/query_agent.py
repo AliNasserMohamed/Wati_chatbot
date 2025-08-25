@@ -1504,10 +1504,18 @@ Classification:"""
 - العميل يسأل عن علامة معينة بشكل عام → السؤال عن المدينة لعرض منتجات هذه العلامة ✅ (مناسب)
 - إخبار العميل بالحقيقة عن التوفر أفضل من معلومات خاطئة ✅
 - العميل يسأل عن "10 كراتين نوڤا كم السعر؟" → عرض سعر الكرتونة الواحدة مناسب ✅ (العميل يستطيع حساب المجموع بنفسه)
-- العميل يسأل عن تبديل الجوالين → اسأل عن المدينة ثم العلامة التجارية (بدون عرض كل العلامات) ثم اعرض منتجات التبديل ✅ (مناسب)
-- العميل يسأل عن تبديل الجوالين وقد ذكر المدينة والعلامة → عرض منتجات التبديل مباشرة ✅ (مناسب)
+- العميل يسأل عن تبديل الجوالين بدون ذكر العلامة → اسأل عن المدينة ثم العلامة التجارية (بدون عرض كل العلامات) ثم اعرض منتجات التبديل ✅ (مناسب)
+- العميل يسأل عن تبديل الجوالين وقد ذكر المدينة والعلامة → عرض منتجات التبديل فقط (التي تحتوي على "تبديل") مباشرة ✅ (مناسب)
+- العميل يطلب تبديل جوالين لعلامة معينة وذكر المدينة → عرض منتجات التبديل لهذه العلامة فقط ✅ (مناسب)
+- العميل يطلب تبديل جوالين وذكر العلامة في الرسالة الحالية والمدينة في تاريخ المحادثة → عرض منتجات التبديل مباشرة ✅ (مناسب)
 
 🚨 قاعدة مهمة: السؤال عن معلومات العلامة التجارية أو المدينة دائماً مناسب عندما تكون هذه المعلومات مطلوبة لتقديم خدمة دقيقة ✅
+
+🔍 استخراج المعلومات من الرسائل:
+- إذا كانت المدينة أو العلامة التجارية مذكورة في الرسالة الحالية أو تاريخ المحادثة → لا تسأل عنها مرة أخرى ✅
+- استخدم المعلومات المتاحة من الرسالة الحالية أو المحادثة السابقة مباشرة ✅
+- مثال: إذا ذكر المستخدم "الرياض" في رسالة سابقة، لا تسأل "أي مدينة؟" مرة أخرى ✅
+- مثال: إذا ذكر المستخدم "مياه المنهل" في الرسالة الحالية، لا تسأل "أي علامة تجارية؟" ✅
 
 قيّم الرد وأخرج:
 - is_appropriate: true أو false
@@ -1615,8 +1623,18 @@ Examples of Correct and Acceptable Responses:
 - Customer asks about specific brand → "This brand is not available in Riyadh" ✅ (Acceptable)
 - Telling customer the truth about availability is better than wrong information ✅
 - Customer asks "10 cartons of Nove, what's the price?" → Showing price per carton is appropriate ✅ (Customer can calculate total themselves)
-- Customer asks about gallon exchange → Ask for city then brand (without showing all brands) then show exchange products ✅ (Appropriate)
-- Customer asks about gallon exchange with city and brand mentioned → Show exchange products directly ✅ (Appropriate)
+- Customer asks about gallon exchange without mentioning brand → Ask for city then brand (without showing all brands) then show exchange products ✅ (Appropriate)
+- Customer asks about gallon exchange with city and brand mentioned → Show exchange products only (containing "تبديل" or "Exchange") directly ✅ (Appropriate)
+- Customer requests gallon exchange for specific brand and mentioned city → Show exchange products for that brand only ✅ (Appropriate)
+- Customer requests gallon exchange with brand mentioned in current message and city in conversation history → Show exchange products directly ✅ (Appropriate)
+
+🚨 Important rule: Asking for brand or city information is always appropriate when this information is needed to provide accurate service ✅
+
+🔍 Information Extraction from Messages:
+- If city or brand is mentioned in current message or conversation history → DO NOT ask for it again ✅
+- Use available information from current message or previous conversation directly ✅
+- Example: If user mentioned "Riyadh" in previous message, don't ask "Which city?" again ✅
+- Example: If user mentioned "Al Manhal water" in current message, don't ask "Which brand?" ✅
 
 Evaluate the response and output:
 - is_appropriate: true or false
@@ -1934,15 +1952,24 @@ Output in JSON format only:
                     🚨 IMPORTANT PRICE CLARIFICATION:
                     ALL PRICES DISPLAYED ARE FOR CARTONS, NOT SINGLE BOTTLES. When showing product prices, make this clear by adding "(carton price)" in English or "(سعر الكرتونة)" in Arabic.
                     
-                    🔄 GALLON EXCHANGE HANDLING - SPECIAL PRODUCT FILTERING:
-                    When customer asks about gallon exchange ( exchange gallon, gallon exchange):
-                    1. Follow the SAME workflow as regular product queries: ask for CITY first, then BRAND
-                    2. Use get_products_by_brand_and_city_name function normally
-                    3. IMPORTANT: Filter the returned products to ONLY show products with "تبديل" or "Exchange" in their title
-                    4. The prices shown are exchange prices, not purchase prices
-                    5. Examples of exchange product titles:
+                    🔄 GALLON EXCHANGE HANDLING - SPECIAL WORKFLOW (VERY STRICT):
+                    
+                    📝 Understanding Gallon Exchange Process:
+                    Gallon exchange means customer brings empty gallon and gets filled gallon in return for exchange price.
+                    This is different from buying a new gallon.
+                    
+                    When customer asks about gallon exchange (gallon exchange, jug exchange, bottle exchange):
+                    
+                    🚨 SPECIAL WORKFLOW FOR GALLON EXCHANGE (Different from regular products):
+                    1. If you don't know the city → Ask for city
+                    2. If you know city but don't know brand → Ask "Which brand do you want?" (WITHOUT showing all available brands)
+                    3. If you know both city and brand → Use get_products_by_brand_and_city_name directly
+                    4. Use get_products_by_brand_and_city_name function normally
+                    5. 🚨 CRITICAL AND STRICT: Filter the returned products to ONLY show products with "تبديل" or "Exchange" in their title - DO NOT show "جديد" or other products
+                    6. The prices shown are exchange prices, not purchase prices
+                    7. Examples of exchange product titles:
                        - "Tania Water Gallon 19 L - Exchange" 
-                    6. If NO exchange products are found for that brand/city, inform customer that exchange service is not available for that brand in that city
+                    8. If NO exchange products are found for that brand/city, inform customer that exchange service is not available for that brand in that city
 
                     ORDER REQUESTS - REDIRECT TO APP:
                     When user wants to place an order, make a purchase, or asks how to order, ALWAYS redirect them to the app/website with this message:
@@ -2244,16 +2271,25 @@ Output in JSON format only:
                     🚨 توضيح مهم للأسعار:
                     جميع الأسعار المعروضة هي أسعار الكراتين وليس الزجاجة الواحدة. عند عرض أسعار المنتجات، وضح ذلك بإضافة "(سعر الكرتونة)" باللغة العربية أو "(carton price)" بالإنجليزية.
                     
-                    🔄  :    معالجة تبديل الجوالين سواء كانت في الرسالة الحالية او تاريخ المحادثة  - فلترة خاصة للمنتج -  مهم وصارم  جداً
-                    عندما يسأل العميل عن تبديل الجوالين (تبديل الجوالين، جالون تبديل، استبدال الجوالين):
-                    1. اتبع نفس سير العمل مثل استعلامات المنتجات العادية: اسأل عن المدينة أولاً، ثم العلامة التجارية
-                    2. استخدم وظيفة get_products_by_brand_and_city_name بشكل طبيعي
-                    3. مهم جداً: قم بفلترة المنتجات المرجعة لعرض المنتجات التي تحتوي على "تبديل" أو "Exchange" في عنوانها فقط
-                    4. الأسعار المعروضة هي أسعار التبديل وليس أسعار الشراء
-                    5. أمثلة على عناوين منتجات التبديل:
+                    🔄 معالجة تبديل الجوالين - سير عمل خاص وصارم جداً:
+                      
+                      📝 فهم عملية تبديل الجوالين:
+                      تبديل الجوالين يعني أن العميل يحضر الجالون الفارغ ويستلم جالون مليء بالماء مقابل سعر التبديل.
+                      هذه خدمة مختلفة عن شراء جالون جديد.
+                      
+                      عندما يسأل العميل عن تبديل الجوالين (تبديل الجوالين، جالون تبديل، استبدال الجوالين):
+                      
+                      🚨 سير العمل الخاص لتبديل الجوالين (مختلف عن المنتجات العادية):
+                      1. إذا لم تكن تعرف المدينة → اسأل عن المدينة
+                      2. إذا كنت تعرف المدينة ولا تعرف العلامة التجارية → اسأل "أي علامة تجارية تريد؟" (بدون عرض كل العلامات المتاحة)
+                      3. إذا كنت تعرف المدينة والعلامة التجارية → استخدم get_products_by_brand_and_city_name مباشرة
+                    4. استخدم وظيفة get_products_by_brand_and_city_name بشكل طبيعي
+                    5. 🚨 مهم جداً وصارم: قم بفلترة المنتجات المرجعة لعرض المنتجات التي تحتوي على كلمة "تبديل" في عنوانها فقط - لا تعرض منتجات "جديد" أو غيرها
+                    6. الأسعار المعروضة هي أسعار التبديل وليس أسعار الشراء
+                    7. أمثلة على عناوين منتجات التبديل:
                        - "جالون 19 لتر - تبديل" (عربي)
-                    6. إذا لم توجد منتجات تبديل لتلك العلامة التجارية/المدينة، أخبر العميل أن خدمة التبديل غير متوفرة لهذه العلامة في هذه المدينة
-                    7. تعامل مع توحيد النصوص: "تبديل"/"تبدیل"/"exchange"/"Exchange" يجب التعرف عليها جميعاً
+                    8. إذا لم توجد منتجات تبديل لتلك العلامة التجارية/المدينة، أخبر العميل أن خدمة التبديل غير متوفرة لهذه العلامة في هذه المدينة
+                    9. تعامل مع توحيد النصوص: "تبديل"/"تبدیل"/ يجب التعرف عليها جميعاً
 
                     طلبات الطلب - التوجيه للتطبيق:
                     عندما يريد العميل تقديم طلب، أو الشراء، أو يسأل كيف يطلب، وجهه دائماً للتطبيق/الموقع بهذه الرسالة:
