@@ -1136,12 +1136,23 @@ class QueryAgent:
                     # The data_api now returns language-appropriate product titles in main field
                     title = product["product_title"]
                     
+                    # Check if product is a gallon/jug (don't show carton price for individual units)
+                    is_gallon = any(keyword in title.lower() for keyword in ['جالون', 'gallon', '19 لتر', '20 لتر', 'جوالين', 'تبديل', 'exchange'])
+                    
                     if user_language == 'ar':
-                        # Arabic format: "Product Title - XX.XX ريال (سعر الكرتونة)"
-                        product_string = f"{title} - {price} ريال (سعر الكرتونة)"
+                        if is_gallon:
+                            # Arabic format for gallons: "Product Title - XX.XX ريال"
+                            product_string = f"{title} - {price} ريال"
+                        else:
+                            # Arabic format for cartons: "Product Title - XX.XX ريال (سعر الكرتونة)"
+                            product_string = f"{title} - {price} ريال (سعر الكرتونة)"
                     else:
-                        # English format: "Product Title - XX.XX SAR (carton price)"
-                        product_string = f"{title} - {price} SAR (carton price)"
+                        if is_gallon:
+                            # English format for gallons: "Product Title - XX.XX SAR"
+                            product_string = f"{title} - {price} SAR"
+                        else:
+                            # English format for cartons: "Product Title - XX.XX SAR (carton price)"
+                            product_string = f"{title} - {price} SAR (carton price)"
                     
                     filtered_products.append(product_string)
                 
@@ -1454,11 +1465,12 @@ Classification:"""
    - مثال: إذا عرفنا العلامة → اعرض المنتجات والأسعار
 
 5️⃣ معالجة تبديل الجوالين:
-   -  طلبات تبديل الجوالين يتم فيها سوال العميل عن المدينة ثم سواله عن العلامة التجارية بدون ذكر كل العلامات في مدينته بعد معرفة المدينة
-   - اسأل عن المدينة والعلامة التجارية، ثم استخدم get_products_by_brand_and_city_name
-   - قم بفلترة النتائج لعرض المنتجات التي تحتوي على "تبديل" أو "Exchange" في العنوان فقط
+   - إذا عرفت المدينة والعلامة التجارية من الرسالة الحالية أو تاريخ المحادثة → اعرض منتجات التبديل مباشرة ✅
+   - إذا عرفت المدينة فقط → اسأل عن العلامة التجارية (بدون عرض كل العلامات)
+   - إذا عرفت العلامة التجارية فقط → اسأل عن المدينة
+   - إذا لم تعرف أي منهما → اسأل عن المدينة أولاً
+   - استخدم get_products_by_brand_and_city_name وقم بفلترة النتائج لعرض المنتجات التي تحتوي على "تبديل" أو "Exchange" في العنوان فقط
    - إذا لم توجد منتجات تبديل، أخبر العميل أن التبديل غير متوفر لهذه العلامة/المدينة
-   - سير العمل الخاص: مدينة ← اسأل عن العلامة التجارية (بدون عرض كل العلامات) ← عرض منتجات التبديل
 
 قواعد التقييم الصارمة:
 
@@ -1588,11 +1600,12 @@ Review the last 3 messages to understand context:
    - Example: If we know brand → show products and prices
 
 4️⃣ Gallon Exchange Handling:
-   - Gallon exchange requests have SPECIAL workflow: ask for city, then ask for brand WITHOUT showing all brands in that city
-   - Ask for city and brand separately, then use get_products_by_brand_and_city_name
-   - Filter results to show only products with "تبديل" or "Exchange" in title
+   - If you know both city and brand from current message or conversation history → show exchange products directly ✅
+   - If you know city only → ask for brand (without showing all brands)
+   - If you know brand only → ask for city
+   - If you know neither → ask for city first
+   - Use get_products_by_brand_and_city_name and filter results to show only products with "تبديل" or "Exchange" in title
    - If no exchange products found, inform customer exchange is not available for that brand/city
-   - Special workflow: city ← ask for brand (without showing all brands) ← show exchange products
 
 Strict Evaluation Rules:
 
@@ -1956,7 +1969,8 @@ Output in JSON format only:
                     Never provide generic or estimated prices. Always get specific product prices for the exact brand in the specific city.
                     
                     🚨 IMPORTANT PRICE CLARIFICATION:
-                    ALL PRICES DISPLAYED ARE FOR CARTONS, NOT SINGLE BOTTLES. When showing product prices, make this clear by adding "(carton price)" in English or "(سعر الكرتونة)" in Arabic.
+                    - For carton/bottle products: ALL PRICES ARE FOR CARTONS, NOT SINGLE BOTTLES. Add "(carton price)" in English or "(سعر الكرتونة)" in Arabic.
+                    - For gallon/jug products: Prices are per individual gallon. DO NOT add "(carton price)" for gallons/jugs.
                     
                     🔄 GALLON EXCHANGE HANDLING - SPECIAL WORKFLOW (VERY STRICT):
                     
@@ -2300,7 +2314,8 @@ Output in JSON format only:
                     - مثال: "مياه المنهل الرياض" → استخدم الرياض كما هو محدد
                     
                     🚨 توضيح مهم للأسعار:
-                    جميع الأسعار المعروضة هي أسعار الكراتين وليس الزجاجة الواحدة. عند عرض أسعار المنتجات، وضح ذلك بإضافة "(سعر الكرتونة)" باللغة العربية أو "(carton price)" بالإنجليزية.
+                    - لمنتجات الكراتين/الزجاجات: جميع الأسعار المعروضة هي أسعار الكراتين وليس الزجاجة الواحدة. وضح ذلك بإضافة "(سعر الكرتونة)" باللغة العربية أو "(carton price)" بالإنجليزية.
+                    - لمنتجات الجوالين: الأسعار هي للجالون الواحد. لا تضيف "(سعر الكرتونة)" للجوالين.
                     
                     🔄 معالجة تبديل الجوالين - سير عمل خاص وصارم جداً:
                       
