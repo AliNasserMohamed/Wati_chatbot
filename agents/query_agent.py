@@ -1485,7 +1485,9 @@ Classification:"""
 
 ⚠️ تنبيه: لا ترفض الردود التي تجيب بصدق على توفر المنتجات!
 ⚠️ حاسم: لا ترفض الردود التي تسأل عن المعلومات الضرورية (المدينة/العلامة) المطلوبة لتقديم خدمة دقيقة!
+⚠️ مهم جداً: لا ترفض الردود التي تذكر العلامة التجارية والمدينة بوضوح حتى لو كانت تخبر عن عدم التوفر!
 🔧 منطق الخدمة: النظام يجب أن يسأل عن المدينة/العلامة التجارية عند الحاجة لعرض المنتجات والأسعار - هذا سلوك مناسب!
+🔧 منطق التبديل: إذا ذكر الرد العلامة التجارية والمدينة بوضوح لطلب تبديل الجوالين، فهو مناسب بغض النظر عن التوفر!
 
 🟢 الرد مناسب إذا:
 - يجيب بدقة على سؤال العميل المحدد
@@ -1520,6 +1522,7 @@ Classification:"""
 - العميل يطلب تبديل جوالين وذكر العلامة (مثل "المنهل") والمدينة متاحة من التاريخ او من الرسالة الحالية  → عرض منتجات تبديل "المنهل" مباشرة ✅ (مناسب)
 - العميل يطلب تبديل جوالين وذكر المدينة والعلامة متاحة من التاريخ → عرض منتجات التبديل مباشرة ✅ (مناسب)
 - رد يحتوي على "منتجات المنهل المتاحة في الرياض أو اي مدينة  لتبديل الجوالين" → مناسب إذا كانت المعلومات متاحة ✅ (مناسب)
+- العميل يطلب تبديل جوالين لعلامة تجارية في مدينة محددة → رد يوضح عدم التوفر مع ذكر العلامة والمدينة بوضوح ✅ (مناسب ومقبول)
 
 🚨 قاعدة مهمة: السؤال عن معلومات العلامة التجارية أو المدينة دائماً مناسب عندما تكون هذه المعلومات مطلوبة لتقديم خدمة دقيقة ✅
 
@@ -1535,7 +1538,11 @@ Classification:"""
 - ✅ إذا كان الرد يحتوي على عبارات مثل: "يوجد تبديل جوالين للمنهل في الرياض" أو "تبديل جوالين [علامة تجارية] في [مدينة]" → هذا مناسب جداً ✅
 - ✅ إذا كان الرد يعرض منتجات تبديل مع ذكر المدينة والعلامة التجارية صراحة → هذا مناسب وصحيح ✅
 - ✅ إذا كان الرد يقول "تبديل جوالين للعلامة التجارية X في المدينة Y" ثم يعرض المنتجات → هذا ممتاز ✅
+- ✅ إذا كان الرد يقول "خدمة تبديل الجوالين للعلامة التجارية [العلامة] غير متوفرة في مدينة [المدينة]" مع ذكر العلامة والمدينة بوضوح → هذا مناسب جداً ومقبول ✅
+- ✅ ردود عدم التوفر التي تذكر العلامة التجارية والمدينة بوضوح للتبديل مناسبة ومقبولة تماماً ✅
+- ✅ مثال مقبول: "عذراً، خدمة تبديل الجوالين للعلامة التجارية 'المنهل' غير متوفرة في مدينة رفحاء حالياً" → مناسب جداً ✅
 - ❌ لا ترفض الردود التي تعرض منتجات تبديل مع ذكر المدينة والعلامة التجارية واضحة في الرد ❌
+- ❌ لا ترفض الردود التي تخبر بصدق عن عدم توفر خدمة التبديل مع ذكر العلامة والمدينة بوضوح ❌
 
 قيّم الرد وأخرج:
 - is_appropriate: true أو false
@@ -1623,6 +1630,8 @@ Strict Evaluation Rules:
 - Asks about brand without knowing the city first
 
 ⚠️ Warning: Don't reject responses that honestly answer about product availability!
+⚠️ Critical: Don't reject responses that clearly mention both brand and city even if they state non-availability!
+⚠️ Exchange Logic: If response clearly mentions brand and city for gallon exchange request, it's appropriate regardless of availability!
 🟢 Response is APPROPRIATE if:
 - Accurately answers the customer's specific question
 - Uses correct information based on question type
@@ -1648,6 +1657,7 @@ Examples of Correct and Acceptable Responses:
 - Customer requests gallon exchange and mentions brand (like "Al Manhal") with city available from history → Show "Al Manhal" exchange products directly ✅ (Appropriate)
 - Customer requests gallon exchange and mentions city with brand available from history → Show exchange products directly ✅ (Appropriate)
 - Response containing "Al Manhal products available in Riyadh for gallon exchange" → Appropriate if information is available ✅ (Appropriate)
+- Customer requests gallon exchange for specific brand in specific city → Response explaining non-availability with clear brand and city mentioned ✅ (Appropriate and acceptable)
 
 🚨 Important rule: Asking for brand or city information is always appropriate when this information is needed to provide accurate service ✅
 
@@ -1663,7 +1673,11 @@ Examples of Correct and Acceptable Responses:
 - ✅ If response contains phrases like: "Yes, gallon exchange for Al Manhal in Riyadh" or "gallon exchange [brand] in [city]" → This is very appropriate ✅
 - ✅ If response shows exchange products while explicitly mentioning both city and brand → This is appropriate and correct ✅
 - ✅ If response says "gallon exchange for brand X in city Y" then shows products → This is excellent ✅
+- ✅ If response says "gallon exchange service for brand [brand] is not available in city [city]" with clear brand and city mentioned → This is very appropriate and acceptable ✅
+- ✅ Non-availability responses that clearly mention both brand and city for exchange are appropriate and acceptable ✅
+- ✅ Example acceptable: "Sorry, gallon exchange service for brand 'Al Manhal' is not available in Rafha city currently" → Very appropriate ✅
 - ❌ DO NOT reject responses that show exchange products with clear city and brand mentioned in the response ❌
+- ❌ DO NOT reject responses that honestly state non-availability of exchange service with clear brand and city mentioned ❌
 
 Evaluate the response and output:
 - is_appropriate: true or false
@@ -1849,6 +1863,32 @@ Output in JSON format only:
                     - Example: "احتاج كرتونة 48 حبة مقاس 200 مل" = "I need a carton of 48 bottles, 200ml size"
 
                     Your job is to help customers with:
+                    
+                    🚨🔄 HIGHEST PRIORITY: Gallon Exchange Handling - Special and Strict Workflow:
+                      
+                      📝 Understanding Gallon Exchange Process:
+                      Gallon exchange means the customer brings an empty gallon and receives a full one for the exchange price.
+                      This is a different service from buying a new gallon.
+                      
+                      🧠 Step 1: Identify Request Type First - MOST IMPORTANT
+                      - Read the customer's message and conversation history completely and determine: is this a gallon exchange request or new water purchase?
+                      - Keywords for gallon exchange: "gallon exchange", "exchange gallon", "replace gallon", "gallon replacement"
+                      
+                      🚨 If request is related to gallon exchange - Special different workflow:
+                      1. NEVER use get_brands_by_city_name ❌
+                      2. If you don't know the city → ask about the city
+                      3. If you don't know the brand → ask "Which brand do you want to exchange?" (without showing brand list)
+                      4. Once you know both city and brand → use get_products_by_brand_and_city_name directly
+                      
+                      5. Use get_products_by_brand_and_city_name function normally
+                      6. 🚨 CRITICALLY IMPORTANT: Filter returned products to show only products containing "Exchange" or "تبديل" in the title - don't show "New" or other products
+                      7. If no exchange products exist for that brand/city, tell customer exchange service is not available for this brand in this city
+                      8. Displayed prices are exchange prices not purchase prices
+                      9. Examples of exchange product titles:
+                       - "19L Gallon - Exchange" (English)
+                      10. Handle text unification: "Exchange"/"تبديل" must all be recognized
+                      
+                    Other Basic Functions:
                     1. Finding available cities for water delivery service
                     2. Showing water brands available in each city
                     3. Displaying water products and their prices from each brand
@@ -1981,34 +2021,7 @@ Output in JSON format only:
                     🚨 IMPORTANT PRICE CLARIFICATION:
                     - For carton/bottle products: ALL PRICES ARE FOR CARTONS, NOT SINGLE BOTTLES. Add "(carton price)" in English or "(سعر الكرتونة)" in Arabic.
                     - For gallon/jug products: Prices are per individual gallon. DO NOT add "(carton price)" for gallons/jugs.
-                    
-                    🔄 GALLON EXCHANGE HANDLING - SPECIAL WORKFLOW (VERY STRICT):
-                    
-                    📝 Understanding Gallon Exchange Process:
-                    Gallon exchange means customer brings empty gallon and gets filled gallon in return for exchange price.
-                    This is different from buying a new gallon.
-                    
-                    🧠 Step 1: Determine Request Type First
-                    - Read customer message and decide: Is this gallon exchange or buying new water?
-                    - Keywords for gallon exchange: "gallon exchange", "jug exchange", "bottle exchange", "replace gallon", "swap gallon"
-                    
-                    🚨 IF REQUEST IS GALLON EXCHANGE - Special workflow:
-                    1. NEVER use get_brands_by_city_name ❌
-                    2. If you don't know the city → Ask for city
-                    3. If you don't know the brand → Ask "Which brand do you want to exchange?" (WITHOUT showing brand list)
-                    4. Once you know city and brand → Use get_products_by_brand_and_city_name directly
-                    
-                    5. Use get_products_by_brand_and_city_name function normally
-                    6. 🚨 CRITICAL AND STRICT: Filter the returned products to ONLY show products with "تبديل" or "Exchange" in their title - DO NOT show "جديد" or other products
-                    
-                    🚨 IF REQUEST IS BUYING NEW WATER - Normal workflow:
-                    1. You can use get_brands_by_city_name to show available brands
-                    2. Follow normal product workflow
-                    3. Show all products (including "جديد")
-                    6. The prices shown are exchange prices, not purchase prices
-                    7. Examples of exchange product titles:
-                       - "Tania Water Gallon 19 L - Exchange" 
-                    8. If NO exchange products are found for that brand/city, inform customer that exchange service is not available for that brand in that city
+
 
                     ORDER REQUESTS - REDIRECT TO APP:
                     When user wants to place an order, make a purchase, or asks how to order, ALWAYS redirect them to the app/website with this message:
@@ -2148,6 +2161,32 @@ Output in JSON format only:
                     - مثال: "احتاج كرتونة 48 حبة مقاس 200 مل" = "احتاج كرتونة 48 زجاجة حجم 200 مل"
 
                     وظيفتك مساعدة العملاء في:
+                    
+                    🚨🔄 أولوية عليا: معالجة تبديل الجوالين - سير عمل خاص وصارم جداً:
+                      
+                      📝 فهم عملية تبديل الجوالين:
+                      تبديل الجوالين يعني أن العميل يحضر الجالون الفارغ ويستلم جالون مليء بالماء مقابل سعر التبديل.
+                      هذه خدمة مختلفة عن شراء جالون جديد.
+                      
+                      🧠 خطوة 1: تحديد نوع الطلب أولاً وأهم شيء
+                      - اقرأ رسالة العميل ومحادثته كاملة وحدد: هل هو طلب تبديل جوالين أم شراء مياه جديدة؟
+                      - كلمات مفتاحية لتبديل الجوالين: "تبديل الجوالين"، "تبديل جالون"، "استبدال الجوالين"، "بدل الجالون"، "تغيير الجوالين"
+                      
+                      🚨 إذا كان الطلب متعلق بتبديل الجوالين - سير عمل خاص مختلف تماماً:
+                      1. لا تستخدم get_brands_by_city_name أبداً ❌
+                      2. إذا لم تكن تعرف المدينة → اسأل عن المدينة
+                      3. إذا لم تكن تعرف العلامة التجارية → اسأل "أي علامة تجارية تريد تبديلها؟" (بدون عرض قائمة العلامات)
+                      4. بمجرد معرفة المدينة والعلامة التجارية → استخدم get_products_by_brand_and_city_name مباشرة
+                      
+                      5. استخدم وظيفة get_products_by_brand_and_city_name بشكل طبيعي
+                      6. 🚨 مهم جداً وصارم: قم بفلترة المنتجات المرجعة لعرض المنتجات التي تحتوي على كلمة "تبديل" في عنوانها فقط - لا تعرض منتجات "جديد" أو غيرها
+                      7. إذا لم توجد منتجات تبديل لتلك العلامة التجارية/المدينة، أخبر العميل أن خدمة التبديل غير متوفرة لهذه العلامة في هذه المدينة
+                      8. الأسعار المعروضة هي أسعار التبديل وليس أسعار الشراء
+                      9. أمثلة على عناوين منتجات التبديل:
+                       - "جالون 19 لتر - تبديل" (عربي)
+                      10. تعامل مع توحيد النصوص: "تبديل"/"تبدیل"/ يجب التعرف عليها جميعاً
+                      
+                    الوظائف الأساسية الأخرى:
                     1. إيجاد المدن المتاحة لخدمة توصيل المياه
                     2. عرض العلامات التجارية للمياه المتاحة في كل مدينة  
                     3. عرض منتجات المياه وأسعارها من كل علامة تجارية
@@ -2409,35 +2448,7 @@ Output in JSON format only:
                     - تأكد من عرض اسم المنتج والحجم والسعر لكل منتج
 
                     كن مساعد ومتفهم ورد تماماً مثل موظف ودود حقيقي.
-                    
-                     🔄 معالجة تبديل الجوالين - سير عمل خاص وصارم جداً:
-                      
-                      📝 فهم عملية تبديل الجوالين:
-                      تبديل الجوالين يعني أن العميل يحضر الجالون الفارغ ويستلم جالون مليء بالماء مقابل سعر التبديل.
-                      هذه خدمة مختلفة عن شراء جالون جديد.
-                      
-                      🧠 خطوة 1: تحديد نوع الطلب أولاً
-                      - اقرأ رسالة العميل ومحادثته كاملة وحدد: هل هو طلب تبديل جوالين أم شراء مياه جديدة؟
-                      - كلمات مفتاحية لتبديل الجوالين: "تبديل الجوالين"، "تبديل جالون"، "استبدال الجوالين"، "بدل الجالون"، "تغيير الجوالين"
-                      
-                      🚨 إذا كان الطلب متعلق بتبديل الجوالين - سير عمل خاص:
-                      1. لا تستخدم get_brands_by_city_name أبداً ❌
-                      2. إذا لم تكن تعرف المدينة → اسأل عن المدينة
-                      3. إذا لم تكن تعرف العلامة التجارية → اسأل "أي علامة تجارية تريد تبديلها؟" (بدون عرض قائمة العلامات)
-                      4. بمجرد معرفة المدينة والعلامة التجارية → استخدم get_products_by_brand_and_city_name مباشرة
-                      
-                      5. استخدم وظيفة get_products_by_brand_and_city_name بشكل طبيعي
-                      6. 🚨 مهم جداً وصارم: قم بفلترة المنتجات المرجعة لعرض المنتجات التي تحتوي على كلمة "تبديل" في عنوانها فقط - لا تعرض منتجات "جديد" أو غيرها
-                      
-                      🚨 إذا كان الطلب متعلق بشراء مياه جديدة - سير عمل عادي:
-                      1. يمكنك استخدام get_brands_by_city_name لعرض العلامات المتاحة
-                      2. اتبع سير العمل العادي للمنتجات
-                      3. اعرض جميع المنتجات (بما في ذلك "جديد")
-                    6. الأسعار المعروضة هي أسعار التبديل وليس أسعار الشراء
-                    7. أمثلة على عناوين منتجات التبديل:
-                       - "جالون 19 لتر - تبديل" (عربي)
-                    8. إذا لم توجد منتجات تبديل لتلك العلامة التجارية/المدينة، أخبر العميل أن خدمة التبديل غير متوفرة لهذه العلامة في هذه المدينة
-                    9. تعامل مع توحيد النصوص: "تبديل"/"تبدیل"/ يجب التعرف عليها جميعاً"""
+"""
                 }
             # Check user message and conversation history for size-related keywords
             all_conversation_text = user_message
