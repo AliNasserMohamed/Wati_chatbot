@@ -1627,6 +1627,14 @@ Classification:"""
 - يسأل فقط عن المعلومات الناقصة الضرورية (مدينة/علامة)
 - يعرض الخيارات المتاحة أو يوضح عدم التوفر بصدق
 - في حالة التبديل: يذكر المدينة والعلامة التجارية ويعرض منتجات التبديل فقط
+- ✅ إذا ذكر الرد علامة تجارية معينة لمدينة محددة (مثل: "في الرياض، لدينا علامة نستله") → هذا يعني أن النظام تأكد من توفرها ومناسب جداً ✅
+- ✅ إذا قال الرد "لدينا العلامة التجارية [اسم العلامة]" أو "نتوفر على علامة [اسم العلامة]" لمدينة معينة → مناسب لأنه معلومة محققة ✅
+- ✅ عرض علامة تجارية واحدة أو عدة علامات محددة لمدينة معينة يعتبر رد مناسب ومفيد ✅
+- ✅ إذا عرف النظام المدينة وعرض علامة أو عدة علامات متاحة فيها → مناسب تماماً ✅
+- ✅ عرض منتجات علامة تجارية معينة في مدينة معينة بعد أن نعرف المدينة والعلامة التجارية من المحادثة → مناسب جداً ✅
+- ✅ عرض قائمة العلامات التجارية المتاحة في مدينة معينة بعد أن يرسل العميل مدينته أو نعرفها من التاريخ → مناسب ومفيد ✅
+- ✅ إذا كان لدينا سياق المدينة والعلامة التجارية وعرض الرد المنتجات والأسعار → هذا هو الهدف المطلوب ومناسب تماماً ✅
+- ✅ إذا كان لدينا سياق المدينة فقط وعرض الرد العلامات المتاحة في هذه المدينة → مناسب ومفيد للعميل ✅
 
 🔴 الرد غير مناسب إذا:
 - يجيب على سؤال مختلف أو خارج موضوع المحادثة
@@ -1634,6 +1642,16 @@ Classification:"""
 - عام جداً وغير مفيد
 - يتجاهل معلومات ذكرها العميل
 - يكرر روابط أو أسئلة غير ضرورية
+
+⚠️ تنبيه مهم للتقييم:
+- ❌ لا ترفض الردود التي تذكر علامة تجارية محددة لمدينة معينة (مثل: "في القريات، لدينا العلامة التجارية 'هنا'")
+- ✅ هذا النوع من الردود يعني أن النظام تحقق من التوفر وهو مناسب جداً
+- ✅ إذا ذكر الرد اسم علامة تجارية مع اسم مدينة فهذا يعني أن النظام يعرف أن هذه العلامة متاحة في هذه المدينة
+- ✅ مثال مناسب: "في الرياض، لدينا علامة نستله" أو "في جدة، نتوفر على العلامة التجارية القصيم"
+- ❌ لا ترفض الردود التي تعرض منتجات علامة تجارية في مدينة معينة بعد معرفة المدينة والعلامة من السياق
+- ❌ لا ترفض الردود التي تعرض قائمة العلامات المتاحة في مدينة بعد معرفة المدينة من رسالة العميل أو التاريخ
+- ✅ عرض المنتجات بعد معرفة المدينة والعلامة = الهدف المطلوب
+- ✅ عرض العلامات بعد معرفة المدينة = خطوة مناسبة في سير العمل
 
 قيّم الرد وأخرج:
 {{
@@ -1721,6 +1739,16 @@ Strict Evaluation Rules:
 - Too generic and doesn't address the specific question
 - Asks about brand without knowing the city first
 
+⚠️ Important Evaluation Warning:
+- ❌ DO NOT reject responses that mention a specific brand for a specific city (e.g., "In Al-Qurayyat, we have 'Hana' brand")
+- ✅ This type of response means the system has verified availability and is very appropriate
+- ✅ If response mentions a brand name with a city name, it means the system knows this brand is available in that city
+- ✅ Appropriate examples: "In Riyadh, we have Nestle brand" or "In Jeddah, we offer Al-Qassim brand"
+- ❌ DO NOT reject responses that display products of a brand in a city after knowing both city and brand from context
+- ❌ DO NOT reject responses that list available brands in a city after knowing the city from user message or history
+- ✅ Displaying products after knowing city and brand = desired goal
+- ✅ Listing brands after knowing city = appropriate workflow step
+
 ⚠️ Warning: Don't reject responses that honestly answer about product availability!
 ⚠️ Critical: Don't reject responses that clearly mention both brand and city even if they state non-availability!
 ⚠️ Exchange Logic: If response clearly mentions brand and city for gallon exchange request, it's appropriate regardless of availability!
@@ -1733,6 +1761,14 @@ Strict Evaluation Rules:
 - Shows available options instead of just asking about them
 - Provides helpful information based on what we know from context
 - Honestly answers about availability or non-availability of specific products (acceptable even without alternatives)
+- ✅ If response mentions a specific brand for a specific city (e.g., "In Riyadh, we have Nestle brand") → This means the system has verified availability and is very appropriate ✅
+- ✅ If response says "We have [brand name]" or "We offer [brand name]" for a specific city → Appropriate as it's verified information ✅
+- ✅ Showing one or several specific brands for a specific city is an appropriate and helpful response ✅
+- ✅ If the system knows the city and shows available brand(s) → Completely appropriate ✅
+- ✅ Displaying products of a specific brand in a specific city after we know both city and brand from conversation → Very appropriate ✅
+- ✅ Listing available brands in a specific city after user sends their city or we know it from history → Appropriate and helpful ✅
+- ✅ If we have both city and brand context and response shows products and prices → This is the desired goal and completely appropriate ✅
+- ✅ If we have city context only and response shows available brands in that city → Appropriate and helpful for customer ✅
 
 Common Error Examples:
 - Customer asks about contact number → Response talks about branches ❌
