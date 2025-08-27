@@ -455,7 +455,7 @@ class QueryAgent:
             # Prepare FULL context from conversation history (both user and assistant messages)
             context = ""
             if conversation_history:
-                recent_messages = conversation_history[-5:]  # Last 8 messages for better context
+                recent_messages = conversation_history[-7:]  # Last 7 messages for better context
                 print(f"🔍 [CITY VERIFICATION] Using {len(recent_messages)} recent messages for context")
                 
                 context_lines = []
@@ -650,7 +650,7 @@ class QueryAgent:
                 
                 # PRIORITY 3: Check for city in conversation history
                 if conversation_history:
-                    for message in reversed(conversation_history[-5:]):  # Check last 5 messages
+                    for message in reversed(conversation_history[-7:]):  # Check last 7 messages
                         content = message.get("content", "")
                         # Normalize conversation history content for better matching
                         normalized_content = district_lookup.normalize_city_name(content)
@@ -770,7 +770,7 @@ class QueryAgent:
             # Prepare FULL context from conversation history (both user and assistant messages)
             context = ""
             if conversation_history:
-                recent_messages = conversation_history[-5:]  # Last 8 messages for better context
+                recent_messages = conversation_history[-7:]  # Last 7 messages for better context
                 print(f"🔍 [BRAND VERIFICATION] Using {len(recent_messages)} recent messages for context")
                 
                 context_lines = []
@@ -926,7 +926,7 @@ class QueryAgent:
                 
                 # PRIORITY 2: Check conversation history if no brand in current message
                 if conversation_history:
-                    for message in reversed(conversation_history[-5:]):  # Check last 5 messages
+                    for message in reversed(conversation_history[-7:]):  # Check last 7 messages
                         content = message.get("content", "")
                         # Normalize conversation history content for better brand matching
                         normalized_content = self._clean_brand_name(content).lower()
@@ -969,7 +969,7 @@ class QueryAgent:
         
         if user_msg_lower in yes_words:
             # Check if the last bot message was asking about a product
-            for message in reversed(conversation_history[-5:]):  # Check last 5 messages
+            for message in reversed(conversation_history[-7:]):  # Check last 7 messages
                 if message.get("role") == "assistant":
                     content = message.get("content", "").lower()
                     # Check if the bot asked about needing a product or mentioned a price
@@ -1328,7 +1328,7 @@ class QueryAgent:
             # Prepare context from conversation history
             context = ""
             if conversation_history:
-                recent_messages = conversation_history[-5:]  # Last 5 messages for context
+                recent_messages = conversation_history[-7:]  # Last 7 messages for context
                 context = "\n".join([f"{msg.get('role', 'user')}: {msg.get('content', '')}" for msg in recent_messages])
                 context = f"\nRecent conversation context:\n{context}\n"
             
@@ -1386,7 +1386,7 @@ Classification:"""
             # Build conversation context
             conversation_context = ""
             if conversation_history:
-                recent_history = conversation_history[-3:]  # Last 3 messages for context
+                recent_history = conversation_history[-7:]  # Last 7 messages for context
                 for i, msg in enumerate(recent_history):
                     role = msg.get('role', 'unknown')
                     content = msg.get('content', '')
@@ -1574,6 +1574,7 @@ Classification:"""
 7. ✅ طرح أسئلة ودودة لجمع معلومات (مدينة، علامة، منتج)
 8. ✅ توجيه العميل للتطبيق/الموقع للطلب
 9. ✅ حساب سعر الكرتونة الواحدة عند سؤال العميل عن عدة كراتين (العميل يستطيع الحساب)
+10. ✅ إذا كانت العلامة والمدينة مذكورين معاً في المحادثة، والمنتج/العلامة غير متوفر → فالرد بعدم التوفر يعتبر مناسب حتى لو ما عرض بدائل.
 10. ✅ معالجة طلبات تبديل الجوالين بطريقة خاصة:
     - نسأل عن **المدينة** أولاً إذا لم تُذكر
     - ثم نسأل عن **العلامة التجارية** بدون عرض كل العلامات في المدينة
@@ -2203,7 +2204,7 @@ Output in JSON format only:
                 # Check user message and conversation history for size-related keywords (English)
                 all_conversation_text = user_message
                 if conversation_history:
-                    for msg in conversation_history[-5:]:  # Check last 5 messages
+                    for msg in conversation_history[-7:]:  # Check last 7 messages
                         all_conversation_text += " " + msg.get("content", "")
                 
                 if "quarter" in all_conversation_text or "half" in all_conversation_text or "riyal" in all_conversation_text:
@@ -2543,7 +2544,7 @@ Output in JSON format only:
             # Check user message and conversation history for size-related keywords
             all_conversation_text = user_message
             if conversation_history:
-                for msg in conversation_history[-5:]:  # Check last 5 messages
+                for msg in conversation_history[-7:]:  # Check last 7 messages
                     all_conversation_text += " " + msg.get("content", "")
             
             # if "ربع" in all_conversation_text or "نص" in all_conversation_text or "ريال" in all_conversation_text or "ريالين" in all_conversation_text:
@@ -2558,10 +2559,10 @@ Output in JSON format only:
 
             messages.append(system_message)
             
-            # Add conversation history if provided (use last 5 messages to keep context manageable)
+            # Add conversation history if provided (use last 7 messages to keep context manageable)
             if conversation_history:
                 # Filter and add recent conversation history
-                recent_history = conversation_history[-5:]  # Last 5 messages for better context
+                recent_history = conversation_history[-7:]  # Last 7 messages for better context
                 for msg in recent_history:
                     # Create a clean message without problematic fields
                     clean_msg = {
