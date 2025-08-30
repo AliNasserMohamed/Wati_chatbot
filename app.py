@@ -507,6 +507,7 @@ class ThreadSafeMessageBatcher:
                     pass  # Expected when cancelling
                 except Exception as e:
                     # Timer cleanup error
+                    pass
             
             # Set new timer to process batch after 5 seconds of inactivity
             try:
@@ -535,6 +536,7 @@ class ThreadSafeMessageBatcher:
                 await self.process_user_batch(phone_number)
             except Exception as inner_e:
                 # Failed to process batch after error
+                pass
     
     async def process_user_batch(self, phone_number: str):
         """Process all messages in user's batch as one conversation"""
