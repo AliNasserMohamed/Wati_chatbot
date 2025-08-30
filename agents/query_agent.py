@@ -1389,10 +1389,20 @@ class QueryAgent:
             logger.error(f"Error fetching cheapest products for city {city_name}: {str(e)}")
             return {"error": f"Failed to get cheapest products: {str(e)}"}
     
-    async def _classify_message_relevance(self, user_message: str, conversation_history: List[Dict] = None, user_language: str = 'ar') -> bool:
+    async def _classify_message_relevance(self, user_message: str, conversation_history: List[Dict] = None, user_language: str = 'ar', city_context: Dict = None, brand_context: Dict = None) -> bool:
         """
         Use AI to classify if a message is related to water delivery services
-        Returns True if relevant, False if not relevant
+        Enhanced with city and brand context for better accuracy
+        
+        Args:
+            user_message: The message to classify
+            conversation_history: Previous conversation context  
+            user_language: Language of the conversation
+            city_context: Extracted city context information
+            brand_context: Extracted brand context information
+            
+        Returns:
+            True if relevant, False if not relevant
         """
         try:
             # Quick check for links - auto-reject messages with URLs
@@ -1411,21 +1421,73 @@ class QueryAgent:
                 context = "\n".join([f"{msg.get('role', 'user')}: {msg.get('content', '')}" for msg in recent_messages])
                 context = f"\nRecent conversation context:\n{context}\n"
             
+            # Prepare city context information
+            city_context_info = ""
+            if city_context:
+                city_info_en = f"City: {city_context.get('city_name', 'Unknown')} ({city_context.get('city_name_en', 'Unknown')})" if user_language == 'en' else f"المدينة: {city_context.get('city_name', 'غير محدد')} ({city_context.get('city_name_en', 'غير محدد')})"
+                source_info_en = f"Source: {city_context.get('found_in', 'Unknown')}" if user_language == 'en' else f"المصدر: {city_context.get('found_in', 'غير محدد')}"
+                
+                if user_language == 'ar':
+                    city_context_info = f"""
+🏙️ سياق المدينة المستخرج:
+- {city_info_en}
+- {source_info_en}
+"""
+                else:
+                    city_context_info = f"""
+🏙️ Extracted City Context:
+- {city_info_en}
+- {source_info_en}
+"""
+            
+            # Prepare brand context information
+            brand_context_info = ""
+            if brand_context:
+                brand_info = f"Brand: {brand_context.get('brand_title', 'Unknown')}" if user_language == 'en' else f"العلامة التجارية: {brand_context.get('brand_title', 'غير محدد')}"
+                source_info = f"Source: {brand_context.get('found_in', 'Unknown')}" if user_language == 'en' else f"المصدر: {brand_context.get('found_in', 'غير محدد')}"
+                
+                if user_language == 'ar':
+                    brand_context_info = f"""
+🏷️ سياق العلامة التجارية المستخرج:
+- {brand_info}
+- {source_info}
+"""
+                else:
+                    brand_context_info = f"""
+🏷️ Extracted Brand Context:
+- {brand_info}
+- {source_info}
+"""
+            
             # Choose classification prompt based on language
             classification_prompt = self.classification_prompt_ar if user_language == 'ar' else self.classification_prompt_en
             
-            # Prepare the full prompt
-            full_prompt = f"""{classification_prompt}
-{context}
+            # Add context information to improve classification accuracy
+            context_info = ""
+            if city_context_info or brand_context_info:
+                if user_language == 'ar':
+                    context_info = f"""
+📊 معلومات السياق المستخرجة:
+{city_context_info}{brand_context_info}
+💡 ملحوظة: وجود سياق المدينة أو العلامة التجارية يزيد من احتمالية أن تكون الرسالة متعلقة بخدمات توصيل المياه.
+"""
+                else:
+                    context_info = f"""
+📊 Extracted Context Information:
+{city_context_info}{brand_context_info}
+💡 Note: The presence of city or brand context increases the likelihood that the message is related to water delivery services.
+"""
+            
+            # Prepare the full user message with all context
+            full_user_message = f"""{context}{context_info}
 Current message to classify: "{user_message}"
-
-Classification:"""
+"""
             
             # Call LangChain for classification (will be traced in LangSmith)
             response = await self._call_langchain_llm(
                 messages=[
                     {"role": "system", "content": classification_prompt},
-                    {"role": "user", "content": f"{context}\nCurrent message: {user_message}"}
+                    {"role": "user", "content": full_user_message}
                 ],
                 temperature=0.1,  # Low temperature for consistent classification
                 max_tokens=10  # Short response expected
@@ -1566,6 +1628,16 @@ Classification:"""
                 - search_brands_in_city(): البحث عن علامات تجارية
                 - get_cheapest_products_by_city_name(): أرخص المنتجات في مدينة
 
+                💧 توضيح مهم جداً عن العلامات التجارية للمياه:
+                العديد من شركات المشروبات الكبرى تنتج مشروبات غازية ومنتجات مياه معبأة. عندما تُذكر هذه العلامات في سياق توصيل المياه، فهي تشير إلى منتجات المياه وليس المشروبات الغازية:
+                - ✅ بيبسي (Pepsi): تنتج مياه أكوافينا ومنتجات مياه معبأة أخرى
+                - ✅ كوكا كولا (Coca Cola): تنتج مياه داساني وسمارت ووتر ومنتجات مياه معبأة أخرى
+                - ✅ فولفيك (Volvic): علامة مياه طبيعية ممتازة
+                - ✅ فيجي (Fiji): علامة مياه ارتوازية طبيعية ممتازة
+                - ✅ إيفيان، بيريير، سان بيليغرينو: جميعها علامات مياه/مياه فوارة
+                - ✅ أي علامة تجارية يذكرها نظامنا هي علامة مياه صحيحة في خدمة التوصيل
+                🚨 مهم جداً: لا ترفض الردود التي تذكر هذه العلامات كبدائل للمياه - هي علامات مياه حقيقية في خدمتنا!
+
                 🚨 فهم منطق العمل الحاسم:
                 - النظام يتطلب معلومات المدينة والعلامة التجارية معاً لعرض المنتجات والأسعار
                 - إذا ذكر العميل العلامة التجارية لكن لم يذكر المدينة → السؤال عن المدينة ضروري ومناسب ✅
@@ -1615,6 +1687,7 @@ Classification:"""
                 - يخلط بين أسئلة التوصيل العامة وأسئلة التوصيل للباب
                 - يقدم معلومات غير متعلقة بسؤال العميل
                 - يتجاهل المعلومات التي قدمها العميل بالفعل
+                - 💧 ❌ لا ترفض الردود التي تذكر بيبسي، كوكا كولا، فولفيك، فيجي كبدائل للمياه - هذه علامات مياه حقيقية!
 
                 ⚠️ تنبيه: لا ترفض الردود التي تجيب بصدق على توفر المنتجات!
                 ⚠️ حاسم: لا ترفض الردود التي تسأل عن المعلومات الضرورية (المدينة/العلامة) المطلوبة لتقديم خدمة دقيقة!
@@ -1631,6 +1704,7 @@ Classification:"""
                 - يعرض الخيارات المتاحة بدلاً من مجرد السؤال عنها
                 - يقدم معلومات مفيدة حسب ما نعرفه من السياق
                 - يجيب بصدق عن توفر أو عدم توفر منتج معين (مقبول حتى لو لم يقدم بدائل)
+                - 💧 يذكر الشركات الكبرى للمشروبات (بيبسي، كوكا كولا، فولفيك، فيجي، إلخ) كبدائل علامات المياه - هذه علامات مياه حقيقية في خدمتنا
                 - يسأل عن المعلومات الناقصة الضرورية لتحقيق طلب العميل:
                   • يسأل عن المدينة عندما يذكر العميل علامة تجارية لكن المدينة غير معروفة ✅
                   • يسأل عن العلامة التجارية عندما يسأل العميل عن المنتجات/الأسعار لكن العلامة غير معروفة ✅
@@ -1649,6 +1723,7 @@ Classification:"""
                 - العميل يقول "أبي توصيل مياه" → "أي مدينة وأي علامة تريد؟" ✅ (مناسب)
                 - العميل يسأل عن علامة معينة بشكل عام → السؤال عن المدينة لعرض منتجات هذه العلامة ✅ (مناسب)
                 - إخبار العميل بالحقيقة عن التوفر أفضل من معلومات خاطئة ✅
+                - 💧 العميل يسأل عن "مياه حلوة" → الرد "عذراً، علامة حلوة غير متوفرة. لكن لدينا: 1. بيبسي 2. فولفيك 3. فيجي 4. كوكا كولا" ✅ (مناسب جداً - هذه علامات مياه حقيقية)
                 - العميل يسأل عن "10 كراتين نوڤا كم السعر؟" → عرض سعر الكرتونة الواحدة مناسب ✅ (العميل يستطيع حساب المجموع بنفسه)
                 - العميل يسأل عن تبديل الجوالين بدون ذكر العلامة والمدينة → اسأل عن المعلومات المفقودة ✅ (مناسب)
                 - العميل يسأل عن تبديل الجوالين وذكر المدينة والعلامة معاً → عرض منتجات التبديل فقط (التي تحتوي على "تبديل") مباشرة ✅ (مناسب)
@@ -1857,6 +1932,16 @@ We lead conversations in an organized way: CITY FIRST → BRAND → PRODUCTS →
 - search_brands_in_city(): Search for brands
 - get_cheapest_products_by_city_name(): Cheapest products in city
 
+💧 IMPORTANT WATER BRAND CLARIFICATION:
+Many major beverage companies produce BOTH soft drinks AND bottled water products. When these brands are mentioned in water delivery context, they refer to their WATER products, not soft drinks:
+- ✅ Pepsi (بيبسي): Produces Aquafina water and other bottled water products
+- ✅ Coca Cola (كوكا كولا): Produces Dasani water, Smartwater and other bottled water products  
+- ✅ Volvic (فولفيك): Premium natural mineral water brand
+- ✅ Fiji (فيجي): Premium natural artesian water brand
+- ✅ Evian, Perrier, San Pellegrino: All water/sparkling water brands
+- ✅ ANY brand mentioned by our system is a valid water brand in our delivery service
+🚨 CRITICAL: Do NOT reject responses that mention these brands as water alternatives - they ARE legitimate water brands in our service!
+
 🔄 Understanding Water Delivery Conversation Flow - Very Important:
 Review the last 3 messages to understand context:
 
@@ -1897,6 +1982,7 @@ Strict Evaluation Rules:
 4. Showing brands available in a city (when not discussing gallon exchange)
 5. Showing products after knowing both city and brand
 6. Answering about brand unavailability in a specific city (with or without alternatives)
+7. 💧 Mentioning major beverage companies (Pepsi, Coca Cola, Volvic, Fiji, etc.) as water brand alternatives - these ARE legitimate water brands in our service
 
 ⚠️ Important Evaluation Warning:
 - ❌ DO NOT reject responses that mention a specific brand for a specific city (e.g., "In Al-Qurayyat, we have 'Hana' brand")
@@ -1907,6 +1993,8 @@ Strict Evaluation Rules:
 - ❌ DO NOT reject responses that list available brands in a city after knowing the city from user message or history
 - ✅ Displaying products after knowing city and brand = desired goal
 - ✅ Listing brands after knowing city = appropriate workflow step
+- 💧 ❌ CRITICAL: DO NOT reject responses mentioning Pepsi, Coca Cola, Volvic, Fiji as water brand alternatives - these ARE water brands!
+- 💧 ✅ When a brand is unavailable, offering alternatives like "بيبسي، فولفيك، فيجي، كوكا كولا" is APPROPRIATE and HELPFUL
 
 ⚠️ Warning: Don't reject responses that honestly answer about product availability!
 ⚠️ Critical: Don't reject responses that clearly mention both brand and city even if they state non-availability!
@@ -2108,25 +2196,8 @@ Output in JSON format only:
         Internal method for generating response (separated for retry logic)
         Returns tuple of (response, city_context, brand_context)
         """
-        # STEP 1: Check if message is relevant to water delivery services
-        print("🔍 Checking message relevance...")
-        is_relevant = await self._classify_message_relevance(user_message, conversation_history, user_language)
-        
-        if not is_relevant:
-            print(f"❌ Message not relevant to water delivery services: {user_message}...")
-            # Return None or empty string to indicate the agent should not reply
-            return ("", None, None)
-        
-        print("✅ Message is relevant to water delivery services")
-
-
-
-        # STEP 2: Check if this is a "yes" response to a previous product question
-        if self._check_for_yes_response(user_message, conversation_history):
-            print("✅ Detected 'yes' response - handling product confirmation")
-        
-        max_function_calls = 5
-        function_call_count = 0
+        # STEP 0: Extract city and brand contexts first for enhanced relevance classification
+        print("🔍 Extracting context information...")
         
         try:
             # Check if we already have city information from current message or conversation history
@@ -2138,6 +2209,43 @@ Output in JSON format only:
                 conversation_history, 
                 user_language  # ← Pass language parameter
             )
+            
+            # Log extracted contexts
+            if city_context:
+                print(f"🏙️ City context extracted: {city_context.get('city_name')} from {city_context.get('found_in')}")
+            if brand_context:
+                print(f"🏷️ Brand context extracted: {brand_context.get('brand_title')} from {brand_context.get('found_in')}")
+                
+        except Exception as e:
+            print(f"⚠️ Error extracting contexts: {str(e)}")
+            city_context = None
+            brand_context = None
+        
+        # STEP 1: Check if message is relevant to water delivery services (enhanced with context)
+        print("🔍 Checking message relevance with context...")
+        is_relevant = await self._classify_message_relevance(
+            user_message, 
+            conversation_history, 
+            user_language, 
+            city_context, 
+            brand_context
+        )
+        
+        if not is_relevant:
+            print(f"❌ Message not relevant to water delivery services: {user_message}...")
+            # Return None or empty string to indicate the agent should not reply
+            return ("", None, None)
+        
+        print("✅ Message is relevant to water delivery services")
+
+        # STEP 2: Check if this is a "yes" response to a previous product question
+        if self._check_for_yes_response(user_message, conversation_history):
+            print("✅ Detected 'yes' response - handling product confirmation")
+        
+        max_function_calls = 5
+        function_call_count = 0
+        
+        try:
             
             # Prepare conversation history
             messages = []
