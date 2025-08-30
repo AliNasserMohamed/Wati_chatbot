@@ -97,7 +97,8 @@ class QueryAgent:
         ✅ طلبات تتضمن كراتين أو كرتونة أو علب أو صناديق المياه
         ✅ طلبات مع ذكر الأرقام والكميات للمنتجات ("5 كراتين"، "10 علب"، "كرتونة مياه")
         ✅ أسئلة عن تبديل الجوالين أو استبدال الجوالين أو تغيير الجوالين او دبات المياه
-        ✅ ذكر أسماء العلامات التجارية مثل (نستله، أكوافينا، العين، القصيم، المراعي، حلوه، أوسكا، وغيرها)
+        ✅ تبديل العلامات التجارية ("تبديل المنهل"، "تبديل تانيا"، "تبديل صافية")
+        ✅ ذكر أسماء العلامات التجارية مثل (نستله، أكوافينا، العين، القصيم، المراعي، حلوه، أوسكا، المنهل، وي، وغيرها)
         ✅ ذكر العلامات التجارية مع كميات أو أحجام ("5 كراتين نستله"، "كرتونة أكوافينا"، "10 علب حلوة")
         ✅ أي ذكر لـ "مياه" مع أحجام أو أوصاف المنتجات (مثل "مياه حلوه 200 مل", "مياه الشكل الجديد", "مياه صغيرة")
         ✅ أسئلة التوفر مع ذكر "مياه" ("عندكم مياه", "يوجد مياه", "متوفر مياه")
@@ -146,8 +147,11 @@ class QueryAgent:
         - 🚨 مثال: "عندكم مياه حلوه الشكل الجديد 200 مل" = متعلقة بالخدمة
         - 🚨 مثال: "5 كراتين أوسكا" = متعلقة بالخدمة (كمية + علامة تجارية)
         - 🚨 مثال: "كرتونة نستله" = متعلقة بالخدمة (عبوة + علامة تجارية)
+        - 🚨 مثال: "تبديل المنهل" = متعلقة بالخدمة (تبديل + علامة تجارية)
         - 🚨 أي اسم مذكور مع "مياه" يجب اعتباره علامة تجارية محتملة = متعلق بالخدمة
         - 🚨 أسئلة تبديل الجوالين متعلقة بالخدمة: "فيه تبديل جوالين؟"، "تبديل الجوالين"، "استبدال الجوالين"، "تبديل جالون"، "بدل الجالون"، "تغيير الجوالين" = متعلق بالخدمة
+        - 🚨 تبديل أي علامة تجارية للمياه متعلق بالخدمة: "تبديل المنهل"، "تبديل تانيا "، "استبدال صافية"، "تغيير العين"، "بدل حلوة"، "تبديل أوسكا"، "تبديل وي" = متعلق بالخدمة
+        - 🚨 أي ذكر لكلمة "تبديل" مع اسم علامة تجارية يُعتبر متعلق بالخدمة حتى لو لم تكن العلامة معروفة
         - أي رسالة تذكر "المندوب" أو "الطلب لم يصل" أو "تأخر" أو "متى يوصل" أو "متى يجي" تعتبر غير متعلقة
         - لكن طلبات "توصيل المياه" مع ذكر العلامة التجارية أو المدينة تعتبر متعلقة بالخدمة
         - 🚨 الفرق الحاسم: أسئلة "فيه توصيل؟" أو "تصلون لمدينتي؟" = متعلقة (قبل الطلب)
@@ -176,7 +180,8 @@ class QueryAgent:
             ✅ Orders including cartons, boxes, crates, or packages of water with quantities
             ✅ Orders with numbers and quantities for products ("5 cartons", "10 boxes", "water cartons")
             ✅ Questions about gallon exchange, jug exchange, or bottle exchange service
-            ✅ Mentioning brand names like (Nestle, Aquafina, Alain, Qassim, Almarai, Helwa, Oska, etc.)
+            ✅ Brand exchange questions ("exchange Al-Manhal", "replace Nestle", "swap Aquafina", "change Alain")
+            ✅ Mentioning brand names like (Nestle, Aquafina, Alain, Qassim, Almarai, Helwa, Oska, Al-Manhal, Wi, etc.)
             ✅ Brand names with quantities or sizes ("5 cartons Nestle", "Aquafina box", "10 bottles Helwa")
             ✅ Any mention of "water" with product sizes or descriptions ("Helwa water 200ml", "water new design", "small water")
             ✅ Availability questions with "water" ("do you have water", "water available", "any water")
@@ -225,8 +230,11 @@ class QueryAgent:
             - 🚨 Example: "do you have Helwa water new design 200ml" = service-related
             - 🚨 Example: "5 cartons Oska" = service-related (quantity + brand)
             - 🚨 Example: "Nestle box" = service-related (packaging + brand)
+            - 🚨 Example: "exchange Al-Manhal" = service-related (exchange + brand)
             - 🚨 Any name mentioned with "water" should be considered potential brand = service-related
             - 🚨 Gallon exchange questions are service-related: "gallon exchange?", "jug exchange", "bottle exchange", "replace gallon", "swap gallon", "change gallon" = service-related
+            - 🚨 Brand exchange questions are service-related: "exchange Al-Manhal", "replace Nestle", "swap Aquafina", "change Alain", "replace Helwa", "exchange Oska", "exchange Wi" = service-related
+            - 🚨 Any mention of "exchange" or "replace" with water brand name is service-related even if brand is unknown
             - Any message mentioning "delivery person", "driver", "order not arrived", "delayed", "when will it arrive", or "how long" is not relevant
             - But water delivery requests with brand or city mentions are service-related
             - 🚨 CRITICAL DIFFERENCE: Questions like "do you deliver?" or "delivery available in my city?" = relevant (before order)
@@ -2262,6 +2270,14 @@ Output in JSON format only:
                     - Only call search functions when you have EXPLICIT city information from:
                       → User's current message
                       → Conversation history
+
+                    🚨 DEALING WITH DISTRICT/NEIGHBORHOOD NAMES - CRITICAL:
+                    - If you suspect the customer mentioned a district/neighborhood name instead of city, ask for city
+                    - Examples of districts that might be mentioned: "Al-Rawda", "Al-Nuzha", "Al-Sulimaniya", "Al-Malaz", "Al-Olaya"
+                    - If customer mentions a name you're unsure if it's a city or district:
+                      → Ask: "Which city are you in?" for clarification
+                      → Don't assume it's a city unless you're completely certain
+                    - Example: Customer says "I'm in Al-Rawda" → Ask "Which city? Al-Rawda in which city?"
                       → System-provided city context
                     - Example: "مياه المنهل" → Ask for city, don't assume Medina
                     - Example: "مياه المنهل الرياض" → Use Riyadh as specified
@@ -2707,6 +2723,14 @@ Output in JSON format only:
                     - استدعي وظائف البحث فقط عندما تملك معلومات صريحة عن المدينة من:
                       → رسالة العميل الحالية
                       → تاريخ المحادثة
+
+                    🚨 التعامل مع أسماء الأحياء والمناطق - مهم جداً:
+                    - إذا اشتبهت أن العميل ذكر اسم حي أو منطقة بدلاً من مدينة، اسأل عن المدينة
+                    - أمثلة على أحياء قد تذكر: "الروضة"، "النزهة"، "السليمانية"، "الملز"، "العليا"
+                    - إذا ذكر العميل اسم لا تعرف إذا كان مدينة أم حي:
+                      → اسأل: "أي مدينة أنت فيها؟" للتوضيح
+                      → لا تفترض أنه مدينة إلا إذا كنت متأكد تماماً
+                    - مثال: العميل يقول "أنا في الروضة" → اسأل "أي مدينة؟ الروضة في أي مدينة؟"
                       → السياق المقدم من النظام
                     - مثال: "مياه المنهل" → اسأل عن المدينة، لا تفترض المدينة المنورة
                     - مثال: "مياه المنهل الرياض" → استخدم الرياض كما هو محدد
