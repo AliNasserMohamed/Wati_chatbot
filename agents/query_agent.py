@@ -91,8 +91,9 @@ class QueryAgent:
         ✅ أسئلة عن المنتجات والأسعار
         ✅ طلبات معرفة التوفر في مدينة معينة أو حي معين
         ✅ أسئلة عن توفر التوصيل للمدن مثل  ("فيه توصيل جدة"، "هل يوجد توصيل الرياض"، "متوفر توصيل الدمام")
-        ✅ أسئلة عن أحجام المياه والعبوات
+        ✅ أسئلة عن أحجام المياه والعبوات (أي ذكر لـ "مقاس"، "حجم"، "أحجام"، "سايز"، "ليتر"، "مل")
         ✅ أسئلة عن الدبات والقوارير والجوالين (عبوات المياه الكبيرة)
+        ✅ أي رسالة تحتوي على مصطلحات الأحجام مع أو بدون ذكر "مياه" ("مقاس 500"، "حجم كبير"، "أحجام متوفرة")
         ✅ طلبات تتضمن كراتين أو كرتونة أو علب أو صناديق المياه
         ✅ طلبات مع ذكر الأرقام والكميات للمنتجات ("5 كراتين"، "10 علب"، "كرتونة مياه")
         ✅ أسئلة عن تبديل الجوالين أو استبدال الجوالين أو تغيير الجوالين او دبات المياه
@@ -139,6 +140,9 @@ class QueryAgent:
         - كن صارم جداً في التصنيف - فقط الأسئلة عن المدن والعلامات التجارية والمنتجات والأسعار تعتبر متعلقة
         - 🚨 أي رسالة تحتوي على كلمة "مياه" مع وصف منتج أو حجم أو سؤال توفر تعتبر متعلقة بالخدمة
         - 🚨 أي رسالة تحتوي على كميات مع علامات تجارية للمياه تعتبر متعلقة بالخدمة
+        - 🚨 رسائل تحتوي على كلمات العبوات والأحجام تعتبر متعلقة بالخدمة: "كراتين"، "مقاس"، "أحجام"، "حجم"، "سايز"، "ليتر"، "مل"
+        - 🚨 مثال: "مقاس 500 مل" أو "أحجام المياه" أو "كراتين صغيرة" = متعلقة بالخدمة
+        - 🚨 مثال: "ايش أحجام المتوفرة" أو "مقاس كبير" أو "حجم ليتر ونص" = متعلقة بالخدمة
         - 🚨 مثال: "عندكم مياه حلوه الشكل الجديد 200 مل" = متعلقة بالخدمة
         - 🚨 مثال: "5 كراتين أوسكا" = متعلقة بالخدمة (كمية + علامة تجارية)
         - 🚨 مثال: "كرتونة نستله" = متعلقة بالخدمة (عبوة + علامة تجارية)
@@ -166,8 +170,9 @@ class QueryAgent:
             ✅ Questions about products and prices
             ✅ Requests to check availability in specific cities
             ✅ Questions about delivery availability to cities BEFORE placing order ("is there delivery to Jeddah", "delivery available in Riyadh", "do you deliver to Dammam", "can you deliver to our area?")
-            ✅ Questions about water sizes and packaging
+            ✅ Questions about water sizes and packaging (any mention of "size", "sizes", "liter", "ml", "volume")
             ✅ Questions about water gallons, jugs, and large water containers
+            ✅ Any message containing size terminology with or without "water" ("size 500", "large size", "available sizes")
             ✅ Orders including cartons, boxes, crates, or packages of water with quantities
             ✅ Orders with numbers and quantities for products ("5 cartons", "10 boxes", "water cartons")
             ✅ Questions about gallon exchange, jug exchange, or bottle exchange service
@@ -214,6 +219,9 @@ class QueryAgent:
             - Be very strict in classification - only questions about cities, brands, products, and prices count as relevant
             - 🚨 Any message containing "water" with product description or size or availability question counts as service-related
             - 🚨 Any message containing quantities with water brands counts as service-related
+            - 🚨 Messages containing packaging and size terms count as service-related: "cartons", "size", "sizes", "liter", "ml", "bottles"
+            - 🚨 Example: "size 500ml" or "water sizes" or "small cartons" = service-related
+            - 🚨 Example: "what sizes available" or "large size" or "1.5 liter size" = service-related
             - 🚨 Example: "do you have Helwa water new design 200ml" = service-related
             - 🚨 Example: "5 cartons Oska" = service-related (quantity + brand)
             - 🚨 Example: "Nestle box" = service-related (packaging + brand)
