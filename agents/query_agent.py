@@ -805,7 +805,14 @@ class QueryAgent:
 4. فقط إذا ذكر العميل اسم العلامة التجارية بوضوح أو أكد على علامة معينة - هذا صحيح
 5. لا تقبل العلامات التجارية التي ذكرها المساعد فقط في قائمة الخيارات
 
-هل استخراج "{extracted_brand}" صحيح ومبرر من رسائل العميل فقط؟
+⚠️ مهم جداً - تنويعات كتابة أسماء العلامات التجارية:
+- "صفا مكة" و "صفا مكه" هما نفس العلامة التجارية للمياه (تنويعات كتابة عادية)
+- "نستله" و "نستلة" و "Nestle" هي نفس العلامة التجارية
+- تغيير الهاء والتاء المربوطة في أسماء العلامات التجارية طبيعي ومقبول
+- الأخطاء الإملائية البسيطة في أسماء العلامات التجارية الشائعة مقبولة
+
+هل استخراج "{extracted_brand}" صحيح ومبرر من رسائل العميل فقط؟ 
+(تذكر: تنويعات الكتابة العادية لنفس العلامة التجارية مقبولة)
 
 أجب بـ "صحيح" إذا كان العميل ذكر العلامة التجارية بوضوح، أو "خطأ" إذا لم يذكرها أو كان غامض."""
 
@@ -814,7 +821,7 @@ class QueryAgent:
             # Call LangChain for verification
             response = await self._call_langchain_llm(
                 messages=[
-                    {"role": "system", "content": "أنت خبير في فهم النصوص واستخراج أسماء العلامات التجارية. كن دقيقاً جداً في التحقق."},
+                    {"role": "system", "content": "أنت خبير في فهم النصوص واستخراج أسماء العلامات التجارية. كن مرناً مع تنويعات كتابة أسماء العلامات التجارية ولكن دقيقاً في التحقق من ذكر العميل لها."},
                     {"role": "user", "content": verification_prompt}
                 ],
                 temperature=0.1,
@@ -885,6 +892,9 @@ class QueryAgent:
                 
                 # PRIORITY 1: Check current user message first - EXACT MATCH
                 if user_message:
+                    # Track already verified brands to avoid duplicate verification
+                    current_msg_verified_brands = set()
+                    
                     # Clean the user message by removing water prefixes
                     cleaned_message = self._clean_brand_name(user_message)
                     current_content = cleaned_message.lower()
@@ -901,6 +911,9 @@ class QueryAgent:
                             print(f"   User message cleaned: '{current_content}'")
                             print(f"   City verification needed: YES (always required)")
                             
+                            # Add to verified set to avoid duplicate verification
+                            current_msg_verified_brands.add(brand["title"])
+                            
                             # Verify extraction with ChatGPT
                             is_verified = await self._verify_brand_extraction(
                                 user_message, conversation_history,
@@ -914,6 +927,10 @@ class QueryAgent:
                     
                     # If no exact match, try partial matching
                     for brand in brands:
+                        # Skip if we already verified this brand in exact match
+                        if brand["title"] in current_msg_verified_brands:
+                            continue
+                            
                         # Normalize brand title for better matching
                         brand_title_normalized = self._clean_brand_name(brand.get("title", "")).lower()
                         
@@ -923,6 +940,9 @@ class QueryAgent:
                             print(f"   Normalized brand: '{brand_title_normalized}'")
                             print(f"   User message cleaned: '{current_content}'")
                             print(f"   City verification needed: YES (always required)")
+                            
+                            # Add to verified set to avoid duplicate verification
+                            current_msg_verified_brands.add(brand["title"])
                             
                             # Verify extraction with ChatGPT
                             is_verified = await self._verify_brand_extraction(
@@ -937,6 +957,9 @@ class QueryAgent:
                 
                 # PRIORITY 2: Check conversation history if no brand in current message
                 if conversation_history:
+                    # Track already verified brands to avoid duplicate verification
+                    verified_brands = set()
+                    
                     for message in reversed(conversation_history[-7:]):  # Check last 7 messages
                         content = message.get("content", "")
                         # Normalize conversation history content for better brand matching
@@ -947,12 +970,19 @@ class QueryAgent:
                             # Normalize brand title for better matching
                             brand_title_normalized = self._clean_brand_name(brand.get("title", "")).lower().strip()
                             
+                            # Skip if we already verified this brand
+                            if brand["title"] in verified_brands:
+                                continue
+                            
                             if brand_title_normalized and brand_title_normalized in normalized_content:
                                 print(f"🔍 Brand found in conversation history:")
                                 print(f"   Original brand: '{brand.get('title', '')}'")
                                 print(f"   Normalized brand: '{brand_title_normalized}'")
                                 print(f"   History content normalized: '{normalized_content}'")
                                 print(f"   City verification needed: YES (always required)")
+                                
+                                # Add to verified set to avoid duplicate verification
+                                verified_brands.add(brand["title"])
                                 
                                 # Verify extraction with ChatGPT
                                 is_verified = await self._verify_brand_extraction(
