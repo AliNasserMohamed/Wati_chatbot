@@ -83,7 +83,7 @@ class QueryAgent:
         1. تاريخ المحادثة الحديث (إذا كان متوفراً)
         2. الرسالة الحالية التي تحتاج للتصنيف
 
-        راجع تاريخ المحادثة لفهم السياق بشكل كامل قبل تصنيف الرسالة الحالية.
+        🚨 مهم جداً: اهتم بتاريخ المحادثة أكثر من الرسالة الحالية وحدها. إذا كان هناك تاريخ محادثة عن المياه أو العلامات التجارية أو المدن، فحتى الردود المختصرة تعتبر متعلقة بالخدمة.
 
         الرسائل المتعلقة بالخدمة تشمل فقط:
         ✅ أسئلة عن المدن المتاحة للتوصيل
@@ -167,6 +167,12 @@ class QueryAgent:
         أجب بـ "relevant" إذا كانت الرسالة متعلقة بالمنتجات والأسعار والعلامات التجارية والمدن فقط، أو "not_relevant" لأي شيء آخر."""
 
         self.classification_prompt_en = """You are a smart message classifier for a water delivery company. Your task is to determine if a message is related to the company's services or not.
+
+            You will be provided:
+            1. Recent chat history (if available)
+            2. Current message to classify
+            
+            🚨 CRITICAL: Pay more attention to chat history than just the current message alone. If there's chat history about water, brands, or cities, even short responses should be considered service-related.
 
             Service-related messages include ONLY:
             ✅ Questions about available cities for delivery
@@ -1439,72 +1445,59 @@ class QueryAgent:
                 context = "\n".join([f"{msg.get('role', 'user')}: {msg.get('content', '')}" for msg in recent_messages])
                 context = f"\nRecent conversation context:\n{context}\n"
             
-            # Prepare city context information
-            city_context_info = ""
-            if city_context:
-                city_info_en = f"City: {city_context.get('city_name', 'Unknown')} ({city_context.get('city_name_en', 'Unknown')})" if user_language == 'en' else f"المدينة: {city_context.get('city_name', 'غير محدد')} ({city_context.get('city_name_en', 'غير محدد')})"
-                source_info_en = f"Source: {city_context.get('found_in', 'Unknown')}" if user_language == 'en' else f"المصدر: {city_context.get('found_in', 'غير محدد')}"
-                
+            # Build enhanced classification prompt with context information
+            base_classification_prompt = self.classification_prompt_ar if user_language == 'ar' else self.classification_prompt_en
+            
+            # Add extracted context information to the classification prompt
+            context_enhancement = ""
+            if city_context or brand_context:
                 if user_language == 'ar':
-                    city_context_info = f"""
-🏙️ سياق المدينة المستخرج:
-- {city_info_en}
-- {source_info_en}
-"""
+                    context_enhancement = "\n\n🔍 معلومات السياق المستخرجة من المحادثة:\n"
+                    
+                    if city_context:
+                        city_name = city_context.get('city_name', 'غير محدد')
+                        city_source = city_context.get('found_in', 'غير محدد')
+                        context_enhancement += f"• تم استخراج مدينة '{city_name}' من {city_source}\n"
+                    
+                    if brand_context:
+                        brand_name = brand_context.get('brand_title', 'غير محدد')
+                        brand_source = brand_context.get('found_in', 'غير محدد')
+                        context_enhancement += f"• تم استخراج علامة تجارية '{brand_name}' من {brand_source}\n"
+                    
+                    context_enhancement += "\n💡 مهم: وجود سياق المدينة أو العلامة التجارية يعني أن هناك محادثة سابقة عن توصيل المياه، مما يزيد بقوة من احتمالية أن تكون الرسالة الحالية متعلقة بالخدمة."
                 else:
-                    city_context_info = f"""
-🏙️ Extracted City Context:
-- {city_info_en}
-- {source_info_en}
-"""
+                    context_enhancement = "\n\n🔍 Extracted Context Information from Conversation:\n"
+                    
+                    if city_context:
+                        city_name = city_context.get('city_name_en', city_context.get('city_name', 'Unknown'))
+                        city_source = city_context.get('found_in', 'unknown')
+                        context_enhancement += f"• Extracted city '{city_name}' from {city_source}\n"
+                    
+                    if brand_context:
+                        brand_name = brand_context.get('brand_title', 'Unknown')
+                        brand_source = brand_context.get('found_in', 'unknown')
+                        context_enhancement += f"• Extracted brand '{brand_name}' from {brand_source}\n"
+                    
+                    context_enhancement += "\n💡 Important: The presence of city or brand context means there's been previous water delivery conversation, which strongly increases the likelihood that the current message is service-related."
             
-            # Prepare brand context information
-            brand_context_info = ""
-            if brand_context:
-                brand_info = f"Brand: {brand_context.get('brand_title', 'Unknown')}" if user_language == 'en' else f"العلامة التجارية: {brand_context.get('brand_title', 'غير محدد')}"
-                source_info = f"Source: {brand_context.get('found_in', 'Unknown')}" if user_language == 'en' else f"المصدر: {brand_context.get('found_in', 'غير محدد')}"
-                
-                if user_language == 'ar':
-                    brand_context_info = f"""
-🏷️ سياق العلامة التجارية المستخرج:
-- {brand_info}
-- {source_info}
-"""
-                else:
-                    brand_context_info = f"""
-🏷️ Extracted Brand Context:
-- {brand_info}
-- {source_info}
-"""
+            enhanced_classification_prompt = base_classification_prompt + context_enhancement
             
-            # Choose classification prompt based on language
-            classification_prompt = self.classification_prompt_ar if user_language == 'ar' else self.classification_prompt_en
-            
-            # Add context information to improve classification accuracy
-            context_info = ""
-            if city_context_info or brand_context_info:
-                if user_language == 'ar':
-                    context_info = f"""
-📊 معلومات السياق المستخرجة:
-{city_context_info}{brand_context_info}
-💡 ملحوظة: وجود سياق المدينة أو العلامة التجارية يزيد من احتمالية أن تكون الرسالة متعلقة بخدمات توصيل المياه.
-"""
-                else:
-                    context_info = f"""
-📊 Extracted Context Information:
-{city_context_info}{brand_context_info}
-💡 Note: The presence of city or brand context increases the likelihood that the message is related to water delivery services.
-"""
-            
-            # Prepare the full user message with all context
-            full_user_message = f"""{context}{context_info}
+            # Prepare the user message with conversation history
+            full_user_message = f"""{context}
 Current message to classify: "{user_message}"
 """
+            
+            # Debug logging for context enhancement
+            if context_enhancement:
+                print(f"🔍 [CLASSIFICATION] Enhanced prompt with context:")
+                print(f"🏙️ City context: {city_context.get('city_name') if city_context else 'None'}")
+                print(f"🏷️ Brand context: {brand_context.get('brand_title') if brand_context else 'None'}")
+                print(f"📝 Context enhancement preview: {context_enhancement[:100]}...")
             
             # Call LangChain for classification (will be traced in LangSmith)
             response = await self._call_langchain_llm(
                 messages=[
-                    {"role": "system", "content": classification_prompt},
+                    {"role": "system", "content": enhanced_classification_prompt},
                     {"role": "user", "content": full_user_message}
                 ],
                 temperature=0.1,  # Low temperature for consistent classification
