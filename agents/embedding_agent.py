@@ -40,26 +40,19 @@ class EmbeddingAgent:
         - matched_question: the matched question from database
         """
         
-        print(f"🔍 EmbeddingAgent: Processing message: '{user_message[:50]}...'")
-        
         # Detect the actual language of the user message
         detected_user_language = language_handler.detect_language(user_message)
-        print(f"🌐 EmbeddingAgent: User message language detected as: {detected_user_language}")
         
         # Search for similar questions in the knowledge base
         search_results = await chroma_manager.search(user_message, n_results=3)
         
         if not search_results:
-            print(f"📭 EmbeddingAgent: No knowledge base matches found")
             return {
                 'action': 'continue_to_classification',
                 'response': None,
                 'confidence': 0,
                 'matched_question': None
             }
-        
-        # Print detailed information about all search results
-        print(f"📊 EmbeddingAgent: Found {len(search_results)} similar results:")
         
         # Detailed logging: capture all search results for journey logging
         search_results_for_log = []
@@ -68,22 +61,6 @@ class EmbeddingAgent:
             similarity_score = result.get('similarity', result.get('distance', 0.0))
             document_preview = result['document'][:100] + "..." if len(result['document']) > 100 else result['document']
             metadata = result.get('metadata', {})
-            
-            print(f"   Result {i}:")
-            print(f"   - Similarity Score: {similarity_score:.4f}")
-            print(f"   - Document Type: {metadata.get('type', 'unknown')}")
-            print(f"   - Content Preview: {document_preview}")
-            print(f"   - Has Answer Text: {bool(metadata.get('answer_text', '').strip())}")
-            print(f"   - Full Metadata: {metadata}")
-            print(f"   ---")
-            
-            # Additional debugging: Check if this is a question without an answer
-            if metadata.get('type') == 'question':
-                answer_text = metadata.get('answer_text', '')
-                if not answer_text or not answer_text.strip():
-                    print(f"   ⚠️  WARNING: Question without answer text!")
-                elif metadata.get('has_answer') == False:
-                    print(f"   ℹ️  Info: Question marked as having no answer")
             
             # Capture for detailed logging
             search_results_for_log.append({
@@ -113,16 +90,8 @@ class EmbeddingAgent:
         best_match = search_results[0]
         similarity_score = best_match.get('similarity', 0.0)  # Use 'similarity' not 'cosine_similarity'
         
-        print(f"🎯 EmbeddingAgent: Best match selected:")
-        print(f"   - Question: {best_match['document'][:100]}...")
-        print(f"   - Similarity: {similarity_score:.4f}")
-        print(f"   - Type: {best_match.get('metadata', {}).get('type', 'unknown')}")
-        print(f"   - Metadata: {best_match['metadata']}")
-        print(f"   - Has Answer Text: {bool(best_match.get('metadata', {}).get('answer_text', '').strip())}")
-        
         # Check if similarity is good enough (higher is better)
         if similarity_score < self.similarity_threshold:
-            print(f"❌ EmbeddingAgent: Similarity too low ({similarity_score:.4f} < {self.similarity_threshold})")
             return {
                 'action': 'continue_to_classification',
                 'response': None,
@@ -134,11 +103,6 @@ class EmbeddingAgent:
         matched_document = best_match['document']
         metadata = best_match['metadata']
         
-        print(f"🔍 EmbeddingAgent: Processing matched result...")
-        print(f"   - Matched Document: {matched_document[:100]}...")
-        print(f"   - Document Type: {metadata.get('type', 'unknown')}")
-        print(f"   - Metadata: {metadata}")
-        
         # CRITICAL: Always get the answer, never return the question
         final_answer = None
         matched_question_text = None
@@ -148,12 +112,8 @@ class EmbeddingAgent:
             matched_question_text = matched_document
             answer_text = metadata.get('answer_text', '')  # Get answer from metadata
             
-            print(f"   - This is a QUESTION: '{matched_question_text}...'")
-            print(f"   - Answer from metadata: '{answer_text if answer_text else 'No answer'}...'")
-            
             if answer_text and answer_text.strip():
                 final_answer = answer_text.strip()
-                print(f"   - ✅ Found ANSWER in metadata: '{final_answer}...'")
                 
                 # Log the matched question-answer pair for journey tracking
                 if LOGGING_AVAILABLE and journey_id:
@@ -170,21 +130,16 @@ class EmbeddingAgent:
                         }
                     )
             else:
-                print(f"   - ❌ No answer found in question metadata")
                 final_answer = None
                 
         else:
             # The matched document is already an answer (shouldn't happen with new approach)
-            print(f"   - ⚠️  Matched document appears to be an answer directly (unexpected with new approach)")
             final_answer = matched_document
             matched_question_text = "Direct answer match"
 
         
         # CRITICAL: If no valid answer found, don't reply
         if not final_answer or final_answer.strip() == "":
-            print(f"🚫 EmbeddingAgent: No valid answer found - skipping reply")
-            print(f"   - Question: {matched_question_text}")
-            print(f"   - Answer: '{final_answer}'")
             return {
                 'action': 'skip',
                 'response': None,
@@ -195,8 +150,6 @@ class EmbeddingAgent:
         
         # Check if answer is too short
         if len(final_answer.strip()) < 2:
-            print(f"🚫 EmbeddingAgent: Answer too short - skipping reply")
-            print(f"   - Answer: '{final_answer}'")
             return {
                 'action': 'skip',
                 'response': None,
@@ -205,22 +158,12 @@ class EmbeddingAgent:
                 'error': 'Answer too short'
             }
         
-        print(f"📝 EmbeddingAgent: Valid answer found!")
-        print(f"   - Question: {matched_question_text[:50]}...")
-        print(f"   - Answer: {final_answer[:100]}...")
-        print(f"   - Answer Length: {len(final_answer)} characters")
-        
         # CRITICAL: Check language matching BEFORE processing
         user_language = language_handler.detect_language(user_message)
         answer_language = language_handler.detect_language(final_answer)
         
-        print(f"🌐 Language Check:")
-        print(f"   - User message language: {user_language}")
-        print(f"   - Answer language: {answer_language}")
-        
         # If languages don't match, proceed to classification
         if user_language != answer_language:
-            print(f"🔄 Language mismatch: user={user_language}, answer={answer_language} - proceeding to classification")
             return {
                 'action': 'continue_to_classification',
                 'response': None,
@@ -236,9 +179,8 @@ class EmbeddingAgent:
             user_message, matched_question_text or matched_document, final_answer, detected_user_language, conversation_history, journey_id
         )
         
-        print(f"🤖 EmbeddingAgent: ChatGPT evaluation: {evaluation_result}")
-        
         if evaluation_result['action'] == 'reply':
+            print(f"🤖 EmbeddingAgent Reply: {evaluation_result.get('response', final_answer)[:100]}...")
             return {
                 'action': 'reply',
                 'response': evaluation_result.get('response', final_answer),
@@ -272,7 +214,6 @@ class EmbeddingAgent:
         
         # If languages don't match, proceed to classification
         if user_language != answer_language:
-            print(f"🌐 Language mismatch: user={user_language}, answer={answer_language} - proceeding to classification")
             return {'action': 'continue'}
         
         # Format conversation history for context
@@ -400,8 +341,6 @@ Return only one value: reply, skip, or continue
 
         
         try:
-            print(f"🤖 ChatGPT evaluation prompt: {evaluation_prompt}")
-            
             # Build the complete messages for the API call
             system_content ="""You are an extremely strict evaluator for customer service response quality at Abar Water Delivery.
 
@@ -518,30 +457,18 @@ Return only one of: `reply`, `skip`, or `continue`.
                     }
                 )
             
-            # Log the evaluation for debugging
-            print(f"🤖 ChatGPT evaluation result: '{evaluation}'")
-            print(f"🤖 Raw ChatGPT response: '{response.content}'")
-            print(f"🤖 User message: '{user_message}'")
-            print(f"🤖 Matched question: '{matched_question}'")
-            print(f"🤖 Matched answer: '{matched_answer[:100]}...'")
-            
             # Map the response to our action format
             if 'reply' in evaluation:
-                print(f"✅ EmbeddingAgent: ChatGPT says REPLY - will send response")
                 return {'action': 'reply'}
             elif 'skip' in evaluation:
-                print(f"🚫 EmbeddingAgent: ChatGPT says SKIP - no response will be sent")
                 return {'action': 'skip'}
             elif 'continue' in evaluation:
-                print(f"🔄 EmbeddingAgent: ChatGPT says CONTINUE - passing to classification agent")
                 return {'action': 'continue'}
             else:
                 # Default to continue if we can't parse the response
-                print(f"⚠️ Could not parse evaluation result '{evaluation}', defaulting to continue")
                 return {'action': 'continue'}
                 
         except Exception as e:
-            print(f"❌ EmbeddingAgent: Error evaluating response with ChatGPT: {str(e)}")
             # Default to continue on error
             return {'action': 'continue'}
 
@@ -549,7 +476,7 @@ Return only one of: `reply`, `skip`, or `continue`.
         """
         Debug method to check the knowledge base structure and verify question-answer linking
         """
-        print(f"🔍 DEBUG: Testing knowledge base structure...")
+
         
         try:
             # Get a sample of documents from the knowledge base
@@ -559,14 +486,13 @@ Return only one of: `reply`, `skip`, or `continue`.
             all_data = chroma_manager.get_collection_safe().get(include=["documents", "metadatas", "embeddings"])
             
             if not all_data or not all_data['documents']:
-                print(f"❌ DEBUG: No documents found in knowledge base")
                 return {"status": "error", "message": "No documents found"}
             
             documents = all_data['documents']
             metadatas = all_data['metadatas']
             ids = all_data['ids']
             
-            print(f"📊 DEBUG: Found {len(documents)} total documents")
+
             
             # Count questions and answers
             questions = []
@@ -578,28 +504,20 @@ Return only one of: `reply`, `skip`, or `continue`.
                 else:
                     answers.append({'doc': doc, 'metadata': metadata, 'id': doc_id})
             
-            print(f"📈 DEBUG: Found {len(questions)} questions and {len(answers)} answers")
+
             
             # Test a few question-answer pairs
             test_results = []
             
             for i, question_info in enumerate(questions[:sample_size]):
-                print(f"\n🔍 DEBUG Test {i+1}:")
-                print(f"   Question: {question_info['doc'][:100]}...")
-                print(f"   Question ID: {question_info['id']}")
-                print(f"   Question Metadata: {question_info['metadata']}")
-                
                 answer_text = question_info['metadata'].get('answer_text', '')
                 if answer_text and answer_text.strip():
-                    print(f"   ✅ Found Answer in metadata: {answer_text[:100]}...")
-                    
                     test_results.append({
                         "question": question_info['doc'][:100],
                         "answer": answer_text[:100],
                         "status": "success"
                     })
                 else:
-                    print(f"   ❌ No answer found in metadata")
                     test_results.append({
                         "question": question_info['doc'][:100],
                         "answer": None,
@@ -615,7 +533,6 @@ Return only one of: `reply`, `skip`, or `continue`.
             }
             
         except Exception as e:
-            print(f"❌ DEBUG: Error testing knowledge base structure: {str(e)}")
             return {"status": "error", "message": str(e)}
 
 # Create and export the instance

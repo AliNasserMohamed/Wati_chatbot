@@ -31,7 +31,6 @@ class MessageClassifier:
             
             return response.text
         except Exception as e:
-            print(f"Error transcribing audio: {str(e)}")
             return None
 
     async def classify_message(self, text: str, db: Session, user_message: UserMessage, conversation_history: list = None) -> Tuple[MessageType, str]:
@@ -48,17 +47,14 @@ class MessageClassifier:
         is_sahtak_mention = any(keyword in text_lower for keyword in sahtak_keywords)
         
         if is_sahtak_mention:
-            print(f"🔍 Detected Sahtak brand mention: {text}")
             # Check conversation history to determine context
             if conversation_history and len(conversation_history) > 0:
                 # If there's conversation history, classify as inquiry to continue the conversation flow
-                print("📝 Sahtak mention with conversation history - classifying as استفسار")
                 user_message.message_type = MessageType.INQUIRY
                 return MessageType.INQUIRY, language
             else:
                 # If no conversation history, could be service request or inquiry
                 # Default to inquiry for brand mentions
-                print("📝 Sahtak mention without conversation history - classifying as استفسار")
                 user_message.message_type = MessageType.INQUIRY
                 return MessageType.INQUIRY, language
 
@@ -109,8 +105,6 @@ class MessageClassifier:
             recent_history = conversation_history[-5:] if len(conversation_history) > 5 else conversation_history
             context_lines = []
             
-            print(f"🔍 MessageClassifier: Using {len(recent_history)} messages from conversation history")
-            
             for i, msg in enumerate(recent_history):
                 # Enhanced content extraction - try multiple fields
                 content = ""
@@ -127,13 +121,10 @@ class MessageClassifier:
                     context_lines.append(f"bot: {content}")
                 else:
                     context_lines.append(f"user: {content}")
-                
-                print(f"   {i+1}. [{role}]: {content[:50]}...")
             
             # Add current message
             current_message_formatted = f"user: {text}"
             context_lines.append(current_message_formatted)
-            print(f"   Current: [user]: {text}")
             
             # Build full context
             full_context = "\n".join(context_lines)
@@ -170,11 +161,8 @@ class MessageClassifier:
 
 صنف الرسالة الأخيرة من المستخدم:"""
             
-            print(f"🔄 Using conversation context for classification:")
-            print(f"📝 Context: {full_context[:150]}...")
         else:
             # No conversation history available - classify standalone message
-            print(f"⚠️ MessageClassifier: No conversation history available - classifying standalone message")
             
             # If message is in English, translate it first
             if language == 'en':
@@ -195,8 +183,6 @@ class MessageClassifier:
 - الكلمات المفردة قد تكون استفسارات إذا كانت أسماء مدن أو علامات تجارية
 
 صنف الرسالة:"""
-            print(f"📝 Classifying without context: {text[:50]}...")
-
         classification = await language_handler.process_with_openai(
             classification_prompt,
             system_prompt
@@ -204,7 +190,6 @@ class MessageClassifier:
 
         # Check if classification is None or empty
         if not classification:
-            print("Classification failed - using default UNKNOWN type")
             user_message.message_type = None
             return None, language
 
@@ -222,18 +207,14 @@ class MessageClassifier:
             
             # Safely strip whitespace
             classification_clean = classification.strip() if classification else ""
-            print(f"🔍 Classification received: '{classification}' -> '{classification_clean}'")
-            
             # Get the MessageType enum directly
             message_type = classification_map.get(classification_clean)
             
             if not message_type:
-                print(f"❌ Invalid classification received: '{classification_clean}'")
-                print(f"📋 Available classifications: {list(classification_map.keys())}")
                 user_message.message_type = None
                 return None, language
 
-            print(f"✅ Mapped to MessageType: {message_type}")
+            print(f"🏷️ Classification: '{text[:50]}...' → {message_type.name}")
             user_message.message_type = message_type
 
             # Handle special cases
@@ -244,7 +225,6 @@ class MessageClassifier:
                     content=text
                 )
                 db.add(complaint)
-                print("📝 Created complaint record")
             
             elif message_type == MessageType.SUGGESTION:
                 suggestion = Suggestion(
@@ -253,13 +233,11 @@ class MessageClassifier:
                     content=text
                 )
                 db.add(suggestion)
-                print("📝 Created suggestion record")
 
             db.commit()
             return message_type, language
 
         except (ValueError, AttributeError) as e:
-            print(f"❌ Error processing classification '{classification}': {str(e)}")
             user_message.message_type = None
             return None, language
 

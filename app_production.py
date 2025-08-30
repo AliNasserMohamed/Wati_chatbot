@@ -11,8 +11,7 @@ load_dotenv()
 from app import app
 
 if __name__ == "__main__":
-    print("Starting Abar Chatbot API (Production Mode - No Auto-reload)...")
-    print("This will take a few minutes to initialize the embedding model...")
+    # Starting production server
     
     # Run without auto-reload to prevent restart issues
     uvicorn.run(

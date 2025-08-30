@@ -44,7 +44,7 @@ def load_access_control_config():
             save_access_control_config(False)
             return False
     except Exception as e:
-        print(f"Error loading access control config: {e}")
+        pass  # Error loading config, using defaults
         return False
 
 def save_access_control_config(restricted_access: bool):
@@ -56,10 +56,10 @@ def save_access_control_config(restricted_access: bool):
         }
         with open(ACCESS_CONTROL_CONFIG_FILE, 'w') as f:
             json.dump(config, f, indent=2)
-        print(f"Access control config saved: restricted_access={restricted_access}")
+        pass  # Config saved
         return True
     except Exception as e:
-        print(f"Error saving access control config: {e}")
+        pass  # Error saving config
         return False
 
 def is_access_restricted():
@@ -79,10 +79,7 @@ env_path = os.path.join(current_dir, '.env')
 load_dotenv(dotenv_path=env_path)
 
 # Debug: Print environment variables (remove in production)
-print(f"Current working directory: {os.getcwd()}")
-print(f"Loading .env from: {env_path}")
-print(f"OPENAI_API_KEY set: {'Yes' if os.getenv('OPENAI_API_KEY') else 'No'}")
-print(f"WATI_API_KEY set: {'Yes' if os.getenv('WATI_API_KEY') else 'No'}")
+# Environment setup completed
 
 from database.db_utils import get_db, DatabaseManager
 from database.db_models import MessageType, UserSession, BotReply
@@ -119,7 +116,7 @@ class MessageCountRequest(BaseModel):
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     """Global exception handler to prevent app crashes"""
-    print(f"🚨 Global exception: {str(exc)}")
+    pass  # Global exception logged
     import traceback
     traceback.print_exc()
     
@@ -211,7 +208,7 @@ async def verify_webhook(
     Handle webhook verification from Wati.
     This is required for setting up the webhook initially.
     """
-    print(f"Received verification request: mode={hub_mode}, challenge={hub_challenge}, token={hub_verify_token}")
+    # Webhook verification processed
     
     # Check if this is a subscribe request and the token matches
     if hub_mode == "subscribe" and hub_verify_token == WATI_WEBHOOK_VERIFY_TOKEN:
@@ -242,13 +239,7 @@ async def process_webhook_async(data: dict, db):
         )
         
         # Debug: Print webhook data to understand structure
-        print(f"🔍 Processing webhook from: {data.get('waId', 'Unknown')}")
-        print(f"   Message ID: {data.get('id', 'None')}")
-        print(f"   Type: {data.get('type', 'Unknown')}")
-        print(f"   Event Type: {data.get('eventType', 'None')}")
-        print(f"   From Bot: {data.get('fromBot', False)}")
-        print(f"   From Me: {data.get('fromMe', False)}")
-        print(f"   Text: {data.get('text', 'N/A')[:100]}...")
+        # Processing webhook data
         
         # 🚨 CRITICAL: Check message type and ownership to prevent infinite loops
         event_type = data.get("eventType", "")
@@ -271,7 +262,7 @@ async def process_webhook_async(data: dict, db):
             try:
                 await save_bot_reply_to_database(data, journey_id)
                 message_journey_logger.complete_journey(journey_id, status="saved_bot_reply")
-                print(f"💾 Bot/agent reply saved to database - Not processing through agents")
+                # Bot reply saved to database
             except Exception as e:
                 message_journey_logger.log_error(
                     journey_id=journey_id,
@@ -279,7 +270,7 @@ async def process_webhook_async(data: dict, db):
                     error_message=str(e),
                     step="save_bot_reply"
                 )
-                print(f"❌ Error saving bot reply: {str(e)}")
+                pass  # Error saving bot reply
             return
         
         # Check if this is a template reply from WATI (button reply, list reply, etc.)
@@ -310,7 +301,7 @@ async def process_webhook_async(data: dict, db):
             elif interactive_button_reply:
                 extracted_text = interactive_button_reply.get("text", "")
             
-            print(f"🎯 Template reply from {phone_number}: {extracted_text}")
+            # Template reply processed
             
             # Update the data with extracted text for processing
             data["text"] = extracted_text
@@ -321,7 +312,7 @@ async def process_webhook_async(data: dict, db):
             # Only process if we have actual text content
             if not extracted_text or extracted_text.strip() == "":
                 message_journey_logger.complete_journey(journey_id, status="empty_template_reply")
-                print(f"🚫 Empty template reply - not processing")
+                # Empty template reply skipped
                 return
         
         # Early duplicate check with existing session
@@ -334,7 +325,7 @@ async def process_webhook_async(data: dict, db):
                 status="skipped"
             )
             message_journey_logger.complete_journey(journey_id, status="skipped_duplicate")
-            print(f"🔄 Duplicate message detected with ID: {wati_message_id}. Skipping processing.")
+            # Duplicate message skipped
             return
         
         # Additional check: Skip if the same message was processed recently (time-based)
@@ -343,7 +334,7 @@ async def process_webhook_async(data: dict, db):
             if wati_message_id in processed_messages:
                 last_processed_time = processed_messages[wati_message_id]
                 if current_time - last_processed_time < 30:  # 30 seconds cooldown
-                    print(f"🔄 Message {wati_message_id} processed recently. Skipping to prevent spam.")
+                    # Recent message skipped
                     return
             
             # Track this message
@@ -356,7 +347,7 @@ async def process_webhook_async(data: dict, db):
                     del processed_messages[msg_id]
         
         # Log the incoming message for debugging
-        print(f"📱 Processing message from {phone_number}: {data.get('text', 'N/A')[:50]}...")
+        # Processing message
         
         # Add journey_id to message data for tracking throughout processing
         data['journey_id'] = journey_id
@@ -385,7 +376,7 @@ async def process_webhook_async(data: dict, db):
             )
             message_journey_logger.complete_journey(journey_id, status="failed")
         
-        print(f"[Async Processing ERROR] {str(e)}")
+        pass  # Async processing error
         import traceback
         traceback.print_exc()
 
@@ -403,17 +394,17 @@ async def webhook(request: Request, db=Depends(get_db)):
             # Add timeout to prevent hanging requests
             data = await asyncio.wait_for(request.json(), timeout=30.0)
         except ClientDisconnect:
-            print(f"⚠️ Client disconnected before request body was read - returning success")
+            # Client disconnected during read
             return {"status": "success", "message": "Client disconnected - no processing needed"}
         except asyncio.TimeoutError:
-            print(f"⚠️ Request timed out while reading JSON body - returning error")
+            # Request timeout
             return {"status": "error", "message": "Request timeout"}
         
         print(f"🔍 Received data: {data}")
         
         # Validate that we have valid JSON data
         if not data or not isinstance(data, dict):
-            print(f"⚠️ Invalid or empty webhook data received")
+            # Invalid data received
             return {"status": "error", "message": "Invalid webhook data"}
         
         # Extract basic message information for immediate validation
@@ -424,11 +415,11 @@ async def webhook(request: Request, db=Depends(get_db)):
         
         # Basic validation - respond immediately if no phone number
         if not phone_number:
-            print(f"⚠️ No phone number in webhook data")
+            # No phone number in data
             return {"status": "error", "message": "No phone number provided"}
         
         # 🚀 IMMEDIATE RESPONSE: Respond to Wati immediately to prevent timeouts
-        print(f"📱 Immediate response to Wati for {phone_number}")
+        # Immediate response sent
         
         # Schedule async processing in background and return immediately
         asyncio.create_task(process_webhook_async(data, db))
@@ -437,11 +428,11 @@ async def webhook(request: Request, db=Depends(get_db)):
 
     except ClientDisconnect:
         # Client disconnected during processing - this is normal, just log and return success
-        print(f"⚠️ Client disconnected during webhook processing")
+        # Client disconnected
         return {"status": "success", "message": "Client disconnected during processing"}
     
     except Exception as e:
-        print(f"[Webhook ERROR] {str(e)}")
+        pass  # Webhook error
         import traceback
         traceback.print_exc()
         # Return success even on error to prevent Wati from retrying
@@ -485,7 +476,7 @@ class ThreadSafeMessageBatcher:
             for phone_number in phone_numbers_to_clean[:-100]:
                 if phone_number in self._locks:
                     del self._locks[phone_number]
-                    print(f"🧹 Cleaned up old lock for {phone_number}")
+                    # Old lock cleaned
     
     async def add_message_to_batch(self, phone_number: str, message_data: dict):
         """Add a message to user's batch with proper locking"""
@@ -515,16 +506,16 @@ class ThreadSafeMessageBatcher:
                 except asyncio.CancelledError:
                     pass  # Expected when cancelling
                 except Exception as e:
-                    print(f"⚠️ Error cleaning up timer for {phone_number}: {e}")
+                    # Timer cleanup error
             
             # Set new timer to process batch after 5 seconds of inactivity
             try:
                 self._timers[phone_number] = asyncio.create_task(
                     self._process_batch_delayed(phone_number)
                 )
-                print(f"📦 Added message to batch for {phone_number}. Batch size: {len(self._batches[phone_number])}")
+                # Message added to batch
             except Exception as e:
-                print(f"❌ Error creating batch timer for {phone_number}: {e}")
+                # Batch timer error
                 # If timer creation fails, process immediately to prevent message loss
                 await self.process_user_batch(phone_number)
     
@@ -534,16 +525,16 @@ class ThreadSafeMessageBatcher:
             await asyncio.sleep(5)  # Wait 5 seconds for more messages
             await self.process_user_batch(phone_number)
         except asyncio.CancelledError:
-            print(f"🔄 Batch timer cancelled for {phone_number}")
+            # Batch timer cancelled
             # Don't re-raise - timer cancellation is expected and should not interrupt processing
             return
         except Exception as e:
-            print(f"❌ Error in delayed batch processing for {phone_number}: {e}")
+            # Batch processing error
             # Still try to process the batch to avoid message loss
             try:
                 await self.process_user_batch(phone_number)
             except Exception as inner_e:
-                print(f"❌ Failed to process batch after error for {phone_number}: {inner_e}")
+                # Failed to process batch after error
     
     async def process_user_batch(self, phone_number: str):
         """Process all messages in user's batch as one conversation"""
