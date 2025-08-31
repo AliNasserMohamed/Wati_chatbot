@@ -181,6 +181,21 @@ class District(Base):
     __table_args__ = (UniqueConstraint('name', 'city_name', name='uq_district_city'),)
 
 # Sync log to track data updates
+class ConversationPause(Base):
+    __tablename__ = "conversation_pauses"
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    conversation_id = Column(String(255), unique=True, nullable=False, index=True)  # Wati conversationId
+    phone_number = Column(String(20), nullable=False, index=True)  # User phone number
+    agent_assignee_id = Column(String(255), nullable=True)  # Agent assignee ID from Wati
+    agent_email = Column(String(255), nullable=True)  # Agent email
+    agent_name = Column(String(100), nullable=True)  # Agent name
+    paused_at = Column(DateTime, default=datetime.datetime.utcnow)
+    expires_at = Column(DateTime, nullable=False)  # When the pause expires (10 hours from pause)
+    is_active = Column(Integer, default=1)  # 1 if active, 0 if expired/deactivated
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+
 class DataSyncLog(Base):
     __tablename__ = "data_sync_logs"
     

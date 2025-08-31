@@ -32,6 +32,9 @@ import time
 # Access control configuration management
 ACCESS_CONTROL_CONFIG_FILE = "access_control_config.json"
 
+# Agent pause configuration - emails that trigger bot pause
+PAUSE_TRIGGER_AGENT_EMAILS = ["contracts@abar.app"]
+
 def load_access_control_config():
     """Load access control configuration from file"""
     try:
@@ -247,13 +250,67 @@ async def process_webhook_async(data: dict, db):
         
         # Handle bot/agent replies (sessionMessageSent) - save to database but don't process
         if is_session_message_sent:
+            # Check if this is a customer service agent that triggers pause
+            # Only pause for specific agent emails configured in PAUSE_TRIGGER_AGENT_EMAILS
+            agent_email = data.get("operatorEmail")
+            is_pause_trigger_agent = (
+                data.get("owner", False) and 
+                agent_email in PAUSE_TRIGGER_AGENT_EMAILS
+            )
+            conversation_id = data.get("conversationId")
+            
+            if is_pause_trigger_agent and conversation_id:
+                # Agent detected - create conversation pause for 10 hours
+                try:
+                    agent_assignee_id = data.get("assigneeId")
+                    agent_email = data.get("operatorEmail") 
+                    agent_name = data.get("operatorName")
+                    
+                    # Create conversation pause
+                    DatabaseManager.create_conversation_pause(
+                        db=db,
+                        conversation_id=conversation_id,
+                        phone_number=phone_number,
+                        agent_assignee_id=agent_assignee_id,
+                        agent_email=agent_email,
+                        agent_name=agent_name
+                    )
+                    
+                    message_journey_logger.add_step(
+                        journey_id=journey_id,
+                        step_type="contracts_agent_detection",
+                        description=f"Contracts agent (contracts@abar.app) entered conversation - paused for 10 hours",
+                        data={
+                            "conversation_id": conversation_id,
+                            "agent_name": agent_name,
+                            "agent_email": agent_email,
+                            "agent_assignee_id": agent_assignee_id,
+                            "phone_number": phone_number
+                        },
+                        status="conversation_paused"
+                    )
+                    
+                    print(f"🚫 Contracts agent {agent_name} ({agent_email}) entered conversation {conversation_id}. Bot paused for 10 hours.")
+                    
+                except Exception as e:
+                    print(f"❌ Error creating conversation pause: {e}")
+                    message_journey_logger.log_error(
+                        journey_id=journey_id,
+                        error_type="conversation_pause_error",
+                        error_message=str(e),
+                        step="create_conversation_pause"
+                    )
+            
             message_journey_logger.add_step(
                 journey_id=journey_id,
                 step_type="message_filter",
-                description=f"Bot/agent reply detected: event_type={event_type}",
+                description=f"Bot/agent reply detected: event_type={event_type}, is_pause_trigger_agent={is_pause_trigger_agent}",
                 data={
                     "event_type": event_type, 
-                    "is_session_message_sent": is_session_message_sent
+                    "is_session_message_sent": is_session_message_sent,
+                    "is_pause_trigger_agent": is_pause_trigger_agent,
+                    "agent_email": agent_email,
+                    "conversation_id": conversation_id
                 },
                 status="bot_reply"
             )
@@ -778,6 +835,33 @@ async def process_message_async(data, phone_number, message_type, wati_message_i
         # Double-check for duplicate message processing with fresh session
         if wati_message_id and not wati_message_id.startswith('batch_') and DatabaseManager.check_message_already_processed(db, wati_message_id):
             print(f"🔄 Duplicate message detected during async processing with ID: {wati_message_id}. Skipping.")
+            return
+        
+        # 🚫 CONVERSATION PAUSE CHECK: Skip processing if agent is active in conversation
+        conversation_id = data.get("conversationId")
+        if conversation_id and DatabaseManager.is_conversation_paused(db, conversation_id):
+            pause_info = DatabaseManager.get_conversation_pause_info(db, conversation_id)
+            
+            message_journey_logger.add_step(
+                journey_id=journey_id,
+                step_type="conversation_pause_check",
+                description=f"Conversation paused by agent - skipping message processing",
+                data={
+                    "conversation_id": conversation_id,
+                    "phone_number": phone_number,
+                    "pause_info": pause_info
+                },
+                status="paused_by_agent"
+            )
+            
+            if pause_info:
+                hours_remaining = pause_info.get('hours_remaining', 0)
+                agent_name = pause_info.get('agent_name', 'Unknown')
+                print(f"🚫 Conversation {conversation_id} paused by agent {agent_name}. {hours_remaining:.1f} hours remaining. Skipping message processing.")
+            else:
+                print(f"🚫 Conversation {conversation_id} paused by agent. Skipping message processing.")
+            
+            message_journey_logger.complete_journey(journey_id, status="skipped_agent_pause")
             return
         
         # SELECTIVE ACCESS LOGIC: Determine user permissions
@@ -1495,6 +1579,185 @@ async def stop_scheduler():
         scheduler.stop_scheduler()
         return {"status": "success", "message": "Scheduler stopped"}
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Conversation Pause Management API Endpoints
+@app.get("/api/pauses/status", 
+    summary="Get All Conversation Pause Status",
+    description="Get the status of all conversation pauses (active and recently expired)",
+    response_description="List of conversation pause statuses"
+)
+async def get_all_pause_status(
+    include_expired: bool = Query(False, description="Include expired pauses in results"),
+    db=Depends(get_db)
+):
+    """
+    Get status of all conversation pauses
+    
+    - **include_expired**: Include expired pauses in the results (default: false)
+    """
+    try:
+        from database.db_models import ConversationPause
+        import datetime
+        
+        current_time = datetime.datetime.utcnow()
+        
+        # Build query
+        query = db.query(ConversationPause)
+        if not include_expired:
+            query = query.filter(ConversationPause.is_active == 1)
+        
+        pauses = query.order_by(ConversationPause.created_at.desc()).all()
+        
+        pause_list = []
+        active_count = 0
+        expired_count = 0
+        
+        for pause in pauses:
+            time_remaining = pause.expires_at - current_time
+            is_expired = time_remaining.total_seconds() <= 0 or pause.is_active == 0
+            
+            if is_expired:
+                expired_count += 1
+                status = "expired"
+                time_display = f"Expired {abs(time_remaining.total_seconds()/3600):.1f} hours ago"
+            else:
+                active_count += 1
+                status = "active"
+                hours_remaining = time_remaining.total_seconds() / 3600
+                time_display = f"{hours_remaining:.1f} hours remaining"
+            
+            pause_info = {
+                "id": pause.id,
+                "conversation_id": pause.conversation_id,
+                "phone_number": pause.phone_number,
+                "agent_name": pause.agent_name,
+                "agent_email": pause.agent_email,
+                "agent_assignee_id": pause.agent_assignee_id,
+                "paused_at": pause.paused_at.isoformat() if pause.paused_at else None,
+                "expires_at": pause.expires_at.isoformat() if pause.expires_at else None,
+                "status": status,
+                "is_active": pause.is_active == 1,
+                "time_display": time_display,
+                "hours_remaining": round(time_remaining.total_seconds() / 3600, 1) if not is_expired else 0
+            }
+            pause_list.append(pause_info)
+        
+        return {
+            "success": True,
+            "data": {
+                "pauses": pause_list,
+                "summary": {
+                    "total_records": len(pause_list),
+                    "active_pauses": active_count,
+                    "expired_pauses": expired_count,
+                    "timestamp": current_time.isoformat()
+                }
+            }
+        }
+        
+    except Exception as e:
+        print(f"❌ Error getting pause status: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/pauses/conversation/{conversation_id}", 
+    summary="Get Specific Conversation Pause Status",
+    description="Get the pause status for a specific conversation ID",
+    response_description="Conversation pause status"
+)
+async def get_conversation_pause_status(
+    conversation_id: str,
+    db=Depends(get_db)
+):
+    """
+    Get pause status for a specific conversation
+    
+    - **conversation_id**: The Wati conversation ID to check
+    """
+    try:
+        is_paused = DatabaseManager.is_conversation_paused(db, conversation_id)
+        pause_info = DatabaseManager.get_conversation_pause_info(db, conversation_id)
+        
+        result = {
+            "conversation_id": conversation_id,
+            "is_paused": is_paused,
+            "pause_info": pause_info
+        }
+        
+        if is_paused and pause_info:
+            result["message"] = f"Conversation paused by {pause_info['agent_name']} ({pause_info['agent_email']}) - {pause_info['hours_remaining']:.1f} hours remaining"
+        else:
+            result["message"] = "Conversation is not paused - bot will respond normally"
+        
+        return {
+            "success": True,
+            "data": result
+        }
+        
+    except Exception as e:
+        print(f"❌ Error checking specific conversation pause: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/pauses/conversation/{conversation_id}",
+    summary="Remove Conversation Pause",
+    description="Manually remove/deactivate a conversation pause",
+    response_description="Removal result"
+)
+async def remove_conversation_pause(
+    conversation_id: str,
+    db=Depends(get_db)
+):
+    """
+    Manually remove a conversation pause
+    
+    - **conversation_id**: The Wati conversation ID to unpause
+    """
+    try:
+        removed = DatabaseManager.remove_conversation_pause(db, conversation_id)
+        
+        if removed:
+            return {
+                "success": True,
+                "message": f"Conversation pause removed for {conversation_id}",
+                "data": {
+                    "conversation_id": conversation_id,
+                    "removed": True
+                }
+            }
+        else:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No active pause found for conversation {conversation_id}"
+            )
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error removing conversation pause: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/pauses/cleanup",
+    summary="Clean Up Expired Pauses",
+    description="Manually clean up all expired conversation pauses",
+    response_description="Cleanup results"
+)
+async def cleanup_expired_pauses(db=Depends(get_db)):
+    """
+    Manually trigger cleanup of all expired conversation pauses
+    """
+    try:
+        cleaned_count = DatabaseManager.cleanup_expired_pauses(db)
+        
+        return {
+            "success": True,
+            "message": f"Cleaned up {cleaned_count} expired pauses",
+            "data": {
+                "cleaned_pauses": cleaned_count
+            }
+        }
+        
+    except Exception as e:
+        print(f"❌ Error cleaning up expired pauses: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # User Management API Endpoints

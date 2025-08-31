@@ -5,7 +5,7 @@ from typing import Optional, List, Dict, Any, Union
 import os
 import datetime
 
-from database.db_models import Base, User, UserMessage, BotReply, City, Brand, Product, DataSyncLog, Complaint, Suggestion
+from database.db_models import Base, User, UserMessage, BotReply, City, Brand, Product, DataSyncLog, Complaint, Suggestion, ConversationPause
 
 # Create database directory if it doesn't exist
 os.makedirs("database/data", exist_ok=True)
@@ -179,7 +179,15 @@ class DatabaseManager:
     @staticmethod
     def clear_user_messages_by_phone(db: Session, phone_number: str, delete_user_record: bool = False) -> Dict[str, Union[str, int, bool]]:
         """
-        Clear all messages for a specific phone number
+        Clear all messages and related data for a specific phone number
+        
+        This method deletes:
+        - Bot replies
+        - Complaints  
+        - Suggestions
+        - User messages
+        - Conversation pauses (agent-triggered bot pauses)
+        - Optionally: User record
         
         Args:
             db: Database session
@@ -187,7 +195,7 @@ class DatabaseManager:
             delete_user_record: Whether to also delete the user record (default: False)
         
         Returns:
-            Dictionary with operation results
+            Dictionary with operation results including counts of deleted records
         """
         results = {
             "phone_number": phone_number,
@@ -195,6 +203,7 @@ class DatabaseManager:
             "bot_replies_deleted": 0,
             "complaints_deleted": 0,
             "suggestions_deleted": 0,
+            "conversation_pauses_deleted": 0,
             "user_messages_deleted": 0,
             "user_deleted": False,
             "success": False,
@@ -240,6 +249,12 @@ class DatabaseManager:
             # Delete user messages
             messages_deleted = db.query(UserMessage).filter(UserMessage.user_id == user_id).delete()
             results["user_messages_deleted"] = messages_deleted
+            
+            # Delete conversation pauses for this phone number
+            conversation_pauses_deleted = db.query(ConversationPause).filter(
+                ConversationPause.phone_number == phone_number
+            ).delete()
+            results["conversation_pauses_deleted"] = conversation_pauses_deleted
             
             # Optionally delete user record
             if delete_user_record:
@@ -494,4 +509,146 @@ class DatabaseManager:
             'min_similarity': min(similarities),
             'max_similarity': max(similarities),
             'llm_evaluations': evaluation_counts
-        } 
+        }
+    
+    # Conversation Pause Management Methods
+    @staticmethod
+    def create_conversation_pause(db: Session, conversation_id: str, phone_number: str, 
+                                agent_assignee_id: str = None, agent_email: str = None, 
+                                agent_name: str = None) -> ConversationPause:
+        """Create or update a conversation pause when an agent enters the conversation"""
+        try:
+            # Check if pause already exists for this conversation
+            existing_pause = db.query(ConversationPause).filter(
+                ConversationPause.conversation_id == conversation_id
+            ).first()
+            
+            # Calculate expiry time (10 hours from now)
+            pause_expiry = datetime.datetime.utcnow() + datetime.timedelta(hours=10)
+            
+            if existing_pause:
+                # Update existing pause
+                existing_pause.phone_number = phone_number
+                existing_pause.agent_assignee_id = agent_assignee_id
+                existing_pause.agent_email = agent_email
+                existing_pause.agent_name = agent_name
+                existing_pause.paused_at = datetime.datetime.utcnow()
+                existing_pause.expires_at = pause_expiry
+                existing_pause.is_active = 1
+                existing_pause.updated_at = datetime.datetime.utcnow()
+                pause = existing_pause
+            else:
+                # Create new pause
+                pause = ConversationPause(
+                    conversation_id=conversation_id,
+                    phone_number=phone_number,
+                    agent_assignee_id=agent_assignee_id,
+                    agent_email=agent_email,
+                    agent_name=agent_name,
+                    expires_at=pause_expiry,
+                    is_active=1
+                )
+                db.add(pause)
+            
+            db.commit()
+            db.refresh(pause)
+            return pause
+            
+        except Exception as e:
+            db.rollback()
+            raise e
+    
+    @staticmethod
+    def is_conversation_paused(db: Session, conversation_id: str) -> bool:
+        """Check if a conversation is currently paused by an agent"""
+        try:
+            current_time = datetime.datetime.utcnow()
+            
+            # Check for active pause that hasn't expired
+            active_pause = db.query(ConversationPause).filter(
+                ConversationPause.conversation_id == conversation_id,
+                ConversationPause.is_active == 1,
+                ConversationPause.expires_at > current_time
+            ).first()
+            
+            if active_pause:
+                return True
+            
+            # Clean up any expired pauses
+            db.query(ConversationPause).filter(
+                ConversationPause.conversation_id == conversation_id,
+                ConversationPause.expires_at <= current_time
+            ).update({ConversationPause.is_active: 0})
+            
+            db.commit()
+            return False
+            
+        except Exception as e:
+            db.rollback()
+            print(f"Error checking conversation pause: {e}")
+            return False
+    
+    @staticmethod
+    def get_conversation_pause_info(db: Session, conversation_id: str) -> Optional[Dict[str, Any]]:
+        """Get information about a conversation pause if it exists and is active"""
+        try:
+            current_time = datetime.datetime.utcnow()
+            
+            active_pause = db.query(ConversationPause).filter(
+                ConversationPause.conversation_id == conversation_id,
+                ConversationPause.is_active == 1,
+                ConversationPause.expires_at > current_time
+            ).first()
+            
+            if active_pause:
+                return {
+                    'conversation_id': active_pause.conversation_id,
+                    'phone_number': active_pause.phone_number,
+                    'agent_name': active_pause.agent_name,
+                    'agent_email': active_pause.agent_email,
+                    'agent_assignee_id': active_pause.agent_assignee_id,
+                    'paused_at': active_pause.paused_at,
+                    'expires_at': active_pause.expires_at,
+                    'hours_remaining': round((active_pause.expires_at - current_time).total_seconds() / 3600, 2)
+                }
+            
+            return None
+            
+        except Exception as e:
+            print(f"Error getting conversation pause info: {e}")
+            return None
+    
+    @staticmethod
+    def remove_conversation_pause(db: Session, conversation_id: str) -> bool:
+        """Manually remove/deactivate a conversation pause"""
+        try:
+            updated_rows = db.query(ConversationPause).filter(
+                ConversationPause.conversation_id == conversation_id
+            ).update({ConversationPause.is_active: 0})
+            
+            db.commit()
+            return updated_rows > 0
+            
+        except Exception as e:
+            db.rollback()
+            print(f"Error removing conversation pause: {e}")
+            return False
+    
+    @staticmethod
+    def cleanup_expired_pauses(db: Session) -> int:
+        """Clean up all expired conversation pauses - can be run periodically"""
+        try:
+            current_time = datetime.datetime.utcnow()
+            
+            updated_rows = db.query(ConversationPause).filter(
+                ConversationPause.is_active == 1,
+                ConversationPause.expires_at <= current_time
+            ).update({ConversationPause.is_active: 0})
+            
+            db.commit()
+            return updated_rows
+            
+        except Exception as e:
+            db.rollback()
+            print(f"Error cleaning up expired pauses: {e}")
+            return 0 
