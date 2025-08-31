@@ -164,6 +164,11 @@ class QueryAgent:
         - اعتبر الرد بـ "نعم" أو "أي" متعلق بالخدمة إذا كان في سياق محادثة عن المنتجات فقط
         - انتبه لتاريخ المحادثة: إذا كانت المحادثة عن المياه والعلامات التجارية، فحتى الردود البسيطة قد تكون متعلقة
 
+        🔢 تعليمات خاصة لعدد الحبات في الكرتونة:
+        - لا تذكر عدد الحبات في الكرتونة إلا إذا سأل المستخدم عنها تحديداً
+        - أسئلة تستدعي ذكر عدد الحبات: "كم عدد الكرتونة؟"، "كم حبة بالكرتونة؟"، "كم قارورة في الكرتونة؟"، "عدد القوارير بالكرتونة"، "كم عدد العبوات في الكرتونة؟"
+        - في باقي الحالات، اكتف بذكر اسم المنتج والعبئة والسعر فقط
+
         أجب بـ "relevant" إذا كانت الرسالة متعلقة بالمنتجات والأسعار والعلامات التجارية والمدن فقط، أو "not_relevant" لأي شيء آخر."""
 
         self.classification_prompt_en = """You are a smart message classifier for a water delivery company. Your task is to determine if a message is related to the company's services or not.
@@ -253,6 +258,11 @@ class QueryAgent:
             - Consider mentioning water brand names as service-related only
             - Consider "yes" replies as service-related only if in context of product discussions
 
+            🔢 Special Instructions for Bottle Count in Cartons:
+            - Only mention the number of bottles in a carton when the user specifically asks about it
+            - Questions that require mentioning bottle count: "How many bottles in a carton?", "How many pieces in a box?", "How many bottles per carton?", "Number of bottles in carton", "How many units in a package?"
+            - In all other cases, only mention product name, packing, and price
+
             Reply with "relevant" if the message is related to products, prices, brands, and cities only, or "not_relevant" for anything else."""
                     
         # Function definitions for OpenAI function calling
@@ -295,7 +305,7 @@ class QueryAgent:
             },
             {
                 "name": "get_products_by_brand_and_city_name",
-                "description": "STEP 2 in workflow: Get all water products for a specific brand in a specific city using names. This handles fuzzy matching for incomplete or misspelled brand/city names. Use this when customer has specified both a brand and city. Returns language-appropriate product strings with prices and contextual message.",
+                "description": "STEP 2 in workflow: Get all water products for a specific brand in a specific city using names. This handles fuzzy matching for incomplete or misspelled brand/city names. Use this when customer has specified both a brand and city. Returns language-appropriate product strings with prices and product_packing and contextual message.",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -1232,30 +1242,31 @@ class QueryAgent:
                 brand_name_display = products[0]["brand_title"] if products else brand_name
                 city_name_display = products[0]["city_name"] if products else city_name
                 
-                # Create simple product strings with prices
+                # Create simple product strings with prices and packing
                 filtered_products = []
                 for product in products:
                     price = product["product_contract_price"]
                     # The data_api now returns language-appropriate product titles in main field
                     title = product["product_title"]
+                    packing = product["product_packing"]
                     
                     # Check if product is a gallon/jug (don't show carton price for individual units)
                     is_gallon = any(keyword in title.lower() for keyword in ['جالون', 'gallon', '19 لتر', '20 لتر', 'جوالين', 'تبديل', 'exchange'])
                     
                     if user_language == 'ar':
                         if is_gallon:
-                            # Arabic format for gallons: "Product Title - XX.XX ريال"
-                            product_string = f"{title} - {price} ريال"
+                            # Arabic format for gallons: "Product Title - Packing - XX.XX ريال"
+                            product_string = f"{title} - {packing} - {price} ريال"
                         else:
-                            # Arabic format for cartons: "Product Title - XX.XX ريال (سعر الكرتونة)"
-                            product_string = f"{title} - {price} ريال (سعر الكرتونة)"
+                            # Arabic format for cartons: "Product Title - Packing - XX.XX ريال (سعر الكرتونة)"
+                            product_string = f"{title} - {packing} - {price} ريال (سعر الكرتونة)"
                     else:
                         if is_gallon:
-                            # English format for gallons: "Product Title - XX.XX SAR"
-                            product_string = f"{title} - {price} SAR"
+                            # English format for gallons: "Product Title - Packing - XX.XX SAR"
+                            product_string = f"{title} - {packing} - {price} SAR"
                         else:
-                            # English format for cartons: "Product Title - XX.XX SAR (carton price)"
-                            product_string = f"{title} - {price} SAR (carton price)"
+                            # English format for cartons: "Product Title - Packing - XX.XX SAR (carton price)"
+                            product_string = f"{title} - {packing} - {price} SAR (carton price)"
                     
                     filtered_products.append(product_string)
                 
@@ -2375,6 +2386,12 @@ Output in JSON format only:
                     - Never use phrases like "AI response", "Assistant reply", or "I am an AI"
                     - Respond as if you're a real person working for the company
 
+                    🔢 Bottle Count Instructions - IMPORTANT:
+                    - Only mention the number of bottles in a carton when the customer specifically asks about it
+                    - Questions that require bottle count: "How many bottles in a carton?", "How many pieces in a box?", "How many bottles per carton?", "Number of bottles in carton", "How many units in a package?"
+                    - In all other cases, only mention product name, packing, and price
+                    - Do NOT include bottle count in regular product listings unless specifically requested
+
                     ENHANCED WORKFLOW - SMART CONTEXT EXTRACTION:
                     🚨 ALWAYS follow this sequence but use extracted context: CITY FIRST → BRAND → PRODUCTS → RESPONSE
 
@@ -2727,6 +2744,12 @@ Output in JSON format only:
                     - كن طبيعي وودود ومحادثي
                     - لا تستخدم أبداً عبارات مثل "رد الذكاء الاصطناعي" أو "رد المساعد" أو "أنا ذكاء اصطناعي"
                     - رد كأنك شخص حقيقي يعمل في الشركة
+
+                    🔢 تعليمات عدد الحبات في الكرتونة - مهم:
+                    - لا تذكر عدد الحبات في الكرتونة إلا إذا سأل العميل عنها تحديداً
+                    - أسئلة تستدعي ذكر عدد الحبات: "كم عدد الكرتونة؟"، "كم حبة بالكرتونة؟"، "كم قارورة في الكرتونة؟"، "عدد القوارير بالكرتونة"، "كم عدد العبوات في الكرتونة؟"
+                    - في باقي الحالات، اكتف بذكر اسم المنتج والتعبئة والسعر فقط
+                    - لا تذكر عدد الحبات في قوائم المنتجات العادية إلا إذا طُلب منك ذلك تحديداً
 
                     🚨 الانتباه الفائق لتاريخ المحادثة - مهم جداً:
                     - راجع دائماً تاريخ المحادثة بعناية للعثور على المدن والعلامات التجارية المذكورة سابقاً
