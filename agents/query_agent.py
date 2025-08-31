@@ -259,7 +259,7 @@ class QueryAgent:
         self.function_definitions = [
             {
                 "name": "get_all_cities",
-                "description": "Get complete list of all cities we serve with water delivery. Use this when user asks about available cities, locations we serve, or wants to see all cities. Returns language-appropriate city names only (Arabic cities for Arabic conversations, English cities for English conversations).",
+                "description": "STEP 1 in workflow: Get complete list of all cities we serve with water delivery. 🚨 MANDATORY: Always call this FIRST when user mentions any city name to verify correct spelling before calling other city-related functions. Use this when user asks about available cities, locations we serve, or wants to see all cities. Returns language-appropriate city names only (Arabic cities for Arabic conversations, English cities for English conversations).",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -275,7 +275,7 @@ class QueryAgent:
             },
             {
                 "name": "get_brands_by_city_name",
-                "description": "STEP 1 in workflow: Get all water brands available in a specific city using city name. This handles fuzzy matching for incomplete or misspelled city names. Use this when customer mentions a city and you want to show available brands. Returns language-appropriate brand names only (Arabic brands for Arabic requests, English brands for English requests).",
+                "description": "STEP 2 in workflow: Get all water brands available in a specific city using city name. ⚠️ IMPORTANT: MUST call get_all_cities() FIRST to verify exact city name spelling before using this function. This handles fuzzy matching for incomplete or misspelled city names, but exact spelling from cities list prevents errors. Use this when customer mentions a city and you want to show available brands. Returns language-appropriate brand names only (Arabic brands for Arabic requests, English brands for English requests).",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -2350,6 +2350,23 @@ Output in JSON format only:
                     - Use the correct name with other functions like get_brands_by_city_name and get_products_by_brand_and_city_name
                     - 🚨 CRITICAL: Never tell a customer we don't serve their city without first calling get_all_cities() to verify
                     
+                    🚨 MANDATORY CITY VERIFICATION WORKFLOW:
+                    1. When a user mentions ANY city name (even if it seems correct)
+                    2. FIRST call get_all_cities() to get the complete list of served cities
+                    3. Find the exact match for the user's city name in the list (check for spelling variations)
+                    4. ONLY THEN call get_brands_by_city_name() with the EXACT city name from the cities list
+                    5. This prevents city name spelling issues and variations
+                    
+                    📍 SPECIFIC CITY NAME VARIATIONS TO WATCH FOR:
+                    - حفر الباطن (correct spelling) can be mentioned by users as:
+                      • الحفر
+                      • حفرالباطن (without space)
+                      • حفر الباطن (with space - correct)
+                    - All these variations refer to the same city "حفر الباطن"
+                    - Always map these to the correct spelling "حفر الباطن" when calling functions
+                    
+                    - Example: User says "الحفر" or "حفرالباطن" → Call get_all_cities() → Find "حفر الباطن" in the list → Use "حفر الباطن" for get_brands_by_city_name()
+                    
                     
 
                     Communication Style:
@@ -2887,6 +2904,23 @@ Output in JSON format only:
                     - هذا يحمينا من رفض العملاء بالخطأ بسبب الاختلافات الإملائية أو الأخطاء
                     - لا تضيف تفسيرات أو نصوص إضافية بعد هذه الرسالة
                     - كن مباشراً وواضحاً بشأن عدم التوفر فقط بعد التحقق
+
+                    🚨 سير عمل إجباري لتأكيد المدينة - مهم جداً:
+                    1. عندما يذكر المستخدم أي اسم مدينة (حتى لو بدا صحيحاً)
+                    2. استدعي أولاً get_all_cities() للحصول على القائمة الكاملة للمدن المخدومة
+                    3. ابحث عن المطابقة الدقيقة لاسم المدينة في القائمة (تحقق من الاختلافات الإملائية)
+                    4. فقط بعدها استدعي get_brands_by_city_name() باستخدام الاسم الدقيق للمدينة من قائمة المدن
+                    5. هذا يمنع مشاكل الأخطاء الإملائية والاختلافات في أسماء المدن
+                    
+                    📍 أمثلة محددة لاختلافات أسماء المدن - انتبه لها:
+                    - حفر الباطن (الهجاء الصحيح) يمكن أن يذكرها المستخدمون كـ:
+                      • الحفر
+                      • حفرالباطن (بدون مسافة)
+                      • حفر الباطن (مع مسافة - صحيح)
+                    - جميع هذه الاختلافات تشير إلى نفس المدينة "حفر الباطن"
+                    - دائماً اربط هذه الاختلافات بالهجاء الصحيح "حفر الباطن" عند استدعاء الوظائف
+                    
+                    - مثال: المستخدم يقول "الحفر" أو "حفرالباطن" → استدعي get_all_cities() → ابحث عن "حفر الباطن" في القائمة → استخدم "حفر الباطن" مع get_brands_by_city_name()
 
                     🚨 تعليمات حاسمة - كن مباشراً بشأن توفر الخدمة:
                     - عندما لا تكون المدينة مخدومة، اذكر بوضوح: "عذراً، لا نقدم خدمة التوصيل لهذه المدينة حالياً"
