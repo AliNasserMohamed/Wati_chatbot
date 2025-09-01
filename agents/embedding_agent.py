@@ -268,8 +268,9 @@ class EmbeddingAgent:
 - أو كانت تحتوي على تحية أو شكر لكن مرفقة بسؤال أو طلب
 - اذا كان سياق المحادثة يشير ام العميل يستفسر عن المنتجات او اعلامات التجارية او المدن او الاسعار
 - 🚨 إذا ذكر العميل علامات تجارية للمياه - هذه علامات مياه حقيقية ويجب إرسالها للتصنيف
-- أسماء العلامات التجارية الشائعة: نستله، أكوافينا، العين، القصيم، المراعي، نوفا، نقي، تانيا، صافية، بنما، أروى، مساء، سدير، صحتك، صحتين، وي، المنهل، حلوة، هنا، صفا مكة، أوسكا
-- 🔍 مهم: يمكن التعرف على العلامات التجارية من سياق المحادثة السابقة أيضاً - إذا ذُكرت علامة تجارية في الرسائل السابقة، يجب إرسال الرسالة الحالية للتصنيف 
+- أسماء العلامات التجارية الشائعة: نستله، أكوافينا، العين، القصيم، المراعي، نوفا، نقي، تانيا، صافية، بنما، أروى، مساء، سدير، صحتك، صحتين، وي، المنهل، حلوة، هنا، صفا مكة، أوسكا، بي، هني
+- 🔍 مهم: يمكن التعرف على العلامات التجارية من سياق المحادثة السابقة أيضاً - إذا ذُكرت علامة تجارية في الرسائل السابقة، يجب إرسال الرسالة الحالية للتصنيف
+- 🚨 تعامل خاص مع الرسائل المكونة من كلمة واحدة: إذا كانت الرسالة كلمة واحدة غير واضحة أو غير مفهومة، تحقق من سياق المحادثة السابقة - قد تكون اسم علامة تجارية مذكورة سابقاً أو سؤال متابعة لموضوع سابق 
 
 ❗️قواعد مراعاة سياق المحادثة:
 - **الردود المتكررة**: إذا أرسلنا نفس النوع من الرد (مثل روابط التطبيق أو معلومات الأسعار) خلال آخر 3-5 رسائل، اختر "continue"
@@ -320,6 +321,7 @@ Rules with conversation context consideration:
 - 🚨 If customer mentions water brand names - these are real water brands and should be sent to classification
 - Common water brand names: نستله (Nestle), أكوافينا (Aquafina), العين (Al-Ain), القصيم (Al-Qassim), المراعي (Almarai), نوفا (Nova), نقي (Naqi), تانيا (Tania), صافية (Safia), بنما (Banama), أروى (Arwa), مساء (Massa), سدير (Sudair), صحتك (Sahtak), صحتين (Sahtain), وي (Wi), المنهل (Al-Manhal), حلوة (Helwa), هنا (Hena), صفا مكة (Safa Makkah), أوسكا (Oska)
 - 🔍 Important: Brand names can also be identified from conversation history context - if a brand was mentioned in previous messages, current message should be sent to classification
+- 🚨 Special handling for single-word messages: If the message is one unclear or incomprehensible word, check conversation history context - it might be a brand name mentioned previously or a follow-up question to a previous topic
 - Examples:
     - "Hi, I have a question" → continue
     - "Thank you, but I need help" → continue
@@ -374,6 +376,7 @@ You must classify the message into **only one** of the following:
   - 🚨 If customer mentions water brand names - these are real water brands and should be sent to classification
   - Common water brand names: نستله (Nestle), أكوافينا (Aquafina), العين (Al-Ain), القصيم (Al-Qassim), المراعي (Almarai), نوفا (Nova), نقي (Naqi), تانيا (Tania), صافية (Safia), بنما (Banama), أروى (Arwa), مساء (Massa), سدير (Sudair), صحتك (Sahtak), صحتين (Sahtain), وي (Wi), المنهل (Al-Manhal), حلوة (Helwa), هنا (Hena), صفا مكة (Safa Makkah), أوسكا (Oska)
   - 🔍 Important: Brand names can also be identified from conversation history context - if a brand was mentioned in previous messages, current message should be sent to classification
+  - 🚨 Special handling for single-word messages: If the message is one unclear or incomprehensible word, check conversation history context - it might be a brand name mentioned previously or a follow-up question to a previous topic
   - Examples:
     - "السلام عليكم، عندي استفسار"
     - "أبي أطلب مياه"

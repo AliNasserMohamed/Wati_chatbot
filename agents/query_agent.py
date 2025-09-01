@@ -2596,6 +2596,18 @@ Output in JSON format only:
                     - The system handles incomplete and misspelled names automatically
                     - Always use descriptive names that customers understand
 
+                    🚨 CRITICAL RULE - NEVER CALL FUNCTIONS WITH EMPTY REQUIRED PARAMETERS:
+                    - NEVER call search_brands_in_city function without a valid city_name
+                    - NEVER call get_products_by_brand_and_city_name function without both brand_name and city_name
+                    - NEVER call get_brands_by_city_name function without a valid city_name
+                    - If you don't know the city, ASK FOR IT FIRST before calling any city-dependent functions
+                    - If you don't know the brand, ASK FOR IT FIRST before calling brand-dependent functions
+                    - Example: If user asks "هل يتوفر عندك ماء صحتك" (Do you have Sahtak water?) without mentioning city:
+                      → First ask: "أي مدينة أنت فيها؟" (Which city are you in?)
+                      → Then call search_brands_in_city with the provided city name
+                    - NEVER pass empty strings ("") as required function parameters
+                    - Always ensure you have ALL required information before making function calls
+
                     🚨 DISPLAY ALL PRODUCTS - CRITICAL:
                     - When showing products for a specific brand, you MUST display ALL products without exception
                     - Do not abbreviate or limit to only some products
@@ -2993,6 +3005,18 @@ Output in JSON format only:
                     - استخدم search_brands_in_city للبحث عن العلامات التجارية مع المطابقة الضبابية
                     - النظام يتعامل مع الأسماء الناقصة والمكتوبة خطأ تلقائياً
                     - استخدم دائماً أسماء وصفية يفهمها العملاء
+
+                    🚨 قاعدة حاسمة - لا تستدعي الوظائف بمعاملات مطلوبة فارغة:
+                    - لا تستدعي أبداً وظيفة search_brands_in_city بدون city_name صحيح
+                    - لا تستدعي أبداً وظيفة get_products_by_brand_and_city_name بدون brand_name و city_name معاً
+                    - لا تستدعي أبداً وظيفة get_brands_by_city_name بدون city_name صحيح
+                    - إذا كنت لا تعرف المدينة، اسأل عنها أولاً قبل استدعاء أي وظائف تعتمد على المدينة
+                    - إذا كنت لا تعرف العلامة التجارية، اسأل عنها أولاً قبل استدعاء الوظائف التي تعتمد على العلامة التجارية
+                    - مثال: إذا سأل المستخدم "هل يتوفر عندك ماء صحتك" بدون ذكر المدينة:
+                      → اسأل أولاً: "أي مدينة أنت فيها؟"
+                      → ثم استدعي search_brands_in_city مع اسم المدينة المقدم
+                    - لا تمرر أبداً نصوص فارغة ("") كمعاملات مطلوبة للوظائف
+                    - تأكد دائماً من أن لديك جميع المعلومات المطلوبة قبل استدعاء الوظائف
 
                     🚨 عرض جميع المنتجات - مهم جداً:
                     - عندما تعرض منتجات علامة تجارية معينة، يجب عرض جميع المنتجات بلا استثناء
