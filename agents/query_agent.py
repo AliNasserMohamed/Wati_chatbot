@@ -2531,7 +2531,7 @@ Output in JSON format only:
 
                     ORDER REQUESTS - REDIRECT TO APP:
                     When user wants to place an order, make a purchase, or asks how to order, ALWAYS redirect them to the app/website with this message:
-                    "You can find all products, prices, and place orders through our app: https://onelink.to/abar_app or on our website: https://abar.app/en/store/"
+                    "You can find all products, prices, and place orders through our app: https://onelink.to/abar_app or on our website: "
                     - Never try to take orders through the chat
                     - Never ask for delivery details, payment info, or personal information
                     - Always direct them to the official app/website for ordering
@@ -2542,7 +2542,7 @@ Output in JSON format only:
                     - Total order calculations ("10 cartons of Nove, what's the total?", "total", "total cost", "sum")
                     - General price inquiries for multiple items or quantities
                     ALWAYS redirect them to the app with this message:
-                    "You can find all products and prices in our app: https://onelink.to/abar_app or on our website: https://abar.app/en/store/"
+                    "You can find all products and prices in our app: https://onelink.to/abar_app or on our website: "
 
                     🚨 APP PROMOTION - ONLY IN SPECIFIC CASES:
                     - When showing specific products/prices for a brand, add at the end: "You can order through our app: https://onelink.to/abar_app"
@@ -2579,7 +2579,7 @@ Output in JSON format only:
                     - Do NOT use this response for contact information, phone number requests, or other questions
 
                     4. CONTACT INFORMATION REQUESTS:
-                    - ONLY when customer specifically asks about "phone number", "contact number", "how to contact", "get in touch", "call you", "reach you", answer: "You can contact us through our app or website for technical support and customer service: https://onelink.to/abar_app or https://abar.app/en/store/"
+                    - ONLY when customer specifically asks about "phone number", "contact number", "how to contact", "get in touch", "call you", "reach you", answer: "You can contact us through our app or website for technical support and customer service: https://onelink.to/abar_app or "
                     - Do NOT confuse contact requests with branches questions
 
                     5. PRICE DISPUTES:
@@ -2949,7 +2949,7 @@ Output in JSON format only:
 
                     طلبات الطلب - التوجيه للتطبيق:
                     عندما يريد العميل تقديم طلب، أو الشراء، أو يسأل كيف يطلب، وجهه دائماً للتطبيق/الموقع بهذه الرسالة:
-                    "بتحصل الاصناف والاسعار في التطبيق وهذا هو الرابط https://onelink.to/abar_app https://abar.app/en/store/ وايضا عن طريق الموقع الالكتروني"
+                    "بتحصل الاصناف والاسعار في التطبيق وهذا هو الرابط https://onelink.to/abar_app  وايضا عن طريق الموقع الالكتروني"
                     - لا تحاول أخذ طلبات من خلال المحادثة أبداً
                     - لا تسأل عن تفاصيل التوصيل أو معلومات الدفع أو المعلومات الشخصية
                     - وجههم دائماً للتطبيق/الموقع الرسمي للطلب
@@ -2960,7 +2960,7 @@ Output in JSON format only:
                     - حساب إجمالي الطلبات ("10 كرتون نوڤا، كم المجموع؟"، "المجموع"، "الإجمالي"، "مجموع السعر")
                     - استفسارات أسعار عامة لعدة عناصر أو كميات
                     وجهه دائماً للتطبيق بهذه الرسالة:
-                    "بتحصل الاصناف والاسعار في التطبيق وهذا هو الرابط https://onelink.to/abar_app https://abar.app/en/store/ وايضا عن طريق الموقع الالكتروني"
+                    "بتحصل الاصناف والاسعار في التطبيق وهذا هو الرابط https://onelink.to/abar_app  وايضا عن طريق الموقع الالكتروني"
 
                     🚨 الترويج للتطبيق - في حالات محددة فقط:
                     - عند عرض منتجات/أسعار لعلامة تجارية محددة، أضف في النهاية: "تقدر تطلب من خلال التطبيق: https://onelink.to/abar_app"
