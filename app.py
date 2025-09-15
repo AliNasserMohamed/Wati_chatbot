@@ -33,7 +33,7 @@ import time
 ACCESS_CONTROL_CONFIG_FILE = "access_control_config.json"
 
 # Agent pause configuration - emails that trigger bot pause
-PAUSE_TRIGGER_AGENT_EMAILS = ["contracts@abar.app"]
+PAUSE_TRIGGER_AGENT_EMAILS = ["contracts@abar.app","Reem@abar.app"]
 
 def load_access_control_config():
     """Load access control configuration from file"""
@@ -254,7 +254,6 @@ async def process_webhook_async(data: dict, db):
             # Only pause for specific agent emails configured in PAUSE_TRIGGER_AGENT_EMAILS
             agent_email = data.get("operatorEmail")
             is_pause_trigger_agent = (
-                data.get("owner", False) and 
                 agent_email in PAUSE_TRIGGER_AGENT_EMAILS
             )
             conversation_id = data.get("conversationId")
