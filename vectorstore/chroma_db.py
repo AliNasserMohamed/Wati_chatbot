@@ -93,7 +93,8 @@ class ChromaManager:
         
         # Add thread-safe locking for concurrent access
         self._lock = asyncio.Lock()
-        self._thread_lock = threading.Lock()
+        # RLock: add_knowledge_sync -> check_duplicate_question_sync -> search_sync all acquire this on the same thread.
+        self._thread_lock = threading.RLock()
     
     def _preprocess_text(self, text: str) -> str:
         """
@@ -372,19 +373,7 @@ class ChromaManager:
         """
         Async wrapper for search_sync method
         """
-        # Run the synchronous search in a thread pool to avoid blocking
-        import asyncio
-        import concurrent.futures
-        
-        loop = asyncio.get_event_loop()
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            result = await loop.run_in_executor(
-                executor, 
-                self.search_sync, 
-                query, 
-                n_results
-            )
-        return result
+        return await asyncio.to_thread(self.search_sync, query, n_results)
     
     # ... [Include other methods with similar Arabic text preprocessing] ...
     

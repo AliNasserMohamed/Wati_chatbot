@@ -113,7 +113,11 @@ class KnowledgeManager:
             
             # Use the ChromaManager's populate_default_knowledge_sync which now reads from Excel
             result = self.chroma_manager.populate_default_knowledge_sync()
-            
+
+            # Error results carry success=False; the normal add_knowledge_sync result has no "success" key
+            if result.get("success") is False:
+                return {"success": False, "error": result.get("error", "Unknown error populating knowledge base")}
+
             return {
                 "success": True,
                 "added_ids": result["added_ids"],

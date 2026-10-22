@@ -16,6 +16,7 @@ from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.responses import Response
 from starlette.requests import ClientDisconnect
+from starlette.concurrency import run_in_threadpool
 from typing import Optional, List
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
@@ -1547,23 +1548,17 @@ async def manual_data_sync():
     """Manually trigger a full data sync"""
     try:
         # Run the sync in a separate thread to avoid blocking
-        import asyncio
-        import concurrent.futures
-        
-        loop = asyncio.get_event_loop()
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            result = await loop.run_in_executor(executor, scheduler.run_manual_sync)
-        return result
+        return await run_in_threadpool(scheduler.run_manual_sync)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/data/sync/status")
-async def get_sync_status():
+def get_sync_status():
     """Get the status of the data sync scheduler"""
     return scheduler.get_scheduler_status()
 
 @app.post("/data/sync/start")
-async def start_scheduler(daily_time: str = "02:00"):
+def start_scheduler(daily_time: str = "02:00"):
     """Start the data sync scheduler"""
     try:
         scheduler.start_scheduler(daily_time)
@@ -1572,7 +1567,7 @@ async def start_scheduler(daily_time: str = "02:00"):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/data/sync/stop")
-async def stop_scheduler():
+def stop_scheduler():
     """Stop the data sync scheduler"""
     try:
         scheduler.stop_scheduler()
@@ -1586,7 +1581,7 @@ async def stop_scheduler():
     description="Get the status of all conversation pauses (active and recently expired)",
     response_description="List of conversation pause statuses"
 )
-async def get_all_pause_status(
+def get_all_pause_status(
     include_expired: bool = Query(False, description="Include expired pauses in results"),
     db=Depends(get_db)
 ):
@@ -1664,7 +1659,7 @@ async def get_all_pause_status(
     description="Get the pause status for a specific conversation ID",
     response_description="Conversation pause status"
 )
-async def get_conversation_pause_status(
+def get_conversation_pause_status(
     conversation_id: str,
     db=Depends(get_db)
 ):
@@ -1702,7 +1697,7 @@ async def get_conversation_pause_status(
     description="Manually remove/deactivate a conversation pause",
     response_description="Removal result"
 )
-async def remove_conversation_pause(
+def remove_conversation_pause(
     conversation_id: str,
     db=Depends(get_db)
 ):
@@ -1740,7 +1735,7 @@ async def remove_conversation_pause(
     description="Manually clean up all expired conversation pauses",
     response_description="Cleanup results"
 )
-async def cleanup_expired_pauses(db=Depends(get_db)):
+def cleanup_expired_pauses(db=Depends(get_db)):
     """
     Manually trigger cleanup of all expired conversation pauses
     """
@@ -1765,7 +1760,7 @@ async def cleanup_expired_pauses(db=Depends(get_db)):
     description="Clear all messages for a specific phone number. Optionally delete the user record as well.",
     response_description="Operation results with deletion counts"
 )
-async def clear_user_messages(
+def clear_user_messages(
     payload: ClearMessagesRequest,
     db=Depends(get_db)
 ):
@@ -1809,7 +1804,7 @@ async def clear_user_messages(
     description="Get the total count of messages (user messages + bot replies) for a specific phone number.",
     response_description="Message counts and user information"
 )
-async def get_user_message_count(
+def get_user_message_count(
     payload: MessageCountRequest,
     db=Depends(get_db)
 ):
@@ -1845,7 +1840,7 @@ async def get_user_message_count(
 
 # Internal Data API Endpoints
 @app.get("/api/cities")
-async def get_cities(search: str = None, db=Depends(get_db)):
+def get_cities(search: str = None, db=Depends(get_db)):
     """Get all cities or search cities by name"""
     try:
         if search:
@@ -1857,7 +1852,7 @@ async def get_cities(search: str = None, db=Depends(get_db)):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/cities/search")
-async def search_cities(q: str, db=Depends(get_db)):
+def search_cities(q: str, db=Depends(get_db)):
     """Search cities by name"""
     try:
         cities = data_api.search_cities(db, q)
@@ -1866,7 +1861,7 @@ async def search_cities(q: str, db=Depends(get_db)):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/cities/{city_id}")
-async def get_city(city_id: int, db=Depends(get_db)):
+def get_city(city_id: int, db=Depends(get_db)):
     """Get a specific city by ID"""
     city = data_api.get_city_by_id(db, city_id)
     if not city:
@@ -1874,7 +1869,7 @@ async def get_city(city_id: int, db=Depends(get_db)):
     return {"success": True, "data": city}
 
 @app.get("/api/cities/{city_id}/brands")
-async def get_city_brands(city_id: int, db=Depends(get_db)):
+def get_city_brands(city_id: int, db=Depends(get_db)):
     """Get all brands for a specific city"""
     try:
         brands = data_api.get_brands_by_city(db, city_id)
@@ -1883,7 +1878,7 @@ async def get_city_brands(city_id: int, db=Depends(get_db)):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/cities/{city_id}/full")
-async def get_city_with_brands_products(city_id: int, db=Depends(get_db)):
+def get_city_with_brands_products(city_id: int, db=Depends(get_db)):
     """Get a city with all its brands and products"""
     city_data = data_api.get_city_with_brands_and_products(db, city_id)
     if not city_data:
@@ -1891,7 +1886,7 @@ async def get_city_with_brands_products(city_id: int, db=Depends(get_db)):
     return {"success": True, "data": city_data}
 
 @app.get("/api/brands")
-async def get_brands(search: str = None, db=Depends(get_db)):
+def get_brands(search: str = None, db=Depends(get_db)):
     """Get all brands or search brands by title"""
     try:
         if search:
@@ -1903,7 +1898,7 @@ async def get_brands(search: str = None, db=Depends(get_db)):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/brands/{brand_id}")
-async def get_brand(brand_id: int, db=Depends(get_db)):
+def get_brand(brand_id: int, db=Depends(get_db)):
     """Get a specific brand by ID"""
     brand = data_api.get_brand_by_id(db, brand_id)
     if not brand:
@@ -1911,7 +1906,7 @@ async def get_brand(brand_id: int, db=Depends(get_db)):
     return {"success": True, "data": brand}
 
 @app.get("/api/brands/{brand_id}/products")
-async def get_brand_products(brand_id: int, db=Depends(get_db)):
+def get_brand_products(brand_id: int, db=Depends(get_db)):
     """Get all products for a specific brand"""
     try:
         products = data_api.get_products_by_brand(db, brand_id)
@@ -1920,7 +1915,7 @@ async def get_brand_products(brand_id: int, db=Depends(get_db)):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/brands/{brand_id}/full")
-async def get_brand_with_products(brand_id: int, db=Depends(get_db)):
+def get_brand_with_products(brand_id: int, db=Depends(get_db)):
     """Get a brand with all its products"""
     brand_data = data_api.get_brand_with_products(db, brand_id)
     if not brand_data:
@@ -1928,7 +1923,7 @@ async def get_brand_with_products(brand_id: int, db=Depends(get_db)):
     return {"success": True, "data": brand_data}
 
 @app.get("/api/products")
-async def get_products(search: str = None, db=Depends(get_db)):
+def get_products(search: str = None, db=Depends(get_db)):
     """Get all products or search products by title/barcode"""
     try:
         if search:
@@ -1940,7 +1935,7 @@ async def get_products(search: str = None, db=Depends(get_db)):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/products/search")
-async def search_products(q: str, db=Depends(get_db)):
+def search_products(q: str, db=Depends(get_db)):
     """Search products by name or keyword"""
     try:
         products = data_api.search_products(db, q)
@@ -1949,7 +1944,7 @@ async def search_products(q: str, db=Depends(get_db)):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/products/{product_id}")
-async def get_product(product_id: int, db=Depends(get_db)):
+def get_product(product_id: int, db=Depends(get_db)):
     """Get a specific product by ID"""
     product = data_api.get_product_by_id(db, product_id)
     if not product:
@@ -1984,7 +1979,8 @@ async def add_knowledge(request: Request):
         from vectorstore.chroma_db import chroma_manager
         
         # First add to Excel file (simple direct call)
-        csv_success = csv_manager.add_qa_pair(
+        csv_success = await run_in_threadpool(
+            csv_manager.add_qa_pair,
             question=question,
             answer=answer,
             category=category,
@@ -2004,7 +2000,8 @@ async def add_knowledge(request: Request):
         
         try:
             # Use the same logic as populate_from_csv_light.py
-            result = chroma_manager.add_knowledge_sync(
+            result = await run_in_threadpool(
+                chroma_manager.add_knowledge_sync,
                 questions=questions,
                 answers=answers,
                 metadatas=metadatas,
@@ -2056,7 +2053,7 @@ async def check_duplicate_knowledge(request: Request):
         from difflib import SequenceMatcher
         
         # Read existing questions from Excel
-        qa_pairs = csv_manager.read_qa_pairs()
+        qa_pairs = await run_in_threadpool(csv_manager.read_qa_pairs)
         
         # Check for duplicates using string similarity
         question_lower = question.lower().strip()
@@ -2089,7 +2086,7 @@ async def check_duplicate_knowledge(request: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/knowledge/search")
-async def search_knowledge(query: str, n_results: int = 3):
+def search_knowledge(query: str, n_results: int = 3):
     """Search the knowledge base"""
     try:
         results = knowledge_manager.search_knowledge(query, n_results)
@@ -2099,7 +2096,7 @@ async def search_knowledge(query: str, n_results: int = 3):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/knowledge/stats")
-async def get_knowledge_stats():
+def get_knowledge_stats():
     """Get knowledge base statistics"""
     try:
         stats_result = knowledge_manager.get_knowledge_stats()
@@ -2118,7 +2115,7 @@ async def populate_knowledge():
     """
     try:
         print("🚀 API: Starting knowledge base population...")
-        result = knowledge_manager.populate_abar_knowledge()
+        result = await run_in_threadpool(knowledge_manager.populate_abar_knowledge)
         
         if result["success"]:
             return {
@@ -2148,7 +2145,7 @@ async def knowledge_admin_page(request: Request):
     return templates.TemplateResponse("knowledge_admin.html", {"request": request})
 
 @app.get("/knowledge/list")
-async def list_knowledge(
+def list_knowledge(
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(50, ge=1, le=500, description="Items per page"),
     category: Optional[str] = Query(None, description="Filter by category"),
@@ -2263,7 +2260,8 @@ async def update_knowledge(request: Request):
             
             # Update in Excel file
             from utils.excel_manager import csv_manager
-            success = csv_manager.update_qa_pair(
+            success = await run_in_threadpool(
+                csv_manager.update_qa_pair,
                 index=excel_index,
                 question=question,
                 answer=answer,
@@ -2284,19 +2282,23 @@ async def update_knowledge(request: Request):
             # We no longer embed answers separately - only update the question document
             question_id = f"q_{qa_id}"
             question_metadata = {"answer_id": qa_id, "type": "question", "answer_text": answer, **metadata}
-            try:
-                chroma_manager.get_collection_safe().update(
-                    ids=[question_id],
-                    documents=[question],
-                    metadatas=[question_metadata]
-                )
-            except:
-                # If question doesn't exist, create it
-                chroma_manager.get_collection_safe().add(
-                    ids=[question_id],
-                    documents=[question],
-                    metadatas=[question_metadata]
-                )
+
+            def _upsert_question():
+                try:
+                    chroma_manager.get_collection_safe().update(
+                        ids=[question_id],
+                        documents=[question],
+                        metadatas=[question_metadata]
+                    )
+                except:
+                    # If question doesn't exist, create it
+                    chroma_manager.get_collection_safe().add(
+                        ids=[question_id],
+                        documents=[question],
+                        metadatas=[question_metadata]
+                    )
+
+            await run_in_threadpool(_upsert_question)
         except Exception as e:
             print(f"Warning: Failed to update vector database: {str(e)}")
         
@@ -2310,7 +2312,7 @@ async def update_knowledge(request: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/knowledge/validate-delete/{qa_id}")
-async def validate_delete(qa_id: str):
+def validate_delete(qa_id: str):
     """
     Validate what would be deleted without actually deleting it
     """
@@ -2369,7 +2371,7 @@ async def validate_delete(qa_id: str):
         return {"status": "error", "message": str(e)}
 
 @app.delete("/knowledge/delete/{qa_id}")
-async def delete_knowledge(qa_id: str):
+def delete_knowledge(qa_id: str):
     """
     Delete a Q&A pair by ID from Excel file, vector database, and dashboard
     """
@@ -2432,14 +2434,18 @@ async def update_user_conclusion(request: Request, db=Depends(get_db)):
         if not phone_number or not conclusion:
             raise HTTPException(status_code=400, detail="Phone number and conclusion are required")
         
-        # Get or create user
-        user = DatabaseManager.get_user_by_phone(db, phone_number)
-        if not user:
-            user = DatabaseManager.create_user(db, phone_number)
-        
-        # Update conclusion
-        DatabaseManager.update_user_conclusion(db, user.id, conclusion)
-        return {"status": "success", "user_id": user.id}
+        def _update_conclusion():
+            # Get or create user
+            user = DatabaseManager.get_user_by_phone(db, phone_number)
+            if not user:
+                user = DatabaseManager.create_user(db, phone_number)
+            
+            # Update conclusion
+            DatabaseManager.update_user_conclusion(db, user.id, conclusion)
+            return user.id
+
+        user_id = await run_in_threadpool(_update_conclusion)
+        return {"status": "success", "user_id": user_id}
     except Exception as e:
         print(f"[Update User ERROR] {str(e)}")
         return {"status": "error", "message": str(e)}
@@ -2534,7 +2540,7 @@ async def test_langsmith_integration():
 
 # Model cache management endpoints
 @app.get("/models/cache/info")
-async def get_model_cache_info():
+def get_model_cache_info():
     """Get information about cached embedding models"""
     try:
         from vectorstore.model_cache import model_cache
@@ -2545,7 +2551,7 @@ async def get_model_cache_info():
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/models/cache/preload")
-async def preload_models():
+def preload_models():
     """Pre-load all embedding models used by the application"""
     try:
         from vectorstore.model_cache import model_cache
